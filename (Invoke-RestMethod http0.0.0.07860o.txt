@@ -1,0 +1,2 @@
+(Invoke-RestMethod "http://0.0.0.0:7860/openapi.json").paths.PSObject.Properties.Name |
+    Where-Object { $_ -like "*rag*" }
