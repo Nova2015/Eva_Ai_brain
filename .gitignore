@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+*.db
+*.db.backup
+
+# Node
+node_modules/
+frontend/aria-dashboard/node_modules/
+
+# Local environments / secrets
+.env
+.env.*
+!.env.example
+
+# Generated / runtime
+logs/
+uploads/
+workspace/
+generated/
+unsloth_compiled_cache/
+
+# OpenHands local artifacts
+.openhands-venv/
+.openhands-test-workspace/
+
+# Local backup
+EVA-backup-2026-09-16.bundle
