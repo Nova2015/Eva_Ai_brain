@@ -5578,10 +5578,9 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
         # Phase 1 â€ the image path is left exactly as it was.
         if COGNITIVE_DRIVER_AVAILABLE and not req.image:
             try:
-                _t1 = _time.perf_counter()
                 _gate = cognitive_decide(original_question or "", req.history, False)
-                print(f"[TIMING] cognitive_decide: {_time.perf_counter()-_t1:.2f}s")
-            except Exception:
+            except Exception as _gate_exc:
+                print(f"[COGNITIVE_GATE_ERROR] {type(_gate_exc).__name__}: {_gate_exc}")
                 _gate = None
             if _gate is not None:
                 _gate_record(_gate)
@@ -5691,15 +5690,21 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                     "agent_path": agent_status["path"],
                 }, _inbound_types, req.user_id, _client_ip, original_question,
                     None, req.history, bool(req.voice_response)), original_question)
-        # EVA Local PRIMARY
-        # Tried first, before the slow HF RAG call below. Builds its own
+        # Decide whether this request should use document RAG before local-model primary.
+        doc_keywords = ["my document", "my file", "uploaded file", "the pdf",
+                        "the report", "the contract", "summarize the",
+                        "according to the", "in the file", "from the doc",
+                        "what does it say", "from my", "in my document"]
+        use_rag = agent_id == "rag" or any(kw in original_question.lower() for kw in doc_keywords) or ".py" in original_question.lower() or ".js" in original_question.lower() or ".jsx" in original_question.lower() or ".ts" in original_question.lower() or ".tsx" in original_question.lower()
+
+        # EVA Local PRIMARY        # Tried first, before the slow HF RAG call below. Builds its own
         # minimal message list (module-level BASE_SYSTEM_PROMPT + history +
         # question) so it does not depend on `messages`/`system_msg`, which
         # are only built later inside the "general knowledge" fallback
         # branch. On success this returns immediately and the RAG call
         # below never runs. On failure or when eva_local is not configured,
         # execution falls through to the existing RAG/cloud path unchanged.
-        if providers.configured("eva_local") and not (
+        if providers.configured("eva_local") and not use_rag and not (
             agent_status["id"] == "code" and req.workspace_root
         ):
             print("[EVA LOCAL PRIMARY] ENTERED - configured=True")
@@ -5770,7 +5775,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
         try:
             # RAG answering is served by the HF/Supabase service (POST /rag/chat).
             import httpx
-            HF_RAG_URL = os.getenv("HF_ML_URL", "https://keshav1212-eva-ml-service.hf.space").rstrip("/")
+            HF_RAG_URL = os.getenv("HF_ML_URL", "http://127.0.0.1:7860").rstrip("/")
             async with httpx.AsyncClient(timeout=30) as _rc:
                 # Retrieve on the USER's question, not the enhanced text.
                 #
@@ -11787,6 +11792,11 @@ async def code_run_test(req: CodeRunTestRequest):
         }
 
     return run_python_code(req.code)
+
+
+
+
+
 
 
 

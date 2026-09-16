@@ -8,12 +8,13 @@ echo ========================================
 echo.
 
 echo [1/2] Starting RAG Service - Port 8000...
-start "EVA RAG - 8000" /D "D:\Rag project" cmd /k ".venv\Scripts\python.exe -m uvicorn src.app:app --reload"
+set "COGNITIVE_DRIVER_ENABLED=true"
+start "EVA RAG - 8000" /D "D:\Eva_Ai_brain" cmd /k ".venv\Scripts\python.exe -m uvicorn src.app:app --reload"
 
 timeout /t 2 /nobreak >nul
 
 echo [2/2] Starting ML Service - Port 7860...
-start "EVA ML - 7860" /D "D:\Rag project\eva-ml-service" cmd /k ".venv\Scripts\python.exe app.py"
+start "EVA ML - 7860" /D "D:\Eva_Ai_brain\eva-ml-service" cmd /k ".venv\Scripts\python.exe app.py"
 
 echo.
 echo ========================================
@@ -26,4 +27,3 @@ echo Ollama  : Already running
 echo.
 echo ========================================
 pause
-
