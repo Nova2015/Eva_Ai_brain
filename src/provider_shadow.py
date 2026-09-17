@@ -39,8 +39,10 @@ VALID_SERVICES = frozenset({"backend", "ml"})
 # The union across both services. The backend emits groq/openai/gemini; the ML
 # side adds openrouter (JARVIS 2B). Listed here now so 2B needs no change to this
 # module — an unknown label is still dropped, so the set only ever widens on
-# purpose.
-VALID_PROVIDERS = frozenset({"groq", "gemini", "openai", "openrouter", "local"})
+# purpose. eva_local joins it for Phase 2 Step 13: Step 12 records local calls
+# through the same contract, and without this every one of those rows was
+# discarded here, leaving the one provider with no durable history at all.
+VALID_PROVIDERS = frozenset({"groq", "gemini", "openai", "openrouter", "local", "eva_local"})
 
 # "ok" plus the fixed error enum shared with providers.classify_error. Imported
 # so the two cannot drift; a value from outside means the enum changed shape.

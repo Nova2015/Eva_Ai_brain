@@ -1,31 +1,28 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-.pytest_cache/
-.venv/
-*.db
-*.db.backup
+# Update 51 runtime artifacts (instance-local)
+learning_loop.db
+data/learning_datasets/
 
-# Node
-node_modules/
-frontend/aria-dashboard/node_modules/
-
-# Local environments / secrets
+# Secrets
 .env
 .env.*
 !.env.example
 
-# Generated / runtime
-logs/
-uploads/
-workspace/
-generated/
-unsloth_compiled_cache/
+# Generated artifacts
+*.pptx
+*.xlsx
+*.xlsm
 
-# OpenHands local artifacts
-.openhands-venv/
-.openhands-test-workspace/
+# Python cache / compiled files
+__pycache__/
+*.py[cod]
+*.class
 
-# Local backup
-EVA-backup-2026-09-16.bundle
+# Local/runtime databases
+*.db
+*.db-*
+*.db.backup
+*.db.*
+
+# Local backup files
+*.backup*
+*-backup

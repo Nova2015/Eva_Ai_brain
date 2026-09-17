@@ -31,7 +31,7 @@ GEMINI_KEY    = os.getenv("GEMINI_API_KEY", "")
 THRESHOLD     = float(os.getenv("RAG_CONFIDENCE_THRESHOLD", "0.35"))
 GROQ_MODEL    = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 OPENAI_MODEL  = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL  = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
 
 SYSTEM_PROMPT = """You are EVA (Embedded Virtual Assistant), an intelligent AI assistant 
 with access to a document knowledge base. Be helpful, precise, and concise. 
