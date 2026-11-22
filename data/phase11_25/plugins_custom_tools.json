@@ -1,0 +1,14 @@
+{
+  "tools": [
+    {
+      "id": "tool_b66034786708",
+      "name": "",
+      "description": "",
+      "api_endpoint": "",
+      "auth_type": "None",
+      "enabled": true,
+      "updated_at": "2026-11-04T12:48:24.560421"
+    }
+  ],
+  "updated_at": "2026-11-04T12:48:24.560421"
+}

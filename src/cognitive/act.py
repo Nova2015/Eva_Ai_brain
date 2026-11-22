@@ -1,4 +1,4 @@
-﻿"""ACT â€” Step 11 of the Cognitive Engine: correction execution.
+"""ACT â€” Step 11 of the Cognitive Engine: correction execution.
 
 Step 10 decides WHAT should change. This performs an approved change. Step 9
 decides whether it worked. Those three jobs stay in three modules, and this one

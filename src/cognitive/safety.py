@@ -1,4 +1,4 @@
-﻿"""Domain-independent harm assessment â€” Phase 1.
+"""Domain-independent harm assessment â€” Phase 1.
 
 Not a keyword blocker. A blocklist cannot tell "how do I make a bomb" from "how
 do bomb-disposal teams stay safe" from "what is TNT" â€” all three contain "bomb".

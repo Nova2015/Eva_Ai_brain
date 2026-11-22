@@ -1,17 +1,17 @@
-"""
+﻿"""
 EVA Hybrid RAG Pipeline v2
 ===========================
 BM25 (keyword) + sentence-transformers (semantic) + Reranker + Model Router
 
 Architecture:
   Query
-    ↓ Intent Detection (ML)
-    ↓ Query Rewriter + Expander
-    ↓ BM25 Search  ──┐
-    ↓ Vector Search ─┤ Merge + Dedup
-                     ↓ Reranker
-                     ↓ Model Router → Best LLM
-                     ↓ Answer + Sources + Audit
+    â†“ Intent Detection (ML)
+    â†“ Query Rewriter + Expander
+    â†“ BM25 Search  â”€â”€â”
+    â†“ Vector Search â”€â”¤ Merge + Dedup
+                     â†“ Reranker
+                     â†“ Model Router â†’ Best LLM
+                     â†“ Answer + Sources + Audit
 
 Install:
     pip install sentence-transformers chromadb rank_bm25 groq google-generativeai
@@ -27,7 +27,10 @@ from typing import Any, Dict, List, Optional, Callable
 logger = logging.getLogger(__name__)
 
 
-# ── Safe imports ──────────────────────────────────────────────────────────────
+# â”€â”€ Safe imports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+import sys
+sys.modules['torchao'] = None  # Work around torchao/torch version conflict for RAG embeddings
+
 try:
     from sentence_transformers import SentenceTransformer
     ST_AVAILABLE = True
@@ -52,7 +55,7 @@ except ImportError:
     BM25_AVAILABLE = False
     logger.warning("rank_bm25 not installed. Run: pip install rank_bm25")
 
-# ── Internal imports ──────────────────────────────────────────────────────────
+# â”€â”€ Internal imports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try:
     from .model_router import route_and_call, detect_intent, EVA_SYSTEM
     from .query_rewriter import rewrite_query, expand_query
@@ -85,14 +88,14 @@ except ImportError:
             def search(self, query: str, top_k: int = 8):
                 return []
 
-# ── Config ────────────────────────────────────────────────────────────────────
+# â”€â”€ Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 BASE_DIR = Path(__file__).resolve().parent
 CHROMA_DIR = BASE_DIR / "data" / "chroma_db"
 EMBED_MODEL = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "eva_knowledge")
 CONFIDENCE_THRESHOLD = float(os.getenv("RAG_CONFIDENCE_THRESHOLD", "0.25"))
 
-# ── Lazy singletons ───────────────────────────────────────────────────────────
+# â”€â”€ Lazy singletons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _embed_model: Optional[Any] = None
 _chroma_client: Optional[Any] = None
 _chroma_collection: Optional[Any] = None
@@ -105,7 +108,7 @@ def _get_embed_model():
         try:
             logger.info(f"Loading embedding model: {EMBED_MODEL}")
             _embed_model = SentenceTransformer(EMBED_MODEL)
-            logger.info("✅ Embedding model loaded")
+            logger.info("âœ… Embedding model loaded")
         except Exception as e:
             logger.error(f"Embedding model load failed: {e}")
     return _embed_model
@@ -121,13 +124,13 @@ def _get_chroma():
                 name=COLLECTION_NAME,
                 metadata={"hnsw:space": "cosine"},
             )
-            logger.info(f"✅ ChromaDB loaded. Collection: {COLLECTION_NAME}, docs: {_chroma_collection.count()}")
+            logger.info(f"âœ… ChromaDB loaded. Collection: {COLLECTION_NAME}, docs: {_chroma_collection.count()}")
         except Exception as e:
             logger.error(f"ChromaDB init failed: {e}")
     return _chroma_client, _chroma_collection
 
 
-# ── Text chunker ──────────────────────────────────────────────────────────────
+# â”€â”€ Text chunker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[str]:
     """Split text into overlapping chunks."""
     import re
@@ -148,7 +151,7 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[str
     return chunks
 
 
-# ── Document indexing ─────────────────────────────────────────────────────────
+# â”€â”€ Document indexing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def normalize_rag_mode(mode: Optional[str]) -> str:
     """Accept older BM25 names while exposing vectorless to the API."""
     value = (mode or "auto").strip().lower()
@@ -485,7 +488,7 @@ def index_document(
     embed = _get_embed_model() if collection is not None else None
 
     if embed is None or collection is None:
-        logger.warning("Embedding/ChromaDB unavailable — document NOT vector-indexed")
+        logger.warning("Embedding/ChromaDB unavailable â€” document NOT vector-indexed")
         return {
             "ok": True,
             "chunks": len(chunks),
@@ -510,7 +513,7 @@ def index_document(
             for i in range(len(chunks))
         ]
         collection.add(documents=chunks, embeddings=embeddings, ids=ids, metadatas=metas)
-        logger.info(f"✅ Indexed {len(chunks)} chunks from '{source}' for user '{user_id}'")
+        logger.info(f"âœ… Indexed {len(chunks)} chunks from '{source}' for user '{user_id}'")
         return {
             "ok": True,
             "chunks": len(chunks),
@@ -535,7 +538,7 @@ def index_document(
         }
 
 
-# ── Vector search ─────────────────────────────────────────────────────────────
+# â”€â”€ Vector search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _vector_search(query: str, user_id: str, top_k: int = 8, workspace_id: Optional[str] = None) -> List[Dict[str, Any]]:
     _, collection = _get_chroma()
     if collection is None or collection.count() == 0:
@@ -555,7 +558,7 @@ def _vector_search(query: str, user_id: str, top_k: int = 8, workspace_id: Optio
         hits = []
         for i, doc in enumerate(results["documents"][0]):
             distance = results["distances"][0][i]
-            # Cosine distance → similarity score
+            # Cosine distance â†’ similarity score
             score = max(0.0, 1.0 - distance)
             meta = results["metadatas"][0][i] if results["metadatas"] else {}
             if workspace_id and meta.get("workspace_id") != workspace_id:
@@ -576,7 +579,7 @@ def _vector_search(query: str, user_id: str, top_k: int = 8, workspace_id: Optio
         return []
 
 
-# ── BM25 search over ChromaDB docs ───────────────────────────────────────────
+# â”€â”€ BM25 search over ChromaDB docs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _bm25_search(query: str, user_id: str, top_k: int = 8, workspace_id: Optional[str] = None) -> List[Dict[str, Any]]:
     try:
         chunks = remove_duplicate_chunks(
@@ -599,7 +602,7 @@ def _bm25_search(query: str, user_id: str, top_k: int = 8, workspace_id: Optiona
         return _keyword_search_chunks(query, _vectorless_chunks_for_user(user_id, workspace_id=workspace_id), top_k=top_k)
 
 
-# ── Reranker ──────────────────────────────────────────────────────────────────
+# â”€â”€ Reranker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _rerank(query: str, results: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
     """
     Multi-signal reranker:
@@ -624,7 +627,7 @@ def _rerank(query: str, results: List[Dict[str, Any]], top_k: int) -> List[Dict[
     return sorted(ranked, key=lambda x: x.get("rerank_score", 0), reverse=True)[:max(1, top_k)]
 
 
-# ── Merge BM25 + vector results ───────────────────────────────────────────────
+# â”€â”€ Merge BM25 + vector results â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _merge(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     by_id: Dict[str, Dict] = {}
     for r in results:
@@ -640,7 +643,7 @@ def _merge(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return list(by_id.values())
 
 
-# ── Main search function ──────────────────────────────────────────────────────
+# â”€â”€ Main search function â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def hybrid_search(
     query: str,
     user_id: str = "default",
@@ -729,7 +732,7 @@ def hybrid_search(
     }
 
 
-# ── Main answer function (full pipeline) ─────────────────────────────────────
+# â”€â”€ Main answer function (full pipeline) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def answer(
     query: str,
     user_id: str = "default",
@@ -747,7 +750,7 @@ def answer(
       1. Hybrid retrieval (BM25 + Vector)
       2. Reranker
       3. Intent detection
-      4. Model router → best LLM
+      4. Model router â†’ best LLM
       5. Answer generation
       6. Audit trail
     """
@@ -756,7 +759,7 @@ def answer(
     prompt_enhanced = enhanced_query.strip() != (query or "").strip()
 
     # 1. Retrieve
-    search_result = hybrid_search(enhanced_query, user_id, workspace_id, top_k, mode, min_confidence)
+    search_result = hybrid_search(query, user_id, workspace_id, top_k, mode, min_confidence)
     results = search_result.get("results", [])
 
     # 2. Build context from top chunks
@@ -813,7 +816,7 @@ def answer(
         "model": llm_result["model"],
         "intent": detected_intent,
         "confidence": search_result.get("confidence", 0),
-        "sources": [r.get("source", "") for r in results],
+        "sources": [r.get("source") or r.get("metadata", {}).get("source", "") for r in results],
         "results": results,
         "fallback": llm_result.get("fallback", False),
         "latency_ms": total_ms,
@@ -833,3 +836,4 @@ def answer(
         "original_query": query,
         "workspace_id": workspace_id,
     }
+

@@ -1,0 +1,22 @@
+{
+  "dataset": "allenai/sciq",
+  "license": "CC-BY-NC-3.0",
+  "seed": 3407,
+  "splits": {
+    "train": {
+      "count": 11679,
+      "file": "data\\datasets\\science\\sciq\\train.jsonl",
+      "sha256": "86078c09a608e0e22ac061528db6697d76797054cccef28ffb037b7226d4c184"
+    },
+    "validation": {
+      "count": 1000,
+      "file": "data\\datasets\\science\\sciq\\validation.jsonl",
+      "sha256": "994ffd99336f7991ba4e3cc275c0e454380fc1052c1d989738ca463363e7c197"
+    },
+    "test": {
+      "count": 1000,
+      "file": "data\\datasets\\science\\sciq\\test.jsonl",
+      "sha256": "956c062b7ed4c90d4fcb5e5d3a6d4a87503a9d1cd52c32d91d39f4f8348d4489"
+    }
+  }
+}

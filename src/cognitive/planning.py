@@ -66,11 +66,15 @@ from .strategy import StrategyDecision, VerificationRequirement
 try:
     from autopilot import MAX_STEPS as AUTOPILOT_MAX_STEPS, TOOLS as AUTOPILOT_TOOLS, _make_plan as _autopilot_make_plan
     AUTOPILOT_AVAILABLE = True
-except Exception:  # pragma: no cover - exercised only when autopilot cannot import
-    AUTOPILOT_MAX_STEPS = 10
-    AUTOPILOT_TOOLS = {"web_search": "", "read_url": "", "rag_query": "", "think": ""}
-    _autopilot_make_plan = None
-    AUTOPILOT_AVAILABLE = False
+except Exception:
+    try:
+        from src.autopilot import MAX_STEPS as AUTOPILOT_MAX_STEPS, TOOLS as AUTOPILOT_TOOLS, _make_plan as _autopilot_make_plan
+        AUTOPILOT_AVAILABLE = True
+    except Exception:  # pragma: no cover - exercised only when autopilot cannot import
+        AUTOPILOT_MAX_STEPS = 10
+        AUTOPILOT_TOOLS = {"web_search": "", "read_url": "", "rag_query": "", "think": ""}
+        _autopilot_make_plan = None
+        AUTOPILOT_AVAILABLE = False
 
 
 class PlanSource(str, Enum):
@@ -204,6 +208,23 @@ def _calculation_plan(understanding: ProblemUnderstanding, decision: StrategyDec
               criteria=_criteria_for(decision), depends=[b.task_id])
     return [a, b, c]
 
+
+def _tool_assisted_plan(understanding: ProblemUnderstanding, decision: StrategyDecision, problem: str = "") -> List[PlannedTask]:
+    """Select the minimum external tool needed for this request."""
+    text = problem or understanding.desired_outcome or ""
+    url_match = re.search(r"https?://[^\s]+", text, re.I)
+    explicit_search = bool(re.search(r"\b(search|find|look up|latest|current|today|recent|news|price|prices|weather|newest|up[- ]to[- ]date)\b", text, re.I))
+    criteria = _criteria_for(decision)
+    expected = understanding.desired_outcome or "relevant evidence for the answer"
+    if url_match and explicit_search:
+        read_task = _task(objective="read the specific URL provided by the user", capability="tool_use", tool="read_url", expected="content from the specified URL", criteria=criteria, inputs=[url_match.group(0)])
+        search_task = _task(objective="search the public web for the requested external information", capability="tool_use", tool="web_search", expected=expected, criteria=criteria, depends=(read_task.task_id,), inputs=[text])
+        return [read_task, search_task]
+    if url_match:
+        return [_task(objective="read the specific URL provided by the user", capability="tool_use", tool="read_url", expected=expected, criteria=criteria, inputs=[url_match.group(0)])]
+    if explicit_search:
+        return [_task(objective="search the public web for the requested external information", capability="tool_use", tool="web_search", expected=expected, criteria=criteria, inputs=[text])]
+    return [_task(objective="retrieve relevant information from EVA indexed knowledge", capability="tool_use", tool="rag_query", expected=expected, criteria=criteria, inputs=[text])]
 
 _DETERMINISTIC = {
     ReasoningStrategy.CLARIFICATION: _clarification_plan,
@@ -340,6 +361,10 @@ def plan_for(
                         requires_authorization=requires_auth,
                         plan_summary="constraints conflict; cannot plan work around them")
 
+    if decision.strategy is ReasoningStrategy.TOOL_ASSISTED:
+        tasks = _tool_assisted_plan(understanding, decision, problem)
+        validate_plan(tasks)
+        return TaskPlan(tasks=tasks, source=PlanSource.DETERMINISTIC, risk_level=assessment.risk_level, requires_authorization=requires_auth, plan_summary="tool-assisted plan built by deterministic tool selection")
     builder = _DETERMINISTIC.get(decision.strategy)
     if builder is not None:
         tasks = builder(understanding, decision)
@@ -367,3 +392,5 @@ def plan_for(
                     risk_level=assessment.risk_level,
                     requires_authorization=requires_auth,
                     plan_summary=f"{len(tasks)}-step plan from autopilot planner")
+
+

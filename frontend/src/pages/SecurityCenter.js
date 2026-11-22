@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 const defaultApi = window.location.hostname === 'localhost'
-  ? 'http://localhost:8002'
-  : 'https://eva-ai-1-9wfc.onrender.com';
+  ? 'http://127.0.0.1:8000'
+  : 'http://127.0.0.1:8000';
 
 async function fetchWithTimeout(url, options = {}, ms = 10000) {
   const controller = new AbortController();
@@ -23,7 +23,7 @@ function getHeaders() {
   return { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', ...(token && token !== 'offline' ? { Authorization: `Bearer ${token}` } : {}) };
 }
 
-// ── ML Risk Score Engine (client-side, no backend needed) ─────────────────────
+// â”€â”€ ML Risk Score Engine (client-side, no backend needed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function computeRiskScore(events = []) {
   if (!events.length) return { score: 0, level: 'safe', factors: [] };
   const factors = [];
@@ -50,7 +50,7 @@ function computeRiskScore(events = []) {
   return { score, level, factors };
 }
 
-// ── Severity colors ───────────────────────────────────────────────────────────
+// â”€â”€ Severity colors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SEV_COLORS = { critical: '#f87171', high: '#fb923c', medium: '#fbbf24', low: '#34d399', safe: '#34d399', info: '#38bdf8' };
 const SEV_BG = { critical: 'rgba(248,113,113,.1)', high: 'rgba(251,146,60,.1)', medium: 'rgba(251,191,36,.08)', low: 'rgba(52,211,153,.08)', safe: 'rgba(52,211,153,.08)', info: 'rgba(56,189,248,.08)' };
 
@@ -85,7 +85,7 @@ function RiskGauge({ score, level }) {
   );
 }
 
-// ── Main Security 2.0 Component ───────────────────────────────────────────────
+// â”€â”€ Main Security 2.0 Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function SecurityCenter({ API = defaultApi }) {
   const [tab, setTab] = useState('overview'); // overview | events | scanner | settings
   const [loading, setLoading] = useState(false);
@@ -203,12 +203,12 @@ export default function SecurityCenter({ API = defaultApi }) {
       <div style={S.header}>
         <div>
           <div style={S.title}>Security 2.0</div>
-          <div style={S.sub}>ML-powered threat detection · Real-time monitoring · Content classification</div>
+          <div style={S.sub}>ML-powered threat detection Â· Real-time monitoring Â· Content classification</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {lastRefresh && <span style={{ fontSize: 10, color: '#2a1f4a' }}>Refreshed {lastRefresh.toLocaleTimeString()}</span>}
           <button onClick={loadSecurityData} disabled={loading} style={S.refreshBtn}>
-            {loading ? '⏳' : '🔄'} Refresh
+            {loading ? 'â³' : 'ðŸ”„'} Refresh
           </button>
         </div>
       </div>
@@ -216,10 +216,10 @@ export default function SecurityCenter({ API = defaultApi }) {
       {/* Tabs */}
       <div style={S.tabs}>
         {[
-          { id: 'overview', label: '🛡 Overview' },
-          { id: 'events',   label: '📋 Events' },
-          { id: 'scanner',  label: '🔬 Scanner' },
-          { id: 'settings', label: '⚙️ Settings' },
+          { id: 'overview', label: 'ðŸ›¡ Overview' },
+          { id: 'events',   label: 'ðŸ“‹ Events' },
+          { id: 'scanner',  label: 'ðŸ”¬ Scanner' },
+          { id: 'settings', label: 'âš™ï¸ Settings' },
         ].map(({ id, label }) => (
           <button key={id} onClick={() => setTab(id)} style={{ ...S.tab, ...(tab === id ? S.tabActive : {}) }}>
             {label}
@@ -229,19 +229,19 @@ export default function SecurityCenter({ API = defaultApi }) {
 
       {error && (
         <div style={S.error}>
-          ⚠ {error}
-          <button onClick={() => setError('')} style={S.errorClose}>×</button>
+          âš  {error}
+          <button onClick={() => setError('')} style={S.errorClose}>Ã—</button>
         </div>
       )}
 
-      {/* ── OVERVIEW TAB ── */}
+      {/* â”€â”€ OVERVIEW TAB â”€â”€ */}
       {tab === 'overview' && (
         <div style={S.content}>
           <div style={S.metricsGrid}>
-            <MetricCard label="Total Requests" value={metrics.totalRequests} color="#38bdf8" icon="📊" />
-            <MetricCard label="Blocked" value={metrics.blockedRequests} color="#f87171" icon="🚫" />
-            <MetricCard label="Active Threats" value={metrics.activeThreats} color="#fb923c" icon="⚠️" />
-            <MetricCard label="Auth Failures" value={metrics.authFailures} color="#fbbf24" icon="🔐" />
+            <MetricCard label="Total Requests" value={metrics.totalRequests} color="#38bdf8" icon="ðŸ“Š" />
+            <MetricCard label="Blocked" value={metrics.blockedRequests} color="#f87171" icon="ðŸš«" />
+            <MetricCard label="Active Threats" value={metrics.activeThreats} color="#fb923c" icon="âš ï¸" />
+            <MetricCard label="Auth Failures" value={metrics.authFailures} color="#fbbf24" icon="ðŸ”" />
           </div>
 
           <div style={S.overviewGrid}>
@@ -252,13 +252,13 @@ export default function SecurityCenter({ API = defaultApi }) {
                 <RiskGauge score={riskScore.score} level={riskScore.level} />
                 <div style={{ flex: 1 }}>
                   {riskScore.factors.length === 0 && (
-                    <div style={{ color: '#34d399', fontSize: 13 }}>✅ No risk factors detected</div>
+                    <div style={{ color: '#34d399', fontSize: 13 }}>âœ… No risk factors detected</div>
                   )}
                   {riskScore.factors.map((f, i) => (
                     <div key={i} style={S.factorRow}>
                       <SeverityBadge level={f.severity} />
                       <span style={{ color: '#e8e0ff', fontSize: 12 }}>{f.label}</span>
-                      <span style={{ color: '#4a2d7a', fontSize: 11, marginLeft: 'auto' }}>×{f.value}</span>
+                      <span style={{ color: '#4a2d7a', fontSize: 11, marginLeft: 'auto' }}>Ã—{f.value}</span>
                     </div>
                   ))}
                 </div>
@@ -275,12 +275,12 @@ export default function SecurityCenter({ API = defaultApi }) {
                     <SeverityBadge level={threat.severity || 'medium'} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ color: '#e8e0ff', fontSize: 12, fontWeight: 600 }}>{threat.type || threat.name || 'Unknown threat'}</div>
-                      <div style={{ color: '#4a2d7a', fontSize: 10 }}>{threat.ip || threat.source || 'Unknown source'} · {threat.timestamp ? new Date(threat.timestamp).toLocaleTimeString() : 'Now'}</div>
+                      <div style={{ color: '#4a2d7a', fontSize: 10 }}>{threat.ip || threat.source || 'Unknown source'} Â· {threat.timestamp ? new Date(threat.timestamp).toLocaleTimeString() : 'Now'}</div>
                     </div>
                     {threat.status !== 'blocked' && (
                       <button onClick={() => blockThreat(threat.id)} style={S.blockBtn}>Block</button>
                     )}
-                    {threat.status === 'blocked' && <span style={{ fontSize: 10, color: '#34d399' }}>✓ Blocked</span>}
+                    {threat.status === 'blocked' && <span style={{ fontSize: 10, color: '#34d399' }}>âœ“ Blocked</span>}
                   </div>
                 ))}
               </div>
@@ -313,7 +313,7 @@ export default function SecurityCenter({ API = defaultApi }) {
         </div>
       )}
 
-      {/* ── EVENTS TAB ── */}
+      {/* â”€â”€ EVENTS TAB â”€â”€ */}
       {tab === 'events' && (
         <div style={S.content}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -322,7 +322,7 @@ export default function SecurityCenter({ API = defaultApi }) {
           </div>
           {events.length === 0 && (
             <div style={S.emptyState}>
-              <div style={{ fontSize: 32 }}>🔍</div>
+              <div style={{ fontSize: 32 }}>ðŸ”</div>
               <div style={{ color: '#4a2d7a', fontSize: 13 }}>No events yet. Connect your backend to see live security events.</div>
             </div>
           )}
@@ -335,7 +335,7 @@ export default function SecurityCenter({ API = defaultApi }) {
                     {ev.type || ev.event_type || ev.action || 'Event'}
                   </div>
                   <div style={{ color: '#4a2d7a', fontSize: 10 }}>
-                    {ev.ip || ev.user_ip || 'Unknown IP'} · {ev.user || 'unknown user'} · {ev.timestamp ? new Date(ev.timestamp).toLocaleString() : 'Unknown time'}
+                    {ev.ip || ev.user_ip || 'Unknown IP'} Â· {ev.user || 'unknown user'} Â· {ev.timestamp ? new Date(ev.timestamp).toLocaleString() : 'Unknown time'}
                   </div>
                 </div>
                 {ev.blocked && <span style={{ fontSize: 10, color: '#f87171' }}>BLOCKED</span>}
@@ -346,20 +346,20 @@ export default function SecurityCenter({ API = defaultApi }) {
         </div>
       )}
 
-      {/* ── SCANNER TAB ── */}
+      {/* â”€â”€ SCANNER TAB â”€â”€ */}
       {tab === 'scanner' && (
         <div style={S.content}>
           <div style={S.panel}>
             <div style={S.panelTitle}>ML Content Scanner</div>
             <div style={{ color: '#8b7ab0', fontSize: 12, marginBottom: 12 }}>
-              Run ML classification on any text — detect toxic content, analyze sentiment, or classify document type.
+              Run ML classification on any text â€” detect toxic content, analyze sentiment, or classify document type.
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
               {[
-                { id: 'content',        label: '🚫 Toxic/Spam Detection',    model: 'Logistic Regression' },
-                { id: 'sentiment',      label: '💬 Sentiment Analysis',      model: 'Naive Bayes' },
-                { id: 'classification', label: '📁 Document Classification', model: 'XGBoost' },
+                { id: 'content',        label: 'ðŸš« Toxic/Spam Detection',    model: 'Logistic Regression' },
+                { id: 'sentiment',      label: 'ðŸ’¬ Sentiment Analysis',      model: 'Naive Bayes' },
+                { id: 'classification', label: 'ðŸ“ Document Classification', model: 'XGBoost' },
               ].map(({ id, label, model }) => (
                 <button key={id} onClick={() => setScanType(id)} style={{ ...S.scanTypeBtn, ...(scanType === id ? S.scanTypeBtnActive : {}) }}>
                   {label}
@@ -377,7 +377,7 @@ export default function SecurityCenter({ API = defaultApi }) {
             />
 
             <button onClick={runScan} disabled={scanning || !scanTarget.trim()} style={S.scanBtn}>
-              {scanning ? '⏳ Analyzing...' : '🔬 Run ML Scan'}
+              {scanning ? 'â³ Analyzing...' : 'ðŸ”¬ Run ML Scan'}
             </button>
           </div>
 
@@ -422,7 +422,7 @@ export default function SecurityCenter({ API = defaultApi }) {
         </div>
       )}
 
-      {/* ── SETTINGS TAB ── */}
+      {/* â”€â”€ SETTINGS TAB â”€â”€ */}
       {tab === 'settings' && (
         <div style={S.content}>
           <div style={S.panel}>
@@ -472,7 +472,7 @@ export default function SecurityCenter({ API = defaultApi }) {
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function MetricCard({ label, value, color, icon }) {
   return (
     <div style={{ background: '#0f172a', border: '1px solid rgba(148,163,184,.15)', borderRadius: 8, padding: 14, display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -494,7 +494,7 @@ function ResultRow({ label, value, color }) {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const S = {
   root: { display: 'flex', flexDirection: 'column', height: '100%', background: '#060b16', color: '#e8e0ff', fontFamily: 'inherit', overflow: 'hidden' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,.07)', flexShrink: 0, flexWrap: 'wrap', gap: 10 },
@@ -524,3 +524,4 @@ const S = {
   scanBtn: { padding: '10px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 4 },
   smallBtn: { padding: '5px 12px', borderRadius: 7, border: '1px solid rgba(255,255,255,.1)', background: 'transparent', color: '#8b7ab0', fontSize: 11, cursor: 'pointer' },
 };
+

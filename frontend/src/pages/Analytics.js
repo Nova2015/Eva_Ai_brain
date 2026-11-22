@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 // RAG documents live on the HF service (persistent Supabase), not Render.
-const RAG_API = process.env.REACT_APP_RAG_API_BASE || 'https://keshav1212-eva-ml-service.hf.space';
+const RAG_API = process.env.REACT_APP_RAG_API_BASE || 'http://127.0.0.1:7860';
 
 const COLORS = {
   accent: '#3b82f6', cyan: '#06b6d4', green: '#10b981',

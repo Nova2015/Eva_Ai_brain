@@ -1,4 +1,4 @@
-﻿"""Correction â€” Step 10 of the Cognitive Engine.
+"""Correction â€” Step 10 of the Cognitive Engine.
 
 Answers: **given what verification actually proved, what may legitimately be
 changed?**

@@ -15,9 +15,7 @@ Behavior:
 
 import os
 
-from fastapi import APIRouter, HTTPException, Request, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 try:  # package import
@@ -43,36 +41,6 @@ def _limit(spec: str):
         return _limiter.limit(spec)(fn) if _limiter is not None else fn
     return deco
 
-_runtime_bearer = HTTPBearer(auto_error=False)
-
-
-def require_runtime_user(
-    credentials: HTTPAuthorizationCredentials = Depends(_runtime_bearer),
-) -> str:
-    """Accept only a valid EVA-signed JWT for runtime execution."""
-    if credentials is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    token = credentials.credentials
-
-    # Demo/offline credentials must never authorize code execution.
-    if token.startswith(("offline_", "apple_demo_")):
-        raise HTTPException(status_code=401, detail="Valid EVA login required")
-
-    secret = (os.getenv("SECRET_KEY") or "").strip()
-    if not secret:
-        raise HTTPException(status_code=503, detail="Authentication unavailable")
-
-    try:
-        payload = jwt.decode(token, secret, algorithms=["HS256"])
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    subject = payload.get("sub")
-    if not isinstance(subject, str) or not subject.strip():
-        raise HTTPException(status_code=401, detail="Invalid token subject")
-
-    return subject
 
 def execution_enabled() -> bool:
     return os.getenv("EVA_ENABLE_RUNTIME_EXECUTION") == "true"
@@ -120,11 +88,7 @@ class RuntimeExecuteRequest(BaseModel):
 
 @router.post("/runtime/execute")
 @_limit("10/minute")
-async def runtime_execute(
-    request: Request,
-    req: RuntimeExecuteRequest,
-    _current_user: str = Depends(require_runtime_user),
-):
+async def runtime_execute(request: Request, req: RuntimeExecuteRequest):
     """Execute ONE code block on Piston, on explicit user click only.
 
     Gated by EVA_ENABLE_RUNTIME_EXECUTION (default OFF -> 403, no execution).

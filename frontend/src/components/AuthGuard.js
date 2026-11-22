@@ -18,10 +18,8 @@ const isAdminWorkspaceMode = () => (
 export default function AuthGuard({ children, adminOnly = false }) {
   const adminWorkspace = isAdminWorkspaceMode();
 
-  if (ensureLocalAuth()) {
-    if (adminOnly && !adminWorkspace) return <Navigate to="/chat" replace />;
-    return children;
-  }
+  const localPreview = ensureLocalAuth();
+  if (localPreview && !adminOnly) return children;
 
   const token = localStorage.getItem('aria_token');
   const user = (() => {
@@ -31,19 +29,14 @@ export default function AuthGuard({ children, adminOnly = false }) {
       return {};
     }
   })();
-  const role = (user.role || 'user').toLowerCase();
-  const username = String(user.username || user.name || user.email || '').toLowerCase();
+  const role = String(user.role || 'user').toLowerCase();
 
+  // UI-only gate. Backend require_admin() remains the security authority.
   const isAdmin =
     role === 'admin' ||
     role === 'administrator' ||
     role === 'superadmin' ||
-    role === 'super_admin' ||
-    username === 'admin' ||
-    username === 'admin@eva.ai' ||
-    user.isAdmin === true ||
-    user.is_admin === true ||
-    localStorage.getItem('aria_is_admin') === 'true';
+    role === 'super_admin';
 
   if (!token) {
     return <Navigate to="/login" replace />;

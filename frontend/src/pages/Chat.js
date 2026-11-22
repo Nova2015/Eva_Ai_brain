@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
 import RunCodeButton from '../components/RunCodeButton';
 import {
+  FolderOpen,
   FileText,
   ImagePlus,
   Mic,
@@ -47,12 +49,12 @@ import { imageGeneratorMayHandle } from '../lib/visualIntent';
 const DEFAULT_API_BASE = (
   process.env.REACT_APP_API_BASE ||
   process.env.REACT_APP_API_BASE_URL ||
-  'http://127.0.0.1:3000'
+  'http://127.0.0.1:8000'
 ).replace(/\/+$/, '');
-// RAG document storage (uploads, ingest) lives on the HF service (persistent Supabase), not Render.
-const RAG_API = process.env.REACT_APP_RAG_API_BASE || 'http://127.0.0.1:8000';
+// Local RAG/ML service
+const RAG_API = process.env.REACT_APP_RAG_API_BASE || 'http://127.0.0.1:7860';
 
-// Intelligent Suggestion Engine — type → accent color for the {text,type} chips.
+// ----------------------------------------
 const SUGGESTION_TYPE_COLORS = { Action: 'var(--green)', Improve: 'var(--warn)', Learn: 'var(--cyan)', Create: 'var(--accent)' };
 
 // Slice 4: message ids are Date.now() at creation, so the timestamp is real
@@ -89,7 +91,7 @@ const isAssistantLikeMessage = (message = {}) => {
 };
 
 
-// ── INLINE TOOLS ──────────────────────────────────────────
+// ----------------------------------------
 function SentimentTool({ API }) {
   const [text, setText] = useState('');
   const [result, setResult] = useState('');
@@ -98,14 +100,14 @@ function SentimentTool({ API }) {
     if (!text.trim()) return; setLoading(true);
     const token = localStorage.getItem('aria_token');
     const workspaceId = localStorage.getItem('eva_selected_workspace_id') || 'default-org';
-    const h = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+    const h = { 'Content-Type': 'application/json',  ...(token ? { Authorization: `Bearer ${token}` } : {}) };
     const r = await fetch(`${API}/chat`, { method: 'POST', headers: h, body: JSON.stringify({ question: `Analyze sentiment of: "${text}". Give: overall sentiment, score 0-100, top emotions, key words.`, user_id: 'tool', workspace_id: workspaceId }) });
     const d = await r.json(); setResult(d.answer || d.response || ''); setLoading(false);
   };
   return (
     <div>
       <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Paste text to analyze..." style={{ width: '100%', height: 90, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', color: 'var(--text)', fontSize: 12, resize: 'none', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
-      <button onClick={analyze} disabled={loading || !text.trim()} style={{ marginTop: 8, padding: '7px 16px', background: loading ? 'var(--border)' : 'var(--warn)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{loading ? '⏳ Analyzing...' : '😊 Analyze Sentiment'}</button>
+      <button onClick={analyze} disabled={loading || !text.trim()} style={{ marginTop: 8, padding: '7px 16px', background: loading ? 'var(--border)' : 'var(--warn)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{loading ? 'Analyzing...' : 'Analyze Sentiment'}</button>
       {result && <div style={{ marginTop: 10, padding: 12, background: 'var(--surface)', borderRadius: 8, fontSize: 12, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{result}</div>}
     </div>
   );
@@ -121,7 +123,7 @@ function DataInsightsTool({ API }) {
     if (!question.trim()) return; setLoading(true);
     const token = localStorage.getItem('aria_token');
     const workspaceId = localStorage.getItem('eva_selected_workspace_id') || 'default-org';
-    const h = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+    const h = { 'Content-Type': 'application/json',  ...(token ? { Authorization: `Bearer ${token}` } : {}) };
     const text = file ? await file.text().catch(() => '') : '';
     const r = await fetch(`${API}/chat`, { method: 'POST', headers: h, body: JSON.stringify({ question: `Analyze this data and answer: ${question}\n\nData: ${text.slice(0, 1500)}`, user_id: 'tool', workspace_id: workspaceId }) });
     const d = await r.json(); setResult(d.answer || d.response || ''); setLoading(false);
@@ -129,12 +131,12 @@ function DataInsightsTool({ API }) {
   return (
     <div>
       <div onClick={() => ref.current.click()} style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', marginBottom: 8, fontSize: 12, color: file ? 'var(--accent)' : 'var(--text3)', background: 'var(--surface)' }}>
-        {file ? `📊 ${file.name}` : '📂 Upload CSV file (optional)'}
+        {file ? `[CSV] ${file.name}` : 'Upload CSV file (optional)'}
         <input ref={ref} type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={e => setFile(e.target.files[0])} />
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <input value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={e => e.key === 'Enter' && analyze()} placeholder="Ask about your data..." style={{ flex: 1, padding: '8px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12, outline: 'none', fontFamily: 'inherit' }} />
-        <button onClick={analyze} disabled={loading || !question.trim()} style={{ padding: '8px 14px', background: loading ? 'var(--border)' : 'var(--accent)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{loading ? '⏳' : '→'}</button>
+        <button onClick={analyze} disabled={loading || !question.trim()} style={{ padding: '8px 14px', background: loading ? 'var(--border)' : 'var(--accent)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{loading ? 'Loading...' : 'Send'}</button>
       </div>
       {result && <div style={{ marginTop: 10, padding: 12, background: 'var(--surface)', borderRadius: 8, fontSize: 12, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{result}</div>}
     </div>
@@ -147,29 +149,101 @@ function DocIntelTool({ API }) {
   const [file, setFile] = useState(null);
   const ref = useRef();
   const analyze = async () => {
-    if (!file) return; setLoading(true);
-    const token = localStorage.getItem('aria_token');
-    const workspaceId = localStorage.getItem('eva_selected_workspace_id') || 'default-org';
-    const h = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
-    let text = '';
-    if (file.type === 'application/pdf') {
-      // Upload PDF to backend for proper extraction
-      const fd = new FormData(); fd.append('file', file);
-      fd.append('workspace_id', workspaceId);
-      const uploadRes = await fetch(`${API}/extract-text`, { method: 'POST', headers: { 'ngrok-skip-browser-warning': 'true', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: fd }).catch(() => null);
-      if (uploadRes?.ok) { const ud = await uploadRes.json(); text = ud.text || ud.content || `PDF: ${file.name}`; }
-      else { text = `This is a PDF document named "${file.name}". Please provide general information about what this type of document typically contains.`; }
-    } else { text = await file.text().catch(() => file.name); }
-    const r = await fetch(`${API}/chat`, { method: 'POST', headers: h, body: JSON.stringify({ question: `Extract key info from this document: summary, key points, people/dates/amounts, action items.\n\nDocument: ${text.slice(0, 2000)}`, user_id: 'tool', workspace_id: workspaceId }) });
-    const d = await r.json(); setResult(d.answer || d.response || ''); setLoading(false);
+    if (!file) return;
+    setLoading(true);
+    setResult('Extracting document text...');
+    try {
+      const token = localStorage.getItem('aria_token');
+      const workspaceId = localStorage.getItem('eva_selected_workspace_id') || 'default-org';
+      const h = {
+        'Content-Type': 'application/json',
+        
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      };
+
+      let text = '';
+      if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('workspace_id', workspaceId);
+        const uploadRes = await fetch(`${API}/extract-text`, {
+          method: 'POST',
+          headers: {
+            
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: fd
+        });
+        if (!uploadRes.ok) {
+          const detail = await uploadRes.text().catch(() => '');
+          throw new Error(`PDF extraction failed (HTTP ${uploadRes.status}). ${detail.slice(0, 250)}`);
+        }
+        const ud = await uploadRes.json();
+        text = ud.text || ud.content || '';
+      } else {
+        text = await file.text();
+      }
+
+      if (!text.trim()) throw new Error('No document text could be extracted.');
+
+      const chunkSize = 7000;
+      const overlap = 300;
+      const chunks = [];
+      for (let start = 0; start < text.length; start += chunkSize - overlap) {
+        chunks.push(text.slice(start, start + chunkSize));
+      }
+
+      const summarize = async (question, maxTokens) => {
+        const response = await fetch(`${API}/doc-intelligence/summarize`, {
+          method: 'POST',
+          headers: h,
+          body: JSON.stringify({ question, max_tokens: maxTokens })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.detail || `Summarization failed (HTTP ${response.status}).`);
+        }
+        const output = data.text || '';
+        if (!output.trim()) throw new Error('Provider returned an empty summary.');
+        return { text: output, provider: data.provider || 'unknown' };
+      };
+
+      const summaries = [];
+      const providersUsed = new Set();
+
+      for (let i = 0; i < chunks.length; i++) {
+        setResult(`Summarizing section ${i + 1} of ${chunks.length}...`);
+        const summary = await summarize(
+          `Summarize section ${i + 1} of ${chunks.length} of this document. Preserve section headings, technical facts, definitions, formulas, names, dates, numbers, examples and action items. Do not invent information. State if this section appears incomplete.\n\nDOCUMENT SECTION:\n${chunks[i]}`,
+          2500
+        );
+        providersUsed.add(summary.provider);
+        summaries.push(`SECTION ${i + 1} SUMMARY:\n${summary.text}`);
+      }
+
+      setResult('Combining section summaries...');
+      const finalSummary = await summarize(
+        `Combine these section summaries into a comprehensive document summary. Cover every section, retain important technical details, formulas, names, dates, numbers, conclusions and action items. Organize by topic with headings. Avoid repetition but do not omit distinct facts. Do not invent details.\n\n${summaries.join('\n\n')}`,
+        6000
+      );
+      providersUsed.add(finalSummary.provider);
+
+      setResult(
+        `Providers used: ${Array.from(providersUsed).join(', ')}\n\n${finalSummary.text}`
+      );
+    } catch (err) {
+      setResult(`Document summarization failed: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
   return (
     <div>
       <div onClick={() => ref.current.click()} style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', marginBottom: 8, fontSize: 12, color: file ? 'var(--accent)' : 'var(--text3)', background: 'var(--surface)' }}>
-        {file ? `📄 ${file.name}` : '📂 Upload document (PDF, TXT, DOCX)'}
+        {file ? `[DOC] ${file.name}` : 'Upload document (PDF, TXT, DOCX)'}
         <input ref={ref} type="file" accept=".pdf,.txt,.docx,.csv" style={{ display: 'none' }} onChange={e => setFile(e.target.files[0])} />
       </div>
-      <button onClick={analyze} disabled={loading || !file} style={{ padding: '7px 16px', background: loading || !file ? 'var(--border)' : 'var(--accent)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{loading ? '⏳ Extracting...' : '📄 Extract Intelligence'}</button>
+      <button onClick={analyze} disabled={loading || !file} style={{ padding: '7px 16px', background: loading || !file ? 'var(--border)' : 'var(--accent)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{loading ? 'Extracting...' : 'Extract Intelligence'}</button>
       {result && <div style={{ marginTop: 10, padding: 12, background: 'var(--surface)', borderRadius: 8, fontSize: 12, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{result}</div>}
     </div>
   );
@@ -183,7 +257,7 @@ function LearningTool({ API }) {
     if (!topic.trim()) return; setLoading(true);
     const token = localStorage.getItem('aria_token');
     const workspaceId = localStorage.getItem('eva_selected_workspace_id') || 'default-org';
-    const h = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+    const h = { 'Content-Type': 'application/json',  ...(token ? { Authorization: `Bearer ${token}` } : {}) };
     const r = await fetch(`${API}/chat`, { method: 'POST', headers: h, body: JSON.stringify({ question: `Create a 7-day learning plan for "${topic}". Each day: Day number, Topic, Task (1-2 sentences), Resource, Time needed.`, user_id: 'tool', workspace_id: workspaceId }) });
     const d = await r.json(); setResult(d.answer || d.response || ''); setLoading(false);
   };
@@ -191,7 +265,7 @@ function LearningTool({ API }) {
     <div>
       <div style={{ display: 'flex', gap: 8 }}>
         <input value={topic} onChange={e => setTopic(e.target.value)} onKeyDown={e => e.key === 'Enter' && generate()} placeholder="e.g. Python, Machine Learning, React..." style={{ flex: 1, padding: '8px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12, outline: 'none', fontFamily: 'inherit' }} />
-        <button onClick={generate} disabled={loading || !topic.trim()} style={{ padding: '8px 14px', background: loading ? 'var(--border)' : 'var(--accent)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{loading ? '⏳' : '✨ Generate'}</button>
+        <button onClick={generate} disabled={loading || !topic.trim()} style={{ padding: '8px 14px', background: loading ? 'var(--border)' : 'var(--accent)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{loading ? 'Loading...' : 'Generate'}</button>
       </div>
       {result && <div style={{ marginTop: 10, padding: 12, background: 'var(--surface)', borderRadius: 8, fontSize: 12, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{result}</div>}
     </div>
@@ -208,7 +282,7 @@ function ResumeTool({ API }) {
     if (!file || !jobDesc.trim()) return; setLoading(true);
     const token = localStorage.getItem('aria_token');
     const workspaceId = localStorage.getItem('eva_selected_workspace_id') || 'default-org';
-    const h = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+    const h = { 'Content-Type': 'application/json',  ...(token ? { Authorization: `Bearer ${token}` } : {}) };
     const text = await file.text().catch(() => file.name);
     const r = await fetch(`${API}/chat`, { method: 'POST', headers: h, body: JSON.stringify({ question: `Score this resume 0-100 against the job. Give: Score, Verdict, Matched skills, Missing skills, Recommendation.\n\nJob: ${jobDesc.slice(0, 400)}\n\nResume: ${text.slice(0, 600)}`, user_id: 'tool', workspace_id: workspaceId }) });
     const d = await r.json(); setResult(d.answer || d.response || ''); setLoading(false);
@@ -216,19 +290,19 @@ function ResumeTool({ API }) {
   return (
     <div>
       <div onClick={() => ref.current.click()} style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', marginBottom: 8, fontSize: 12, color: file ? 'var(--accent)' : 'var(--text3)', background: 'var(--surface)' }}>
-        {file ? `📄 ${file.name}` : '📂 Upload Resume (PDF, TXT, DOCX)'}
+        {file ? `[RESUME] ${file.name}` : 'Upload Resume (PDF, TXT, DOCX)'}
         <input ref={ref} type="file" accept=".pdf,.txt,.docx" style={{ display: 'none' }} onChange={e => setFile(e.target.files[0])} />
       </div>
       <textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste job description here..." style={{ width: '100%', height: 75, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', color: 'var(--text)', fontSize: 12, resize: 'none', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 8 }} />
-      <button onClick={screen} disabled={loading || !file || !jobDesc.trim()} style={{ padding: '7px 16px', background: loading || !file || !jobDesc.trim() ? 'var(--border)' : 'var(--accent)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{loading ? '⏳ Screening...' : '🔍 Screen Resume'}</button>
+      <button onClick={screen} disabled={loading || !file || !jobDesc.trim()} style={{ padding: '7px 16px', background: loading || !file || !jobDesc.trim() ? 'var(--border)' : 'var(--accent)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{loading ? 'Screening...' : 'Screen Resume'}</button>
       {result && <div style={{ marginTop: 10, padding: 12, background: 'var(--surface)', borderRadius: 8, fontSize: 12, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{result}</div>}
     </div>
   );
 }
 
-// ══════════════════════════════════════════════════════════
+// ----------------------------------------
 // MARKDOWN RENDERER
-// ══════════════════════════════════════════════════════════
+// ----------------------------------------
 
 function KatexInline({ src, block }) {
   const ref = useRef(null);
@@ -241,7 +315,7 @@ function KatexInline({ src, block }) {
         window.katex.render(src, ref.current, { throwOnError: false, displayMode: block });
       } catch { setFallback(true); }
     } else {
-      // KaTeX not loaded yet — wait for it
+// ----------------------------------------
       const interval = setInterval(() => {
         if (window.katex) {
           clearInterval(interval);
@@ -259,11 +333,41 @@ function KatexInline({ src, block }) {
   return <span ref={ref} style={block ? { display: 'block', textAlign: 'center', margin: '10px 0' } : { display: 'inline' }} />;
 }
 
-// ── Auto data viz: GFM tables + ```chart blocks (recharts), EVA dark theme ──────
+// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Auto data viz: GFM tables + ```chart blocks (recharts), EVA dark theme ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+// Normalize and validate URLs before placing them in an HTML attribute. The markdown
+// text is HTML-escaped before link replacement, so decode only those entities that
+// this renderer itself creates, then let URL canonicalize quotes and other delimiters.
+export function safeHttpHref(value) {
+  const decoded = String(value)
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  try {
+    const parsed = new URL(decoded);
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return null;
+    return parsed.href;
+  } catch (_) {
+    return null;
+  }
+}
+
+function escapeHtmlAttribute(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function markdownLinkReplacement(_match, label, rawHref) {
+  const href = safeHttpHref(rawHref);
+  if (!href) return label;
+  return `<a href="${escapeHtmlAttribute(href)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline">${label}</a>`;
+}
+
 function inlineMd(text) {
   return String(text)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline">$1</a>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, markdownLinkReplacement)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`([^`]+)`/g, '<code style="background:rgba(38,101,140,.25);border:1px solid rgba(84,172,191,.2);border-radius:4px;padding:1px 5px;font-family:monospace;font-size:12px;color:var(--text2)">$1</code>');
@@ -310,7 +414,7 @@ function normalizeChartSpec(spec) {
   const type = ['bar', 'line', 'pie'].includes(spec.type) ? spec.type : 'bar';
   const title = spec.title || '';
 
-  // Format A (preferred/natural): { data: [{label|name, value|y}, ...] } — one value per row.
+  // Format A (preferred/natural): { data: [{label|name, value|y}, ...] } ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â one value per row.
   if (Array.isArray(spec.data) && spec.data.length && !Array.isArray(spec.series)) {
     const data = spec.data.map((d) => {
       if (!d || typeof d !== 'object') return null;
@@ -348,7 +452,7 @@ function normalizeChartSpec(spec) {
 }
 
 // Split concatenated top-level JSON objects ("{...}\n{...}\n{...}") that some
-// models pack into a single fence. Brace-depth scan, string-aware — no regex.
+// models pack into a single fence. Brace-depth scan, string-aware ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no regex.
 function splitJsonObjects(src) {
   const out = [];
   let depth = 0, start = -1, inStr = false, esc = false;
@@ -371,7 +475,7 @@ function ChartBlock({ src }) {
   // Normal case: one JSON spec per fence.
   let specs = [];
   try { specs = [JSON.parse(src)]; } catch (_) {
-    // A fence carrying SEVERAL concatenated JSON objects → split and render
+    // A fence carrying SEVERAL concatenated JSON objects ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ split and render
     // each as its own independent chart instead of failing to a code block.
     const pieces = splitJsonObjects(src);
     if (pieces.length > 1) {
@@ -380,12 +484,12 @@ function ChartBlock({ src }) {
   }
   const norms = specs.map(normalizeChartSpec).filter(Boolean);
   if (!norms.length) {
-    // Not valid/chartable → never force a chart; preserve the data as a code block.
+    // Not valid/chartable ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ never force a chart; preserve the data as a code block.
     return (
       <pre style={{ margin: '10px 0', padding: '12px 14px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflowX: 'auto', fontSize: 12, color: 'var(--text)', fontFamily: 'monospace' }}><code>{src}</code></pre>
     );
   }
-  // One <ChartCanvas> per spec — datasets are NEVER combined into one chart.
+  // One <ChartCanvas> per spec ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â datasets are NEVER combined into one chart.
   return <>{norms.map((norm, i) => <ChartCanvas key={i} norm={norm} />)}</>;
 }
 
@@ -395,7 +499,7 @@ function ChartCanvas({ norm }) {
   const tip = { contentStyle: { background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }, labelStyle: { color: 'var(--text2)' }, itemStyle: { color: 'var(--text)' } };
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 14px 6px', margin: '12px 0' }}>
-      {title && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 10 }}>📊 {title}</div>}
+      {title && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 10 }}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  {title}</div>}
       <ResponsiveContainer width="100%" height={260}>
         {type === 'pie' ? (
           <PieChart>
@@ -429,7 +533,7 @@ function ChartCanvas({ norm }) {
   );
 }
 
-// ── Mermaid diagrams (```mermaid) — CDN-loaded like KaTeX, dark theme, safe fallback ──
+// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Mermaid diagrams (```mermaid) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â CDN-loaded like KaTeX, dark theme, safe fallback ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 let _mermaidPromise = null;
 function ensureMermaid() {
   if (typeof window === 'undefined') return Promise.reject(new Error('no window'));
@@ -461,11 +565,11 @@ function ensureMermaid() {
   return _mermaidPromise;
 }
 
-// LLMs constantly break Mermaid edge-label syntax — repair the common cases before render.
+// LLMs constantly break Mermaid edge-label syntax ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â repair the common cases before render.
 function sanitizeMermaid(code) {
   let s = String(code || '');
   // #1 LLM bug: edge label emitted as "A -->|label|> B". The ">" immediately after the
-  // pipe that CLOSES an edge label is always invalid here → drop it: "|label|>" -> "|label|".
+  // pipe that CLOSES an edge label is always invalid here ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ drop it: "|label|>" -> "|label|".
   s = s.replace(/\|\s*>/g, '|');
   // Occasional extra arrowhead: "-->>", "==>>" -> single head.
   s = s.replace(/(--|==)>>+/g, '$1>');
@@ -485,7 +589,7 @@ function MermaidBlock({ code }) {
     ensureMermaid()
       .then(async (mermaid) => {
         if (cancelled || !mermaid) { if (!cancelled) setFailed(true); return; }
-        // Validate first (no throw) — LLMs emit invalid Mermaid constantly. Sanitize first.
+        // Validate first (no throw) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â LLMs emit invalid Mermaid constantly. Sanitize first.
         const clean = sanitizeMermaid(code);
         let ok = false;
         try { ok = await mermaid.parse(clean, { suppressErrors: true }); } catch (_) { ok = false; }
@@ -501,7 +605,7 @@ function MermaidBlock({ code }) {
               // Mermaid tags the <svg> with width="100%" and a max-width equal to the
               // diagram's own width. Overriding that with max-width:100% cancelled the
               // cap, so width="100%" stretched even a small vertical flowchart to the
-              // full column width — every node blown up several times over. Pin the svg
+              // full column width ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â every node blown up several times over. Pin the svg
               // to its intrinsic viewBox width so it renders at natural scale; a
               // genuinely wide diagram then overflows and the container scrolls it
               // sideways instead of the whole thing being upscaled.
@@ -522,17 +626,17 @@ function MermaidBlock({ code }) {
   }, [code]);
 
   if (failed) {
-    // #1 failure mode: degrade to readable text — never a broken/blank box or crash.
+    // #1 failure mode: degrade to readable text ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â never a broken/blank box or crash.
     return (
       <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, margin: '12px 0', overflow: 'hidden' }}>
-        <div style={{ padding: '7px 12px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', fontSize: 11, color: 'var(--warn)' }}>⚠ Couldn't render this diagram — showing its description instead.</div>
+        <div style={{ padding: '7px 12px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', fontSize: 11, color: 'var(--warn)' }}>ÃƒÂ¢Ã…Â¡Ã‚Â  Couldn't render this diagram ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â showing its description instead.</div>
         <pre style={{ margin: 0, padding: '12px 14px', overflowX: 'auto', fontSize: 12, lineHeight: 1.6, color: 'var(--text2)', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}><code>{code}</code></pre>
       </div>
     );
   }
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 12, margin: '12px 0', overflowX: 'auto', WebkitOverflowScrolling: 'touch', textAlign: 'center' }}>
-      {!ready && <div style={{ fontSize: 11, color: 'var(--text3)', padding: '10px 0' }}>Rendering diagram…</div>}
+      {!ready && <div style={{ fontSize: 11, color: 'var(--text3)', padding: '10px 0' }}>Rendering diagramÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</div>}
       <div ref={ref} />
     </div>
   );
@@ -606,7 +710,7 @@ function MarkdownRenderer({ text }) {
     }
     html = html
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline">$1</a>')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, markdownLinkReplacement)
       .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
@@ -655,9 +759,9 @@ function MarkdownRenderer({ text }) {
   return <div style={{ fontSize: '1rem', lineHeight: 1.8, color: 'var(--text)' }}>{renderBlock(text)}</div>;
 }
 
-// ══════════════════════════════════════════════════════════
+// ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â
 // INLINE DASHBOARD RENDERER
-// ══════════════════════════════════════════════════════════
+// ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â
 function DashboardRenderer({ data }) {
   const { charts = [], summary_stats = {}, shape = {} } = data;
 
@@ -710,9 +814,9 @@ function DashboardRenderer({ data }) {
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, marginTop: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <span style={{ fontSize: 16 }}>📊</span>
+        <span style={{ fontSize: 16 }}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â </span>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Dashboard</span>
-        <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 'auto' }}>{shape.rows} rows × {shape.cols} cols</span>
+        <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 'auto' }}>{shape.rows} rows ÃƒÆ’Ã¢â‚¬â€ {shape.cols} cols</span>
       </div>
 
       {/* Summary Stats */}
@@ -722,7 +826,7 @@ function DashboardRenderer({ data }) {
             <div key={col} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', flex: '1 1 120px' }}>
               <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.5px' }}>{col}</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text2)' }}>{stats.mean}</div>
-              <div style={{ fontSize: 9, color: 'var(--border2)' }}>min {stats.min} · max {stats.max}</div>
+              <div style={{ fontSize: 9, color: 'var(--border2)' }}>min {stats.min} Ãƒâ€šÃ‚Â· max {stats.max}</div>
             </div>
           ))}
         </div>
@@ -748,9 +852,9 @@ function DashboardRenderer({ data }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════
+// ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â
 // GEN AI AUTOMATION PANEL
-// ══════════════════════════════════════════════════════════
+// ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â
 // eslint-disable-next-line no-unused-vars
 function GenAIPanel({ API, token, onSendToChat }) {
   const [activeTab, setActiveTab]     = useState('load');
@@ -766,10 +870,10 @@ function GenAIPanel({ API, token, onSendToChat }) {
   const fileRef = useRef();
 
   const TASK_OPTIONS = [
-    { id: 'rag',       icon: '💬', label: 'RAG Q&A',        desc: 'Index for chatbot queries' },
-    { id: 'summarize', icon: '📋', label: 'Auto Summarize', desc: 'Generate document summaries' },
-    { id: 'extract',   icon: '🔍', label: 'Extract Info',   desc: 'Tables, names, dates, entities' },
-    { id: 'train',     icon: '🧠', label: 'Train ML Model', desc: 'Fine-tune on your data' },
+    { id: 'rag',       icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬â„¢Ã‚Â¬', label: 'RAG Q&A',        desc: 'Index for chatbot queries' },
+    { id: 'summarize', icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹', label: 'Auto Summarize', desc: 'Generate document summaries' },
+    { id: 'extract',   icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â', label: 'Extract Info',   desc: 'Tables, names, dates, entities' },
+    { id: 'train',     icon: 'ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â ', label: 'Train ML Model', desc: 'Fine-tune on your data' },
   ];
 
   const addFiles = (files) => {
@@ -781,7 +885,7 @@ function GenAIPanel({ API, token, onSendToChat }) {
     const terminal = new Set(['COMPLETE', 'FAILED', 'CANCELLED']);
     while (true) {
       const res = await fetch(`${RAG_API}/rag/jobs/${encodeURIComponent(jobId)}`, {
-        headers: { 'ngrok-skip-browser-warning': 'true' },
+        headers: { },
       });
       if (!res.ok) throw new Error(`Upload job ${jobId} not found`);
       const job = await res.json();
@@ -797,17 +901,17 @@ function GenAIPanel({ API, token, onSendToChat }) {
   const buildPipeline = () => {
     const steps = [];
     if (dataSource === 'files' && uploadedFiles.length > 0)
-      steps.push({ id: 'load_files', icon: '📂', label: `Load ${uploadedFiles.length} file(s)`, status: 'pending' });
+      steps.push({ id: 'load_files', icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¡', label: `Load ${uploadedFiles.length} file(s)`, status: 'pending' });
     if (dataSource === 'sql' && sqlConn)
-      steps.push({ id: 'load_sql', icon: '🗄️', label: 'Connect & query SQL database', status: 'pending' });
+      steps.push({ id: 'load_sql', icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã¢â‚¬Å¾ÃƒÂ¯Ã‚Â¸Ã‚Â', label: 'Connect & query SQL database', status: 'pending' });
     if (dataSource === 'urls' && urls)
-      steps.push({ id: 'scrape', icon: '🌐', label: `Scrape ${urls.split('\n').filter(Boolean).length} URL(s)`, status: 'pending' });
-    steps.push({ id: 'ocr',   icon: '👁️', label: 'OCR + text extraction', status: 'pending' });
-    steps.push({ id: 'embed', icon: '⚡', label: 'Generate embeddings', status: 'pending' });
-    if (tasks.rag)       steps.push({ id: 'rag',     icon: '💬', label: 'Index for RAG', status: 'pending' });
-    if (tasks.summarize) steps.push({ id: 'summary', icon: '📋', label: 'Auto summarize', status: 'pending' });
-    if (tasks.extract)   steps.push({ id: 'extract', icon: '🔍', label: 'Extract structured info', status: 'pending' });
-    if (tasks.train)     steps.push({ id: 'train',   icon: '🧠', label: 'Train ML model', status: 'pending' });
+      steps.push({ id: 'scrape', icon: 'ÃƒÂ°Ã…Â¸Ã…â€™Ã‚Â', label: `Scrape ${urls.split('\n').filter(Boolean).length} URL(s)`, status: 'pending' });
+    steps.push({ id: 'ocr',   icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ‚ÂÃƒÂ¯Ã‚Â¸Ã‚Â', label: 'OCR + text extraction', status: 'pending' });
+    steps.push({ id: 'embed', icon: 'ÃƒÂ¢Ã…Â¡Ã‚Â¡', label: 'Generate embeddings', status: 'pending' });
+    if (tasks.rag)       steps.push({ id: 'rag',     icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬â„¢Ã‚Â¬', label: 'Index for RAG', status: 'pending' });
+    if (tasks.summarize) steps.push({ id: 'summary', icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹', label: 'Auto summarize', status: 'pending' });
+    if (tasks.extract)   steps.push({ id: 'extract', icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â', label: 'Extract structured info', status: 'pending' });
+    if (tasks.train)     steps.push({ id: 'train',   icon: 'ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â ', label: 'Train ML model', status: 'pending' });
     return steps;
   };
 
@@ -823,13 +927,13 @@ function GenAIPanel({ API, token, onSendToChat }) {
       setPipeline(p => p.map(s => s.id === id ? { ...s, status, result } : s));
 
     const headers = {
-      'ngrok-skip-browser-warning': 'true',
+      
       ...(token && token !== 'offline' ? { 'Authorization': `Bearer ${token}` } : {}),
     };
     const workspaceId = localStorage.getItem('eva_selected_workspace_id') || 'default-org';
 
     try {
-      // ── Save files — return success INSTANTLY ─────
+      // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Save files ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â return success INSTANTLY ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
       if (dataSource === 'files' && uploadedFiles.length > 0) {
         updateStep('load_files', 'running');
         let uploaded = 0;
@@ -856,14 +960,14 @@ function GenAIPanel({ API, token, onSendToChat }) {
         updateStep('load_files', uploaded === uploadedFiles.length ? 'done' : 'error', `${uploaded}/${uploadedFiles.length} files indexed`);
       }
 
-      // ── SQL ────────────────────────────────────────
+      // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ SQL ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
       if (dataSource === 'sql' && sqlConn) {
         updateStep('load_sql', 'running');
         await new Promise(r => setTimeout(r, 1200));
         updateStep('load_sql', 'done', 'SQL connection simulated (add backend endpoint)');
       }
 
-      //  Scrape URLs — parallel ─────────────────────
+      //  Scrape URLs ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â parallel ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
       if (dataSource === 'urls' && urls) {
         updateStep('scrape', 'running');
         const urlList = urls.split('\n').filter(Boolean);
@@ -887,14 +991,14 @@ function GenAIPanel({ API, token, onSendToChat }) {
       updateStep('ocr', 'done', 'Text extracted by upload jobs');
       updateStep('embed', 'done', 'Embeddings completed by upload jobs');
 
-      // ── RAG / Summarize / Extract / Train run immediately ─
-      // (don't wait for OCR/embed — backend handles that async)
+      // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ RAG / Summarize / Extract / Train run immediately ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+      // (don't wait for OCR/embed ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â backend handles that async)
 
       if (tasks.rag) {
         updateStep('rag', 'running');
         updateStep('rag', 'done', 'Documents indexed for Q&A');
-        setResults(prev => [...prev, { type: 'rag', icon: '💬', title: 'RAG Ready', body: 'Your data is now indexed. Ask questions in chat.' }]);
-        onSendToChat('✅ Files saved and indexing in background. You can start asking questions now — answers will improve as indexing completes.');
+        setResults(prev => [...prev, { type: 'rag', icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬â„¢Ã‚Â¬', title: 'RAG Ready', body: 'Your data is now indexed. Ask questions in chat.' }]);
+        onSendToChat('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Files saved and indexing in background. You can start asking questions now ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â answers will improve as indexing completes.');
       }
 
       if (tasks.summarize) {
@@ -908,10 +1012,10 @@ function GenAIPanel({ API, token, onSendToChat }) {
           const d = await r.json();
           const summary = d.answer || d.response || 'Summary generated.';
           updateStep('summary', 'done', 'Summary ready');
-          setResults(prev => [...prev, { type: 'summary', icon: '📋', title: 'Auto Summary', body: summary }]);
+          setResults(prev => [...prev, { type: 'summary', icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹', title: 'Auto Summary', body: summary }]);
         } catch {
           updateStep('summary', 'done', 'Summary generated (offline)');
-          setResults(prev => [...prev, { type: 'summary', icon: '📋', title: 'Auto Summary', body: 'Documents processed and summarized successfully.' }]);
+          setResults(prev => [...prev, { type: 'summary', icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹', title: 'Auto Summary', body: 'Documents processed and summarized successfully.' }]);
         }
       }
 
@@ -926,7 +1030,7 @@ function GenAIPanel({ API, token, onSendToChat }) {
           const d = await r.json();
           const extracted = d.answer || d.response || 'Entities extracted.';
           updateStep('extract', 'done', 'Extraction complete');
-          setResults(prev => [...prev, { type: 'extract', icon: '🔍', title: 'Extracted Info', body: extracted }]);
+          setResults(prev => [...prev, { type: 'extract', icon: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â', title: 'Extracted Info', body: extracted }]);
         } catch {
           updateStep('extract', 'done', 'Extraction complete');
         }
@@ -936,7 +1040,7 @@ function GenAIPanel({ API, token, onSendToChat }) {
         updateStep('train', 'running');
         await new Promise(r => setTimeout(r, 1500));
         updateStep('train', 'done', 'Training started in background');
-        setResults(prev => [...prev, { type: 'train', icon: '🧠', title: 'ML Training', body: 'Model training started in background. Check ML page for progress.' }]);
+        setResults(prev => [...prev, { type: 'train', icon: 'ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â ', title: 'ML Training', body: 'Model training started in background. Check ML page for progress.' }]);
       }
 
     } catch (e) {
@@ -948,7 +1052,7 @@ function GenAIPanel({ API, token, onSendToChat }) {
   };
 
   const statusColor = (s) => ({ done: 'var(--green)', running: 'var(--warn)', error: 'var(--red)', pending: 'var(--border2)' }[s] || 'var(--border2)');
-  const statusIcon  = (s) => ({ done: '✓', running: '⟳', error: '✕', pending: '○' }[s] || '○');
+  const statusIcon  = (s) => ({ done: 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“', running: 'ÃƒÂ¢Ã…Â¸Ã‚Â³', error: 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢', pending: 'ÃƒÂ¢Ã¢â‚¬â€Ã¢â‚¬Â¹' }[s] || 'ÃƒÂ¢Ã¢â‚¬â€Ã¢â‚¬Â¹');
 
   return (
     <div style={{ width: 320, background: 'var(--bg)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0, overflow: 'hidden' }}>
@@ -956,13 +1060,13 @@ function GenAIPanel({ API, token, onSendToChat }) {
       {/* Header */}
       <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span style={{ fontSize: 16 }}>⚡</span> Gen AI Automation
+          <span style={{ fontSize: 16 }}>ÃƒÂ¢Ã…Â¡Ã‚Â¡</span> Gen AI Automation
         </div>
-        <div style={{ fontSize: 10, color: 'var(--border2)', fontFamily: 'monospace', marginTop: 2 }}>Auto load · learn · work</div>
+        <div style={{ fontSize: 10, color: 'var(--border2)', fontFamily: 'monospace', marginTop: 2 }}>Auto load Ãƒâ€šÃ‚Â· learn Ãƒâ€šÃ‚Â· work</div>
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 4, marginTop: 10 }}>
-          {[['load', '📂 Load'], ['pipeline', '⚙️ Pipeline'], ['results', '📊 Results']].map(([id, label]) => (
+          {[['load', 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¡ Load'], ['pipeline', 'ÃƒÂ¢Ã…Â¡Ã¢â€žÂ¢ÃƒÂ¯Ã‚Â¸Ã‚Â Pipeline'], ['results', 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  Results']].map(([id, label]) => (
             <button key={id} onClick={() => setActiveTab(id)}
               style={{ flex: 1, padding: '5px 4px', borderRadius: 7, border: `1px solid ${activeTab === id ? 'var(--accent)' : 'var(--border)'}`, background: activeTab === id ? 'var(--accent-soft)' : 'transparent', color: activeTab === id ? 'var(--accent)' : 'var(--text3)', fontSize: 10, cursor: 'pointer' }}>
               {label}
@@ -974,7 +1078,7 @@ function GenAIPanel({ API, token, onSendToChat }) {
       {/* Tab content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-        {/* ── LOAD TAB ── */}
+        {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ LOAD TAB ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
         {activeTab === 'load' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -982,7 +1086,7 @@ function GenAIPanel({ API, token, onSendToChat }) {
             <div>
               <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.7px', fontFamily: 'monospace', marginBottom: 8 }}>Data Source</div>
               <div style={{ display: 'flex', gap: 4 }}>
-                {[['files', '📁 Files'], ['sql', '🗄️ SQL'], ['urls', '🌐 URLs']].map(([id, label]) => (
+                {[['files', 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â Files'], ['sql', 'ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã¢â‚¬Å¾ÃƒÂ¯Ã‚Â¸Ã‚Â SQL'], ['urls', 'ÃƒÂ°Ã…Â¸Ã…â€™Ã‚Â URLs']].map(([id, label]) => (
                   <button key={id} onClick={() => setDataSource(id)}
                     style={{ flex: 1, padding: '7px 4px', borderRadius: 8, border: `1px solid ${dataSource === id ? 'var(--accent)' : 'var(--border)'}`, background: dataSource === id ? 'var(--accent-soft)' : 'transparent', color: dataSource === id ? 'var(--accent)' : 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>
                     {label}
@@ -991,35 +1095,109 @@ function GenAIPanel({ API, token, onSendToChat }) {
               </div>
             </div>
 
-            {/* Files drop zone */}
+            {/* Premium animated cloud upload */}
             {dataSource === 'files' && (
-              <div>
+              <div className="eva-upload-panel">
                 <div
+                  className={`eva-cloud-dropzone${dragging ? ' is-dragging' : ''}`}
                   onDragOver={e => { e.preventDefault(); setDragging(true); }}
                   onDragLeave={() => setDragging(false)}
-                  onDrop={e => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
-                  onClick={() => fileRef.current.click()}
-                  style={{ border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 10, padding: '16px 10px', textAlign: 'center', cursor: 'pointer', background: dragging ? 'var(--accent-soft)' : 'transparent', transition: '.2s' }}>
-                  <div style={{ fontSize: 24, marginBottom: 4 }}>📂</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>Drop files or click to browse</div>
-                  <div style={{ fontSize: 10, color: 'var(--border2)', marginTop: 3 }}>PDF, DOCX, CSV, TXT, ZIP</div>
+                  onDrop={e => {
+                    e.preventDefault();
+                    setDragging(false);
+                    addFiles(e.dataTransfer.files);
+                  }}
+                  onClick={() => fileRef.current?.click()}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      fileRef.current?.click();
+                    }
+                  }}
+                  aria-label="Upload files"
+                >
+                  <div className="eva-cloud-orbit eva-cloud-orbit-one" />
+                  <div className="eva-cloud-orbit eva-cloud-orbit-two" />
+                  <div className="eva-cloud-symbol" aria-hidden="true">
+                    <svg viewBox="0 0 64 64" fill="none">
+                      <path d="M18 43H14.5C8.7 43 4 38.3 4 32.5S8.7 22 14.5 22c1.5 0 2.9.3 4.2.9C21.2 14.7 28.5 9 37 9c10.2 0 18.5 8.3 18.5 18.5v.8C60 30 63 34.2 63 39c0 6.1-4.9 11-11 11H42" transform="translate(-1 0)" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M32 52V30m0 0-9 9m9-9 9 9" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <div className="eva-cloud-title">
+                    {dragging ? 'Drop files to add them' : 'Upload your knowledge'}
+                  </div>
+                  <div className="eva-cloud-subtitle">
+                    Drag and drop files here, or <span>browse files</span>
+                  </div>
+                  <div className="eva-cloud-formats">
+                    <span>PDF</span><span>DOCX</span><span>CSV</span><span>TXT</span><span>ZIP</span>
+                  </div>
+                  <div className="eva-cloud-footnote">Files are added to your EVA workspace</div>
                 </div>
-                <input ref={fileRef} type="file" multiple accept=".pdf,.docx,.csv,.txt,.zip,.png,.jpg" style={{ display: 'none' }} onChange={e => addFiles(e.target.files)} />
+
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.docx,.csv,.txt,.zip,.png,.jpg"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    addFiles(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
 
                 {uploadedFiles.length > 0 && (
-                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {uploadedFiles.map((f, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: 'var(--surface)', borderRadius: 7, border: '1px solid var(--border)' }}>
-                        <span style={{ fontSize: 13 }}>{f.name.endsWith('.pdf') ? '📕' : f.name.endsWith('.csv') ? '📊' : '📄'}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 11, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                          <div style={{ fontSize: 9, color: 'var(--border2)' }}>{(f.size / 1024).toFixed(1)} US</div>
+                  <div className="eva-upload-file-list">
+                    <div className="eva-upload-list-heading">
+                      <span>Selected files</span>
+                      <span>{uploadedFiles.length} file{uploadedFiles.length === 1 ? '' : 's'}</span>
+                    </div>
+                    {uploadedFiles.map((f, i) => {
+                      const ext = (f.name.split('.').pop() || 'FILE').toLowerCase();
+                      const type = ['pdf', 'csv', 'docx', 'txt', 'zip'].includes(ext) ? ext : 'file';
+                      const isDone = ['done', 'DONE', 'COMPLETED', 'completed'].includes(f.status);
+                      const isError = ['error', 'ERROR', 'FAILED', 'failed'].includes(f.status);
+                      return (
+                        <div className="eva-upload-file-card" key={`${f.name}-${i}`}>
+                          <div className={`eva-file-type-icon eva-file-type-${type}`}>
+                            {type === 'file' ? 'FILE' : type.toUpperCase()}
+                          </div>
+                          <div className="eva-upload-file-info">
+                            <div className="eva-upload-file-name" title={f.name}>{f.name}</div>
+                            <div className="eva-upload-file-meta">
+                              {(f.size / 1024).toFixed(1)} KB
+                              <span className="eva-file-meta-dot">?</span>
+                              {isDone ? 'Ready' : isError ? 'Needs attention' : (f.status || 'Added')}
+                            </div>
+                            {!isDone && !isError && (
+                              <div className="eva-file-progress-track">
+                                <div className="eva-file-progress-indicator" />
+                              </div>
+                            )}
+                          </div>
+                          <span
+                            className={`eva-upload-status${isDone ? ' is-done' : ''}${isError ? ' is-error' : ''}`}
+                            style={{ color: statusColor(f.status) }}
+                            title={String(f.status || 'Added')}
+                          >
+                            {isDone ? '?' : isError ? '!' : '?'}
+                          </span>
+                          <button
+                            type="button"
+                            className="eva-upload-remove"
+                            onClick={() => setUploadedFiles(prev => prev.filter((_, j) => j !== i))}
+                            aria-label={`Remove ${f.name}`}
+                            title="Remove file"
+                          >
+                            ?
+                          </button>
                         </div>
-                        <span style={{ fontSize: 10, color: statusColor(f.status) }}>{f.status === 'done' ? '✓' : f.status === 'error' ? '✕' : '·'}</span>
-                        <button onClick={() => setUploadedFiles(prev => prev.filter((_, j) => j !== i))}
-                          style={{ background: 'none', border: 'none', color: 'var(--border2)', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1072,16 +1250,16 @@ function GenAIPanel({ API, token, onSendToChat }) {
             {/* Run button */}
             <button onClick={runPipeline} disabled={running || (dataSource === 'files' && uploadedFiles.length === 0) || (dataSource === 'sql' && !sqlConn) || (dataSource === 'urls' && !urls)}
               style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: running ? 'var(--border)' : 'linear-gradient(135deg,var(--accent),var(--accent))', color: running ? 'var(--text3)' : '#fff', fontSize: 13, fontWeight: 700, cursor: running ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, transition: '.18s' }}>
-              {running ? '⟳ Running…' : '⚡ Run Automation'}
+              {running ? '⟳ Running...' : '⚡ Run Automation'}
             </button>
           </div>
         )}
 
-        {/* ── PIPELINE TAB ── */}
+        {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ PIPELINE TAB ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
         {activeTab === 'pipeline' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.7px', fontFamily: 'monospace', marginBottom: 4 }}>
-              Pipeline Status {running && <span style={{ color: 'var(--warn)' }}>· Running</span>}
+              Pipeline Status {running && <span style={{ color: 'var(--warn)' }}>Ãƒâ€šÃ‚Â· Running</span>}
             </div>
 
             {pipeline.length === 0 ? (
@@ -1108,13 +1286,13 @@ function GenAIPanel({ API, token, onSendToChat }) {
             {!running && pipeline.length > 0 && (
               <button onClick={() => setActiveTab('results')}
                 style={{ width: '100%', padding: '9px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)', fontSize: 12, cursor: 'pointer', marginTop: 4 }}>
-                View Results →
+                View Results ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢
               </button>
             )}
           </div>
         )}
 
-        {/* ── RESULTS TAB ── */}
+        {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ RESULTS TAB ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
         {activeTab === 'results' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.7px', fontFamily: 'monospace', marginBottom: 4 }}>Automation Results</div>
@@ -1131,7 +1309,7 @@ function GenAIPanel({ API, token, onSendToChat }) {
                     <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>{r.title}</span>
                     <button onClick={() => onSendToChat(r.body)}
                       style={{ marginLeft: 'auto', padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)', fontSize: 10, cursor: 'pointer' }}>
-                      → Chat
+                      ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Chat
                     </button>
                   </div>
                   <div style={{ padding: '10px 12px', fontSize: 11, color: 'var(--text3)', lineHeight: 1.6, maxHeight: 120, overflowY: 'auto' }}>
@@ -1151,9 +1329,9 @@ function GenAIPanel({ API, token, onSendToChat }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════
+// ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â
 // MAIN CHAT COMPONENT
-// ══════════════════════════════════════════════════════════
+// ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â
 const EMPTY_CHAT_PROMPT = 'How can I help you today?';
 const createInitialMessages = () => [
   { id: 'init', role: 'bot', text: EMPTY_CHAT_PROMPT, done: true },
@@ -1239,7 +1417,7 @@ function buildRagAuditMeta(data = {}) {
   // Evidence that retrieval RAN, which is separate from what it grounded.
   // Without these, a response carrying sources: [] alongside
   // retrievers_used: ["bm25"] produced no meta at all, so the reveal could
-  // only fall back to "came from general knowledge" — about an answer that had
+  // only fall back to "came from general knowledge" ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â about an answer that had
   // just quoted the user's files.
   const retrieversUsed = uniqueSourceLabels(asArray(data.retrievers_used));
   const retrievedCount = asArray(data.retrieved_sources).length;
@@ -1284,8 +1462,8 @@ function stripLegacySourceLabelLines(text = '') {
 function sanitizeAssistantText(text, ragAudit = null, reveal = false) {
   // Provenance rule: inline [Source N] markers ARE source metadata, so they
   // are stripped unless the user has explicitly asked where the answer came
-  // from. The gate used to run the other way — markers were kept whenever
-  // retrieval had worked — which showed provenance by default on exactly the
+  // from. The gate used to run the other way ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â markers were kept whenever
+  // retrieval had worked ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â which showed provenance by default on exactly the
   // answers that had any.
   return reveal && hasStructuredSources(ragAudit)
     ? String(text || '')
@@ -1369,7 +1547,7 @@ function generateConversationTitle(text) {
 }
 
 
-// ── Skill Library panel (saved skills from Supabase + repo-bundled, read-only) ──
+// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Skill Library panel (saved skills from Supabase + repo-bundled, read-only) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 // `embedded` renders the library as PANEL CONTENT inside the Tools Center
 // instead of as its own right-hand sheet: identical list, handlers and state,
 // without the fixed overlay or backdrop. One component, two presentations.
@@ -1384,7 +1562,7 @@ function SkillLibraryPanel({ ragApi, token, userId, workspaceId, autoSkillUse, o
   const [storageMode, setStorageMode] = useState('');
 
   const headers = {
-    'ngrok-skip-browser-warning': 'true',
+    
     ...(token && token !== 'offline' ? { Authorization: `Bearer ${token}` } : {}),
   };
   const qs = `user_id=${encodeURIComponent(userId)}&workspace_id=${encodeURIComponent(workspaceId)}`;
@@ -1511,10 +1689,10 @@ function SkillLibraryPanel({ ragApi, token, userId, workspaceId, autoSkillUse, o
         <div style={{ display: 'flex', flex: 1, minHeight: 0, flexDirection: isMobile ? 'column' : 'row' }}>
           {/* List */}
           <div style={{ width: isMobile ? '100%' : 280, flexShrink: 0, borderRight: isMobile ? 'none' : `1px solid ${c.border}`, borderBottom: isMobile ? `1px solid ${c.border}` : 'none', overflowY: 'auto', maxHeight: isMobile ? '40%' : '100%' }}>
-            {loading && <div style={{ padding: 18, color: c.muted, fontSize: 13 }}>Loading skills…</div>}
+            {loading && <div style={{ padding: 18, color: c.muted, fontSize: 13 }}>Loading skills...</div>}
             {error && !loading && <div style={{ padding: 18, color: 'var(--red)', fontSize: 12 }}>{error}</div>}
             {!loading && !error && skills.length === 0 && (
-              <div style={{ padding: 18, color: c.muted, fontSize: 13 }}>No skills yet. Create one in the Skill Creator and click “Save to Skill Library”.</div>
+              <div style={{ padding: 18, color: c.muted, fontSize: 13 }}>No skills yet. Create one in the Skill Creator and click "Save to Skill Library".</div>
             )}
             {skills.map((s) => (
               <div
@@ -1545,7 +1723,7 @@ function SkillLibraryPanel({ ragApi, token, userId, workspaceId, autoSkillUse, o
                     <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(s); }} disabled={deletingId === s.id}
                       aria-label={`Delete ${s.name}`}
                       style={{ fontSize: 11, fontWeight: 700, color: 'var(--red)', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 7, padding: '5px 9px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <Trash2 size={12} /> {deletingId === s.id ? '…' : 'Delete'}
+                       <Trash2 size={12} /> {deletingId === s.id ? '...' : 'Delete'}
                     </button>
                   )}
                 </div>
@@ -1556,7 +1734,7 @@ function SkillLibraryPanel({ ragApi, token, userId, workspaceId, autoSkillUse, o
           {/* Preview */}
           <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 16 }}>
             {!selectedId && <div style={{ color: c.muted, fontSize: 13 }}>Select a skill to preview its SKILL.md.</div>}
-            {previewLoading && <div style={{ color: c.muted, fontSize: 13 }}>Loading preview…</div>}
+            {previewLoading && <div style={{ color: c.muted, fontSize: 13 }}>Loading previewÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</div>}
             {preview && !previewLoading && (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -1582,6 +1760,82 @@ export default function Chat({ API = DEFAULT_API_BASE }) {
   const { t } = useTranslation();
   const [messages, setMessages]           = useState(createInitialMessages);
   const [input, setInput]                 = useState('');
+  const [selectedAgentFolder, setSelectedAgentFolder] = useState('');
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [agentTask, setAgentTask] = useState('');
+  const [agentJobId, setAgentJobId] = useState('');
+  const [, setAgentStatus] = useState('');
+  const [, setAgentPending] = useState([]);
+  const [, setAgentBusy] = useState(false);
+
+  const runSelectedAgent = async () => {
+    if (!selectedAgentFolder) {
+      alert('Select a folder first.');
+      return;
+    }
+    if (!agentTask.trim()) {
+      alert('Enter an Agent task first.');
+      return;
+    }
+    if (!window.evaDesktop?.runAgent) {
+      alert('Agent actions are available in the EVA desktop app only.');
+      return;
+    }
+
+    setAgentBusy(true);
+    setAgentStatus('Starting...');
+    setAgentPending([]);
+    try {
+      const result = await window.evaDesktop.runAgent(agentTask.trim(), selectedAgentFolder);
+      setAgentJobId(result.job_id);
+      setAgentStatus('running');
+      setAgentTask('');
+    } catch (error) {
+      console.error('Agent start failed:', error);
+      setAgentStatus(`Error: ${error.message || 'Could not start Agent'}`);
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
+  const refreshAgentStatus = async () => {
+    if (!agentJobId || !window.evaDesktop?.getAgentStatus) return;
+    try {
+      const result = await window.evaDesktop.getAgentStatus(agentJobId);
+      setAgentStatus(result.status || 'unknown');
+      setAgentPending(result.pending || []);
+    } catch (error) {
+      setAgentStatus(`Error: ${error.message || 'Could not get Agent status'}`);
+    }
+  };
+
+  const decideAgentApproval = async (ok) => {
+    if (!agentJobId || !window.evaDesktop?.approveAgent) return;
+    try {
+      await window.evaDesktop.approveAgent(agentJobId, ok);
+      setAgentPending([]);
+      await refreshAgentStatus();
+    } catch (error) {
+      setAgentStatus(`Error: ${error.message || 'Approval failed'}`);
+    }
+  };
+
+
+  const chooseAgentFolder = async () => {
+    if (!window.evaDesktop?.selectFolder) {
+      alert('Folder picker is available in the EVA desktop app only.');
+      return;
+    }
+    try {
+      const result = await window.evaDesktop.selectFolder();
+      if (!result?.canceled && result?.path) {
+        setSelectedAgentFolder(result.path);
+      }
+    } catch (error) {
+      console.error('Folder selection failed:', error);
+      alert('Could not open folder picker.');
+    }
+  };
   const [loading, setLoading]             = useState(false);
   const [token, setToken]                 = useState(localStorage.getItem('aria_token') || null);
   const [, setStatus]                     = useState(token ? 'online' : 'authenticating');
@@ -1622,10 +1876,10 @@ export default function Chat({ API = DEFAULT_API_BASE }) {
   try { return sanitizePromptHistory(JSON.parse(localStorage.getItem('eva_history') || '[]')); } catch { return []; }
 });
 
-  // ── Skill Library + Auto Skill Router ──
+  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Skill Library + Auto Skill Router ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
   const [autoSkillUse, setAutoSkillUse] = useState(() => localStorage.getItem('eva_auto_skill_use') !== 'false'); // default ON
   const [activeSkill, setActiveSkill] = useState(null);   // manually-selected sticky skill {id,name,content}
-  const [lastUsedSkill, setLastUsedSkill] = useState(null); // {name, auto} — drives the "Using skill" label
+  const [lastUsedSkill, setLastUsedSkill] = useState(null); // {name, auto} ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â drives the "Using skill" label
   const skillsCacheRef = useRef(null);   // cached summary list for local matching (avoids per-message backend call)
   const skillContentRef = useRef(new Map()); // id -> full SKILL.md content (memoized)
 
@@ -1658,7 +1912,7 @@ export default function Chat({ API = DEFAULT_API_BASE }) {
     const currentToken = localStorage.getItem('aria_token') || token;
     return {
       'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': 'true',
+      
       ...(currentToken && currentToken !== 'offline' ? { Authorization: `Bearer ${currentToken}` } : {}),
     };
   }, [token]);
@@ -1856,7 +2110,7 @@ export default function Chat({ API = DEFAULT_API_BASE }) {
 
     const currentToken = localStorage.getItem('aria_token') || token;
     const headers = {
-      'ngrok-skip-browser-warning': 'true',
+      
       ...(currentToken && currentToken !== 'offline' ? { Authorization: `Bearer ${currentToken}` } : {}),
     };
 
@@ -1890,7 +2144,7 @@ export default function Chat({ API = DEFAULT_API_BASE }) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
+        
         ...(currentToken && currentToken !== 'offline' ? { Authorization: `Bearer ${currentToken}` } : {}),
       },
       body: JSON.stringify({ user_id: userDbId, title: nextTitle }),
@@ -1943,24 +2197,35 @@ export default function Chat({ API = DEFAULT_API_BASE }) {
     fetch(`${API}/chat/history/${encodeURIComponent(conversationId)}?user_id=${encodeURIComponent(userDbId)}`, {
       method: 'DELETE',
       headers: {
-        'ngrok-skip-browser-warning': 'true',
+        
         ...(currentToken && currentToken !== 'offline' ? { Authorization: `Bearer ${currentToken}` } : {}),
       },
     }).catch(() => {});
   }, [API, conversations, persistActiveChat, publishChatState, token, uiMessagesToHistory, userDbId]);
 
-  const streamBotText = useCallback(async (botMsgId, text, delayMs = 15) => {
+  const streamBotText = useCallback(async (botMsgId, text, delayMs = 15, signal = null) => {
     let partial = '';
 
     for (const word of text.split(' ')) {
+      if (signal?.aborted) {
+        const error = new Error('Response stopped by user.');
+        error.name = 'AbortError';
+        throw error;
+      }
       partial += (partial ? ' ' : '') + word;
       const nextText = partial;
       setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: nextText } : msg));
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
+
+    if (signal?.aborted) {
+      const error = new Error('Response stopped by user.');
+      error.name = 'AbortError';
+      throw error;
+    }
   }, []);
 
-  // ── Mobile resize listener ──────────────────────────────
+  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Mobile resize listener ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener('resize', onResize);
@@ -1973,7 +2238,7 @@ export default function Chat({ API = DEFAULT_API_BASE }) {
     // Only snap to bottom if the user is already near it. Unconditionally
     // forcing scrollTop here on every `messages` update (i.e. on every
     // streamed token, and every upload-status tick) is what made the chat
-    // feel "locked" while a response was in progress — any manual scroll up
+    // feel "locked" while a response was in progress ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â any manual scroll up
     // got yanked back down within milliseconds.
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     if (distanceFromBottom < 120) el.scrollTop = el.scrollHeight;
@@ -2001,7 +2266,7 @@ useEffect(() => {
 
 // Update 62a: sendMessage is declared ~200 lines below this effect. Naming it
 // in the dependency array evaluated it during render while it was still in the
-// temporal dead zone — a ReferenceError that crashed the whole chat page. The
+// temporal dead zone ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â a ReferenceError that crashed the whole chat page. The
 // ref is populated after sendMessage exists, so this effect never has to
 // reference it directly.
 const voiceSendRef = useRef(null);
@@ -2044,7 +2309,7 @@ useEffect(() => {
     try {
       const currentToken = localStorage.getItem('aria_token') || token;
       const headers = {
-        'ngrok-skip-browser-warning': 'true',
+        
         ...(currentToken && currentToken !== 'offline' ? { Authorization: `Bearer ${currentToken}` } : {}),
       };
       const res = await fetch(`${API}/chat/history?user_id=${encodeURIComponent(userDbId)}`, { headers });
@@ -2094,7 +2359,7 @@ useEffect(() => {
     const currentToken = localStorage.getItem('aria_token') || token;
     const headers = {
       'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': 'true',
+      
       ...(currentToken && currentToken !== 'offline' ? { Authorization: `Bearer ${currentToken}` } : {}),
     };
     fetch(`${API}/chat/history`, {
@@ -2158,10 +2423,10 @@ useEffect(() => {
     setConversations(c => c.map((conv) => conv.active ? { ...conv, title, updatedAt: new Date().toISOString() } : conv));
   };
 
-  // ── Skill matching helpers (client-cached → no per-message backend call) ──────
+  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Skill matching helpers (client-cached ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ no per-message backend call) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
   const ragHeaders = useCallback(() => {
     const t = localStorage.getItem('aria_token') || token;
-    return { 'ngrok-skip-browser-warning': 'true', ...(t && t !== 'offline' ? { Authorization: `Bearer ${t}` } : {}) };
+    return {  ...(t && t !== 'offline' ? { Authorization: `Bearer ${t}` } : {}) };
   }, [token]);
 
   const ensureSkillsCache = useCallback(async (force = false) => {
@@ -2242,13 +2507,56 @@ useEffect(() => {
 
   // `spoken` marks an utterance that arrived by voice. It travels to the
   // backend as voice_response so the answer can be shaped for listening rather
-  // than reading — the field existed on ChatRequest but was hardcoded false,
+  // than reading ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the field existed on ChatRequest but was hardcoded false,
   // so a spoken question was answered exactly as if it had been typed.
   const sendMessage = useCallback(async (overrideText = null, { spoken = false } = {}) => {
     const q = (overrideText || input).trim();
     if ((!q && !attachedFile && !attachedImage) || loading) return;
+
+  // Route messages to the selected local Agent workspace.
+  if (q && selectedAgentFolder && window.evaDesktop?.runAgent && !attachedFile && !attachedImage) {
     setShowPlus(false);
-    // ── Provenance: reveal where the PREVIOUS answer came from ──
+    setInput('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    setSuggestions([]);
+    setEditingId(null);
+
+    const userMsgId = 'user_' + Date.now();
+    const botMsgId = 'bot_' + (Date.now() + 1);
+    setMessages(m => [...m,
+      { id: userMsgId, role: 'user', text: q },
+      { id: botMsgId, role: 'bot', text: 'Starting local Agent...', streaming: true, done: false, question: q }
+    ]);
+    setLoading(true);
+    setAgentBusy(true);
+    setAgentStatus('Starting...');
+    setAgentPending([]);
+
+    try {
+      const started = await window.evaDesktop.runAgent(q, selectedAgentFolder);
+      const jobId = started?.job_id || started?.jobId || started?.id;
+      if (!jobId) throw new Error(started?.detail || started?.message || 'Agent did not return a job ID.');
+      setAgentJobId(jobId);
+      setAgentStatus(started?.status || 'running');
+      setMessages(m => m.map(msg => msg.id === botMsgId
+        ? { ...msg, agentJobId: jobId, agentPending: [], agentLog: [], text: `Local Agent started.\nWorkspace: ${selectedAgentFolder}\nJob: ${jobId}\nStatus: ${started?.status || 'running'}`, streaming: false, done: true }
+        : msg
+      ));
+    } catch (error) {
+      const errorText = `Agent error: ${error?.message || 'Could not start Agent.'}`;
+      setAgentStatus(errorText);
+      setMessages(m => m.map(msg => msg.id === botMsgId
+        ? { ...msg, text: errorText, streaming: false, done: true }
+        : msg
+      ));
+    } finally {
+      setLoading(false);
+      setAgentBusy(false);
+    }
+    return;
+  }
+    setShowPlus(false);
+    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Provenance: reveal where the PREVIOUS answer came from ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
     //
     // Answered locally from metadata the client already holds. Sending this to
     // the model would ask it to recall its own retrieval, which it cannot do
@@ -2274,7 +2582,7 @@ useEffect(() => {
         return;
       }
     }
-    // ── Intercept image generation requests ──
+    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Intercept image generation requests ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
     if (q && isImageRequest(q)) {
       setInput('');
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -2316,7 +2624,7 @@ useEffect(() => {
       reader.readAsText(attachedFile);
       setInput('');
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
-      setMessages(m => [...m, { id: 'user_' + Date.now(), role: 'user', text: q || `📄 ${attachedFile.name}` }]);
+      setMessages(m => [...m, { id: 'user_' + Date.now(), role: 'user', text: q || `\u{1F4C4} ${attachedFile.name}` }]);
       setAttachedFile(null);
       return;
     }
@@ -2326,14 +2634,14 @@ useEffect(() => {
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setSuggestions([]);
     setEditingId(null);
-    // ── Skill resolution (manual sticky skill wins, else auto-match when ON) ──
+    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Skill resolution (manual sticky skill wins, else auto-match when ON) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
     let skillForThisSend = null;
     try { skillForThisSend = await resolveSkillForSend(q); } catch (_) { skillForThisSend = null; }
     if (skillForThisSend) setLastUsedSkill({ name: skillForThisSend.name, auto: skillForThisSend.auto });
     else if (!activeSkill) setLastUsedSkill(null);
     const userMsgId = 'user_' + Date.now();
     const botMsgId  = 'bot_' + Date.now();
-    const displayText = q || (attachedFile ? `📄 ${attachedFile.name}` : `🖼️ ${attachedImage?.name}`);
+    const displayText = q || (attachedFile ? `\u{1F4C4} ${attachedFile.name}` : `\u{1F5BC}\u{FE0F} ${attachedImage?.name}`);
     uiFeedback('send', 'light');
     setMessages(m => [...m, { id: userMsgId, role: 'user', text: displayText, image: attachedImage ? URL.createObjectURL(attachedImage) : null }]);
     const newHistory = [...history, { role: 'user', content: q }];
@@ -2346,7 +2654,7 @@ useEffect(() => {
     // Files save instantly; OCR/indexing happens server-side async
     const currentToken = localStorage.getItem('aria_token') || token;
     const memoryEnabled = localStorage.getItem('eva_memory_enabled') !== 'false';
-    const uploadHeaders = { 'ngrok-skip-browser-warning': 'true', ...(currentToken && currentToken !== 'offline' ? { 'Authorization': `Bearer ${currentToken}` } : {}) };
+    const uploadHeaders = {  ...(currentToken && currentToken !== 'offline' ? { 'Authorization': `Bearer ${currentToken}` } : {}) };
 
     if (sentImage) {
       const fd = new FormData(); fd.append('file', sentImage);
@@ -2375,7 +2683,7 @@ useEffect(() => {
             text: `${job.status}: ${job.message || job.current_step || sentFile.name}`,
           } : msg));
         });
-        // Upload succeeded — clear the flag so this message falls through to
+        // Upload succeeded ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â clear the flag so this message falls through to
         // the real answer once it streams in below, instead of getting stuck
         // showing "Uploaded" forever (same botMsgId gets overwritten with
         // fullReply/finalReply further down).
@@ -2403,7 +2711,7 @@ useEffect(() => {
 
       const chatHeaders = {
         'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
+        
         ...(currentToken && currentToken !== 'offline' ? { 'Authorization': `Bearer ${currentToken}` } : {})
       };
       // Attach the active/matched skill's instructions to the model context only.
@@ -2423,7 +2731,7 @@ useEffect(() => {
           // refer to itself: "How many days is that?" answered "There is no
           // specific time period mentioned... could you clarify?" instead of
           // "7 days". The backend and all three providers already accepted and
-          // used `history` — only the request omitted it.
+          // used `history` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â only the request omitted it.
           //
           // Excludes the current question, which is sent as `question`.
           history: conversationWindow(history),
@@ -2440,6 +2748,7 @@ useEffect(() => {
           image_filename: sentImage?.name || null,
           image_mime: sentImage?.type || null,
           image_data: imageDataUrl,
+          attachment_filename: sentFile?.name || null,
         }),
         signal: streamRef.current.signal,
       });
@@ -2457,7 +2766,7 @@ useEffect(() => {
             localStorage.setItem('aria_token', freshToken);
             const retry = await fetch(`${API}/chat`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', 'Authorization': `Bearer ${freshToken}` },
+              headers: { 'Content-Type': 'application/json',  'Authorization': `Bearer ${freshToken}` },
               body: JSON.stringify({
                 question: effectiveQuestion,
                 user_id: userDbId,
@@ -2469,6 +2778,7 @@ useEffect(() => {
                 image_filename: sentImage?.name || null,
                 image_mime: sentImage?.type || null,
                 image_data: imageDataUrl,
+          attachment_filename: sentFile?.name || null,
               }),
             });
             const retryData = await retry.json();
@@ -2479,10 +2789,10 @@ useEffect(() => {
             runnableMeta = retryData.runnable || null;
             fullReply = sanitizeAssistantText(fullReply, ragAudit);
           } else {
-            fullReply = '🔐 Please log in again.';
+            fullReply = 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Please log in again.';
           }
         } catch {
-          fullReply = '🔐 Please log in again.';
+          fullReply = 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Please log in again.';
         }
       } else {
         fullReply = data.answer || data.response || data.reply || data.message || data.detail || 'No response.';
@@ -2492,10 +2802,16 @@ useEffect(() => {
         runnableMeta = data.runnable || null;
         fullReply = sanitizeAssistantText(fullReply, ragAudit);
       }
-      await streamBotText(botMsgId, fullReply, 18);
+      await streamBotText(botMsgId, fullReply, 18, streamRef.current?.signal);
     } catch (e) {
-      if (e.name === 'AbortError') { setLoading(false); return; }
-      fullReply = `❌ Cannot reach backend. Backend server is not responding.\nError: ${e.message}`;
+      if (e.name === 'AbortError') {
+        setMessages(m => m.map(msg =>
+          msg.id === botMsgId ? { ...msg, streaming: false, done: true, stopped: true } : msg
+        ));
+        setLoading(false);
+        return;
+      }
+      fullReply = `ÃƒÂ¢Ã‚ÂÃ…â€™ Cannot reach backend. Backend server is not responding.\nError: ${e.message}`;
       setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: fullReply } : msg));
     }
     const finalReply = sanitizeAssistantText(fullReply, ragAudit);
@@ -2509,7 +2825,7 @@ useEffect(() => {
     window.dispatchEvent(new CustomEvent('eva:assistant-reply', { detail: { text: finalReply } }));
     // Slice 6: reply landed. Silent unless the user enabled sound.
     uiFeedback('receive', 'light');
-    // Intelligent Suggestion Engine — runs async AFTER the answer is shown; never blocks.
+    // Intelligent Suggestion Engine ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â runs async AFTER the answer is shown; never blocks.
     // Default is none; on any error or unparseable output we show nothing (no hardcoded fallback).
     (async () => {
       try {
@@ -2547,13 +2863,60 @@ useEffect(() => {
       return updated;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, loading, attachedFile, attachedImage, token, history, API, sessionId, userDbId, selectedWorkspaceId, resolveSkillForSend, activeSkill]);
+  }, [input, loading, attachedFile, attachedImage, token, history, API, sessionId, userDbId, selectedWorkspaceId, resolveSkillForSend, activeSkill, selectedAgentFolder]);
 
+  // Poll the active local Agent and update its existing chat message.
+  useEffect(() => {
+    if (!agentJobId || !window.evaDesktop?.getAgentStatus) return;
+    let stopped = false;
+    let timer;
+
+    const poll = async () => {
+      try {
+        const data = await window.evaDesktop.getAgentStatus(agentJobId);
+        if (stopped) return;
+        const status = data.status || 'unknown';
+        const pending = data.pending || [];
+        const logs = data.log || [];
+        setAgentStatus(status);
+        setAgentPending(pending);
+
+        setMessages(list => list.map(msg => {
+          if (msg.agentJobId !== agentJobId) return msg;
+          const logText = logs.slice(-8).map(x => String(x)).join('\n');
+          const approvalText = pending.length
+            ? '\n\nApproval required:\n' + pending.map((x, i) =>
+                `${i + 1}. ${x.tool || 'Tool'}: ${x.summary || x.action || ''}`
+              ).join('\n')
+            : '';
+          return {
+            ...msg,
+            agentPending: pending,
+            agentLog: logs,
+            text: `Local Agent\nWorkspace: ${selectedAgentFolder}\nJob: ${agentJobId}\nStatus: ${status}${approvalText}${logText ? '\n\nRecent activity:\n' + logText : ''}`,
+            streaming: false,
+            done: true
+          };
+        }));
+
+        if (status === 'done' || status.startsWith('error:')) return;
+      } catch (err) {
+        if (!stopped) setAgentStatus(`Status error: ${err.message || err}`);
+      }
+      if (!stopped) timer = setTimeout(poll, 1800);
+    };
+
+    poll();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [agentJobId, selectedAgentFolder]);
   // Update 62a: hand the current sendMessage to the voice command handler
   // declared above, without that handler referencing it before initialization.
   useEffect(() => { voiceSendRef.current = sendMessage; }, [sendMessage]);
 
-  // ── Share / Export / Pin ────────────────────────────────────────────────
+  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Share / Export / Pin ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
   // The other message actions (copy, regenerate, read aloud, thumbs) already
   // existed; only these three were missing. They reuse sanitizeAssistantText so
   // an exported or shared copy never carries orphaned [Source N] markers that
@@ -2573,7 +2936,7 @@ useEffect(() => {
       if (navigator.share) {
         await navigator.share({ title: 'EVA response', text });
       } else {
-        // Falls back to clipboard, silently — matching the existing Copy
+        // Falls back to clipboard, silently ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â matching the existing Copy
         // button in this same bar, which also gives no confirmation. Adding a
         // toast here alone would be inconsistent with the current UI.
         await navigator.clipboard.writeText(text);
@@ -2596,7 +2959,7 @@ useEffect(() => {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    // Revoke on the next tick — revoking synchronously can cancel the download
+    // Revoke on the next tick ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â revoking synchronously can cancel the download
     // in some browsers before it starts.
     setTimeout(() => URL.revokeObjectURL(url), 0);
   };
@@ -2619,22 +2982,22 @@ useEffect(() => {
     setSuggestions([]);
     await sendMessage(userMsg.text);
   };
-  // ── Inline Image Generation (slice 1) ───────────────────
+  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Inline Image Generation (slice 1) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
   // One request per image, in parallel. The endpoint returns a SEEDED
   // Pollinations URL, so distinct seeds give distinct images for the same
-  // prompt — and re-requesting a seed at larger dimensions returns the same
+  // prompt ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â and re-requesting a seed at larger dimensions returns the same
   // image bigger, which is what makes upscale meaningful rather than a reroll.
   const requestImage = useCallback(async ({ prompt, seed, width = 512, height = 512 }) => {
     const currentToken = localStorage.getItem('aria_token') || token;
     const headers = {
       'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': 'true',
+      
       ...(currentToken && currentToken !== 'offline' ? { Authorization: `Bearer ${currentToken}` } : {}),
     };
     const r = await fetch(`${API}/image/generate-v2`, {
       method: 'POST',
       headers,
-      // ImageGenV2Request accepts prompt/width/height/style/seed only —
+      // ImageGenV2Request accepts prompt/width/height/style/seed only ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
       // negative_prompt, model and num_inference_steps were being sent and
       // silently dropped by Pydantic.
       body: JSON.stringify({
@@ -2656,51 +3019,114 @@ useEffect(() => {
 
   const generateInlineImage = useCallback(async (prompt, existingId = null) => {
     const botMsgId = existingId || 'img_' + Date.now();
+
     if (!existingId) {
       setMessages(m => [...m, {
-        id: botMsgId, role: 'bot', text: prompt, streaming: false, done: false,
-        isImage: true, imagePrompt: prompt, images: [], imageLoading: true,
+        id: botMsgId,
+        role: 'bot',
+        text: prompt,
+        streaming: false,
+        done: false,
+        isImage: true,
+        imagePrompt: prompt,
+        images: [],
+        imageLoading: true,
       }]);
     } else {
       setMessages(m => m.map(msg => msg.id === botMsgId
-        ? { ...msg, imageLoading: true, imageError: '' } : msg));
+        ? { ...msg, imageLoading: true, imageError: '' }
+        : msg));
     }
+
     setLoading(true);
+
     try {
-      const results = await Promise.allSettled(
-        Array.from({ length: IMAGE_COUNT }, () => requestImage({ prompt }))
-      );
-      const images = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+      const images = [];
+      const failures = [];
+
+      // Generate sequentially.
+      // Pollinations free endpoint is reliable for one request,
+      // but simultaneous requests can cause upstream 502 responses.
+      for (let i = 0; i < IMAGE_COUNT; i++) {
+        try {
+          const image = await requestImage({ prompt });
+          images.push(image);
+        } catch (err) {
+          failures.push(err);
+        }
+      }
+
       if (!images.length) {
-        const why = results[0]?.reason?.message || 'Unknown error';
+        const why = failures[0]?.message || 'Unknown error';
+
         setMessages(m => m.map(msg => msg.id === botMsgId
-          ? { ...msg, imageLoading: false, done: true, imageError: why } : msg));
+          ? {
+              ...msg,
+              imageLoading: false,
+              done: true,
+              imageError: why,
+            }
+          : msg));
       } else {
         setMessages(m => m.map(msg => msg.id === botMsgId
-          ? { ...msg, imageLoading: false, done: true, images, imagePrompt: prompt } : msg));
+          ? {
+              ...msg,
+              imageLoading: false,
+              done: true,
+              images,
+              imagePrompt: prompt,
+            }
+          : msg));
+
         uiFeedback('imageDone', 'success');
       }
     } catch (e) {
       setMessages(m => m.map(msg => msg.id === botMsgId
-        ? { ...msg, imageLoading: false, done: true, imageError: e.message } : msg));
+        ? {
+            ...msg,
+            imageLoading: false,
+            done: true,
+            imageError: e.message,
+          }
+        : msg));
     }
+
     setLoading(false);
   }, [requestImage]);
 
-  // Same prompt, fresh seeds — a new take rather than a bigger one.
+  // Same prompt, fresh seeds ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â a new take rather than a bigger one.
   const imageVariations = useCallback(async (msgId, prompt) => {
-    setMessages(m => m.map(msg => msg.id === msgId ? { ...msg, imageLoading: true } : msg));
-    const results = await Promise.allSettled(
-      Array.from({ length: IMAGE_COUNT }, () => requestImage({ prompt }))
-    );
-    const images = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+    setMessages(m => m.map(msg =>
+      msg.id === msgId
+        ? { ...msg, imageLoading: true }
+        : msg
+    ));
+
+    const images = [];
+
+    // Generate variations sequentially to avoid bursting
+    // the free Pollinations endpoint.
+    for (let i = 0; i < IMAGE_COUNT; i++) {
+      try {
+        const image = await requestImage({ prompt });
+        images.push(image);
+      } catch {
+        // Keep successful variations even if one request fails.
+      }
+    }
+
     setMessages(m => m.map(msg => msg.id === msgId
-      ? { ...msg, imageLoading: false, ...(images.length ? { images } : {}) } : msg));
+      ? {
+          ...msg,
+          imageLoading: false,
+          ...(images.length ? { images } : {}),
+        }
+      : msg));
   }, [requestImage]);
 
   // Same seed at larger dimensions => the SAME composition at higher
-  // resolution. Measured: the provider caps free output at 768px — asking for
-  // 1024 returns 768 — so clamp there rather than promise a 2x that never
+  // resolution. Measured: the provider caps free output at 768px ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â asking for
+  // 1024 returns 768 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â so clamp there rather than promise a 2x that never
   // arrives. 512 -> 768 is a real 1.5x.
   const IMAGE_MAX_DIM = 768;
   const imageUpscale = useCallback(async (msgId, prompt, img) => {
@@ -2746,7 +3172,7 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
   // matched "image for excel sheet" and produced a PNG of a spreadsheet, and
   // IMAGE_SUBJECT_RE lists "diagram", so "create a diagram" became a raster.
   //
-  // Everything this refuses has a path that can be checked — a workbook that
+  // Everything this refuses has a path that can be checked ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â a workbook that
   // opens, a chart whose values trace to the source, a mermaid diagram that is
   // text. A picture is the only artifact here that nothing can verify.
   if (!imageGeneratorMayHandle(t)) return false;
@@ -2794,7 +3220,7 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
       .trim() || text;
   };
 
-// ── Intent Detectors ───────────────────────────────────────
+// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Intent Detectors ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
   const isWebSearch = (t) => {
     const l = t.toLowerCase();
     return l.startsWith('search ') || l.startsWith('search for ') ||
@@ -2837,21 +3263,21 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
     return t.replace(/^(search for|search|look up|find info about|google)\s+/i, '').trim();
   };
 
-  // ── Special Feature Handlers ───────────────────────────────
+  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Special Feature Handlers ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 
   const handleWebSearch = async (query) => {
     const botMsgId = 'search_' + Date.now();
-    setMessages(m => [...m, { id: botMsgId, role: 'bot', text: `🔍 Searching for: "${query}"...`, streaming: true, done: false }]);
+    setMessages(m => [...m, { id: botMsgId, role: 'bot', text: `ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Searching for: "${query}"...`, streaming: true, done: false }]);
     setLoading(true);
     try {
       const currentToken = localStorage.getItem('aria_token') || token;
       const r = await fetch(`${API}/web/search`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', 'Authorization': `Bearer ${currentToken}` },
+        headers: { 'Content-Type': 'application/json',  'Authorization': `Bearer ${currentToken}` },
         body: JSON.stringify({ query, num_results: 5 })
       });
       const data = await r.json();
-      let reply = `## 🔍 Search: "${query}"\n\n`;
+      let reply = `## ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Search: "${query}"\n\n`;
       if (data.summary) reply += data.summary + '\n\n';
       if (data.results?.length) {
         reply += '**Sources:**\n';
@@ -2862,95 +3288,95 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
       await streamBotText(botMsgId, reply, 15);
       setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, streaming: false, done: true } : msg));
     } catch(e) {
-      setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `❌ Search failed: ${e.message}`, streaming: false, done: true } : msg));
+      setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `⚠️ Search failed: ${e.message}`, streaming: false, done: true } : msg));
     }
     setLoading(false);
   };
 
   const handleURLRead = async (url, question) => {
     const botMsgId = 'url_' + Date.now();
-    setMessages(m => [...m, { id: botMsgId, role: 'bot', text: `🌐 Reading: ${url}...`, streaming: true, done: false }]);
+    setMessages(m => [...m, { id: botMsgId, role: 'bot', text: `ÃƒÂ°Ã…Â¸Ã…â€™Ã‚Â Reading: ${url}...`, streaming: true, done: false }]);
     setLoading(true);
     try {
       const currentToken = localStorage.getItem('aria_token') || token;
       const r = await fetch(`${API}/web/read-url`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', 'Authorization': `Bearer ${currentToken}` },
+        headers: { 'Content-Type': 'application/json',  'Authorization': `Bearer ${currentToken}` },
         body: JSON.stringify({ url, question: question || 'Summarize this page' })
       });
       const data = await r.json();
-      const reply = `## 🌐 Page Summary\n**URL:** [${url}](${url})\n\n${data.answer || 'Could not read page.'}`;
+      const reply = `## ÃƒÂ°Ã…Â¸Ã…â€™Ã‚Â Page Summary\n**URL:** [${url}](${url})\n\n${data.answer || 'Could not read page.'}`;
       await streamBotText(botMsgId, reply, 15);
       setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, streaming: false, done: true } : msg));
     } catch(e) {
-      setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `❌ Could not read URL: ${e.message}`, streaming: false, done: true } : msg));
+       setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `Could not read URL: ${e.message}`, streaming: false, done: true } : msg));
     }
     setLoading(false);
   };
 
   const handleDataClean = async (csvText) => {
     const botMsgId = 'clean_' + Date.now();
-    setMessages(m => [...m, { id: botMsgId, role: 'bot', text: '🧹 Cleaning your data...', streaming: true, done: false }]);
+    setMessages(m => [...m, { id: botMsgId, role: 'bot', text: 'ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â¹ Cleaning your data...', streaming: true, done: false }]);
     setLoading(true);
     try {
       const currentToken = localStorage.getItem('aria_token') || token;
       const r = await fetch(`${API}/data/clean`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', 'Authorization': `Bearer ${currentToken}` },
+        headers: { 'Content-Type': 'application/json',  'Authorization': `Bearer ${currentToken}` },
         body: JSON.stringify({ csv_text: csvText })
       });
       const data = await r.json();
       const s = data.stats;
-      let reply = `## 🧹 Data Cleaning Complete\n\n`;
-      reply += `**Shape:** ${s.original_rows} rows → ${s.cleaned_rows} rows, ${s.cleaned_cols} columns\n\n`;
+      let reply = `## ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â¹ Data Cleaning Complete\n\n`;
+      reply += `**Shape:** ${s.original_rows} rows ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ ${s.cleaned_rows} rows, ${s.cleaned_cols} columns\n\n`;
       if (s.changes?.length) { reply += `**Changes made:**\n`; s.changes.forEach(c => { reply += `- ${c}\n`; }); reply += '\n'; }
       if (data.ai_summary) reply += `**AI Insights:**\n${data.ai_summary}\n\n`;
       reply += `**Preview (first 3 rows):**\n\`\`\`json\n${JSON.stringify(s.preview?.slice(0,3), null, 2)}\n\`\`\``;
-      if (data.clean_csv) reply += `\n\n✅ Clean CSV ready — copy from below or ask me to analyse it.`;
+      if (data.clean_csv) reply += `\n\nÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Clean CSV ready ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â copy from below or ask me to analyse it.`;
       await streamBotText(botMsgId, reply, 12);
       setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, streaming: false, done: true, cleanCsv: data.clean_csv } : msg));
     } catch(e) {
-      setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `❌ Data cleaning failed: ${e.message}`, streaming: false, done: true } : msg));
+       setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `Data cleaning failed: ${e.message}`, streaming: false, done: true } : msg));
     }
     setLoading(false);
   };
 
   const handleDashboard = async (csvText) => {
     const botMsgId = 'dash_' + Date.now();
-    setMessages(m => [...m, { id: botMsgId, role: 'bot', text: '📊 Generating dashboard...', streaming: true, done: false }]);
+    setMessages(m => [...m, { id: botMsgId, role: 'bot', text: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  Generating dashboard...', streaming: true, done: false }]);
     setLoading(true);
     try {
       const currentToken = localStorage.getItem('aria_token') || token;
       const r = await fetch(`${API}/data/dashboard`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', 'Authorization': `Bearer ${currentToken}` },
+        headers: { 'Content-Type': 'application/json',  'Authorization': `Bearer ${currentToken}` },
         body: JSON.stringify({ csv_text: csvText })
       });
       const data = await r.json();
-      setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `📊 Dashboard generated with ${data.charts?.length || 0} charts!`, streaming: false, done: true, dashboardData: data } : msg));
+       setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `Dashboard generated with ${data.charts?.length || 0} charts!`, streaming: false, done: true, dashboardData: data } : msg));
     } catch(e) {
-      setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `❌ Dashboard failed: ${e.message}`, streaming: false, done: true } : msg));
+       setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `Dashboard failed: ${e.message}`, streaming: false, done: true } : msg));
     }
     setLoading(false);
   };
 
   const handleCodeRun = async (code) => {
     const botMsgId = 'code_' + Date.now();
-    setMessages(m => [...m, { id: botMsgId, role: 'bot', text: '💻 Running code...', streaming: true, done: false }]);
+    setMessages(m => [...m, { id: botMsgId, role: 'bot', text: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬â„¢Ã‚Â» Running code...', streaming: true, done: false }]);
     setLoading(true);
     try {
       const currentToken = localStorage.getItem('aria_token') || token;
       const r = await fetch(`${API}/code/run`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', 'Authorization': `Bearer ${currentToken}` },
+        headers: { 'Content-Type': 'application/json',  'Authorization': `Bearer ${currentToken}` },
         body: JSON.stringify({ code, language: 'python' })
       });
       const data = await r.json();
-      const reply = `## 💻 Code Output\n\`\`\`\n${data.output}\n\`\`\`${data.error ? `\n\n❌ Error:\n\`\`\`\n${data.error}\n\`\`\`` : ''}`;
+       const reply = `## Code Output\n\`\`\`\n${data.output}\n\`\`\`${data.error ? `\n\nError:\n\`\`\`\n${data.error}\n\`\`\`` : ''}`;
       await streamBotText(botMsgId, reply, 12);
       setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, streaming: false, done: true } : msg));
     } catch(e) {
-      setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `❌ Code execution failed: ${e.message}`, streaming: false, done: true } : msg));
+       setMessages(m => m.map(msg => msg.id === botMsgId ? { ...msg, text: `Code execution failed: ${e.message}`, streaming: false, done: true } : msg));
     }
     setLoading(false);
   };
@@ -2968,7 +3394,7 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
 
   const toggleVoice = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { alert('Voice not supported — use Chrome.'); return; }
+    if (!SR) { alert('Voice not supported ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â use Chrome.'); return; }
     if (isListening) { recogRef.current?.stop(); setIsListening(false); return; }
     const r = new SR(); recogRef.current = r;
     r.lang = 'en-US'; r.continuous = false; r.interimResults = false;
@@ -3024,11 +3450,38 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
     setAttachmentNotice('');
   };
 
+  const handleComposerPaste = (e) => {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imageItem = items.find(item => item.type?.startsWith('image/'));
+    const file = imageItem?.getAsFile();
+    if (file) {
+      e.preventDefault();
+      const ext = file.type === 'image/jpeg' ? 'jpg' :
+        file.type === 'image/png' ? 'png' :
+        file.type === 'image/webp' ? 'webp' : 'image';
+      const namedFile = new File([file], `pasted-image-${Date.now()}.${ext}`, { type: file.type });
+      handleSelectedFile(namedFile);
+    }
+  };
+
+  const handleComposerDrop = (e) => {
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (!files.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const file = files[0];
+    if (file.type?.startsWith('image/')) {
+      handleSelectedFile(file);
+    } else {
+      handleSelectedFile(file);
+    }
+  };
+
 
   const runToolAction = (action) => action?.();
   // A small quick-action menu, not a feature directory: only what acts on the
   // message being written. Everything else keeps working and stays reachable
-  // where it already lived — Feature Tools (Code Sandbox, YouTube Monitor,
+  // where it already lived ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Feature Tools (Code Sandbox, YouTube Monitor,
   // Website Detector), the Directory panel (Skills, Connectors, plugins), the
   // Skill Library, and the admin sidebar (ML Training, RAG Center). Nothing was
   // deleted; the popup simply stopped being the front door to all of it.
@@ -3037,6 +3490,7 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
     { icon: ImagePlus, label: 'Upload photo', detail: 'PNG, JPEG, WEBP', action: () => { imageRef.current?.click(); closeToolsMenu(); } },
     { icon: Search, label: 'Web Search', detail: 'Search live web sources', action: () => insertTemplate('search for ') },
     { icon: Sparkles, label: 'Create image', detail: 'Generate an image from a prompt', action: () => insertTemplate('Create image: ') },
+    { icon: FileText, label: 'Doc Intelligence', detail: 'Summarize PDF, DOCX and text documents', action: () => { closeToolsMenu(); setActiveTool('docintel'); } },
     // The one door back to the panels this menu used to list individually. It
     // keeps Code Sandbox, YouTube Monitor and Website Detector reachable
     // without the popup becoming a feature directory again.
@@ -3046,13 +3500,13 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
   const quickSuggestions = [
     'Summarize a document',
     'Analyze CSV data',
-    // 'Build a website' removed — Web Artifacts builder has no backend yet; re-add when it ships.
+    // 'Build a website' removed ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Web Artifacts builder has no backend yet; re-add when it ships.
     'Train an ML model',
     'Write a LinkedIn post',
   ];
 
 
-  // ── File Download Utilities ─────────────────────────────
+  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ File Download Utilities ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
   const detectContentType = (text) => {
     if (!text) return null;
     const t = text.toLowerCase();
@@ -3142,17 +3596,17 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
     const type = detectContentType(msg.text);
     if (!type) return [];
     const map = {
-      table:    [{ fmt: 'csv',  icon: '📊', label: 'Excel/CSV' }],
-      python:   [{ fmt: 'py',   icon: '🐍', label: '.py' }, { fmt: 'txt', icon: '📄', label: '.txt' }],
-      javascript:[{ fmt: 'js',  icon: '⚡', label: '.js' }, { fmt: 'txt', icon: '📄', label: '.txt' }],
-      html:     [{ fmt: 'html', icon: '🌐', label: '.html' }, { fmt: 'txt', icon: '📄', label: '.txt' }],
-      sql:      [{ fmt: 'sql',  icon: '🗄️', label: '.sql' }, { fmt: 'txt', icon: '📄', label: '.txt' }],
-      json:     [{ fmt: 'json', icon: '📋', label: '.json' }, { fmt: 'csv', icon: '📊', label: '.csv' }],
-      csv:      [{ fmt: 'csv',  icon: '📊', label: 'Excel/CSV' }, { fmt: 'txt', icon: '📄', label: '.txt' }],
-      pptx_data:[{ fmt: 'txt',  icon: '📑', label: '.txt' }, { fmt: 'html', icon: '🌐', label: '.html' }],
-      text:     [{ fmt: 'txt',  icon: '📄', label: '.txt' }],
-    };
-    return map[type] || [{ fmt: 'txt', icon: '📄', label: '.txt' }];
+      table:     [{ fmt: 'csv',  icon: 'CSV',  label: 'Excel/CSV' }],
+      python:    [{ fmt: 'py',   icon: 'PY',   label: '.py' }, { fmt: 'txt', icon: 'TXT', label: '.txt' }],
+      javascript:[{ fmt: 'js',   icon: 'JS',   label: '.js' }, { fmt: 'txt', icon: 'TXT', label: '.txt' }],
+      html:      [{ fmt: 'html', icon: 'HTML', label: '.html' }, { fmt: 'txt', icon: 'TXT', label: '.txt' }],
+      sql:       [{ fmt: 'sql',  icon: 'SQL',  label: '.sql' }, { fmt: 'txt', icon: 'TXT', label: '.txt' }],
+      json:      [{ fmt: 'json', icon: 'JSON', label: '.json' }, { fmt: 'csv', icon: 'CSV', label: '.csv' }],
+      csv:       [{ fmt: 'csv',  icon: 'CSV',  label: 'Excel/CSV' }, { fmt: 'txt', icon: 'TXT', label: '.txt' }],
+      pptx_data: [{ fmt: 'txt',  icon: 'TXT',  label: '.txt' }, { fmt: 'html', icon: 'HTML', label: '.html' }],
+      text:      [{ fmt: 'txt',  icon: 'TXT',  label: '.txt' }],
+    };    
+    return map[type] || [{ fmt: 'txt', icon: 'TXT', label: '.txt' }];
   };
 
   const MessageActions = ({ msg }) => {
@@ -3167,10 +3621,10 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
 
     return (
       <div style={{ marginTop: 8 }}>
-        {/* Download bar — only shown when user asked to download */}
+        {/* Download bar ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â only shown when user asked to download */}
         {dlBtns.length > 0 && userAskedDownload && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, padding: '6px 10px', background: 'var(--accent-soft)', border: '1px solid var(--accent-soft)', borderRadius: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600, marginRight: 2 }}>⬇ Download:</span>
+            <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600, marginRight: 2 }}>ÃƒÂ¢Ã‚Â¬Ã¢â‚¬Â¡ Download:</span>
             {dlBtns.map(btn => (
               <button key={btn.fmt} onClick={() => handleDownload(msg, btn.fmt)}
                 style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--accent)', background: 'var(--accent-soft)', color: 'var(--text2)', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500, transition: '.15s' }}
@@ -3183,11 +3637,11 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
               style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: '.15s' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
-              📄 Save as text
+              ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¾ Save as text
             </button>
           </div>
         )}
-        {/* Action row — revealed on hover at desktop, always shown on touch. */}
+        {/* Action row ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â revealed on hover at desktop, always shown on touch. */}
         <div className="eva-msg-actions">
           <button type="button" className="eva-msg-act" title="Read aloud"
             onClick={() => speakMessage(msg.text)}>
@@ -3211,7 +3665,7 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
             onClick={() => submitFeedback(msg, 'thumb', 'down')}>
             <ThumbsDown size={13} />
           </button>
-          {/* Share / Export / Pin were the only actions genuinely missing —
+          {/* Share / Export / Pin were the only actions genuinely missing ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
               Copy, Regenerate, Read aloud and the thumbs already existed. They
               go in THIS bar rather than a second one, and stay icon-only so the
               row does not grow. */}
@@ -3232,7 +3686,7 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
             <Pin size={13} />
           </button>
           {fb.thumb && <span className="eva-msg-saved">Saved</span>}
-          {/* Timestamp lives here now — available on hover, out of the way
+          {/* Timestamp lives here now ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â available on hover, out of the way
               while reading. */}
           <time className="eva-msg-time">{messageTime(msg.id)}</time>
         </div>
@@ -3241,7 +3695,7 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
   };
 
   // Slice 4: themed, not hardcoded. The previous buttons used fixed purple
-  // hex values, so they ignored the theme system entirely — under Nature or
+  // hex values, so they ignored the theme system entirely ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â under Nature or
   // Minimal Dark they stayed violet.
   const ActionBtn = ({ label, onClick, title }) => (
     <button type="button" onClick={onClick} title={title} className="eva-msg-act">{label}</button>
@@ -3289,17 +3743,17 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
   const showChatWorkspaceSelector = false;
 
   // Suggestions come EXCLUSIVELY from the async Intelligent Suggestion Engine
-  // (/chat/suggestions). There is no hardcoded/static fallback — an empty array
+  // (/chat/suggestions). There is no hardcoded/static fallback ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â an empty array
   // means show nothing. Each item is { text, type }.
   const suggestedFollowups = suggestions;
 
   return (
     <div className="eva-chat-page">
-      {/* Slice 7: first tab stop — lets keyboard and screen-reader users
+      {/* Slice 7: first tab stop ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â lets keyboard and screen-reader users
           jump past the sidebar straight to the conversation. */}
       <a className="eva-skip-link" href="#eva-conversation">Skip to conversation</a>
 
-      {/* ── MAIN CHAT ───────────────────────────────────────── */}
+      {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ MAIN CHAT ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
       <div className="eva-chat-main">
         {showChatWorkspaceSelector && (
         <section className="eva-workspace-selector eva-chat-workspace-hidden" aria-label="Workspace selector">
@@ -3372,10 +3826,49 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
             </section>
           )}
 
-          {visibleMessages.map((m) => (
-            <div key={m.id} className={`eva-message-row ${isUserLikeMessage(m) ? 'eva-message-row-user' : 'eva-message-row-assistant'}`}>
+          <AnimatePresence initial={false} mode="sync">
+          {visibleMessages.map((m, index) => (
+            <motion.div
+              key={m.id}
+              layout="position"
+              initial={{
+                opacity: 0,
+                x: isUserLikeMessage(m) ? 22 : -18,
+                y: 14,
+                scale: 0.985,
+                rotateX: isUserLikeMessage(m) ? -2 : 2,
+                filter: "blur(8px)"
+              }}
+              animate={{
+                opacity: 1,
+                x: 0,
+                y: 0,
+                scale: 1,
+                rotateX: 0,
+                filter: "blur(0px)"
+              }}
+              exit={{
+                opacity: 0,
+                x: isUserLikeMessage(m) ? 10 : -10,
+                y: -6,
+                scale: 0.992,
+                filter: "blur(4px)"
+              }}
+              transition={{
+                opacity: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
+                filter: { duration: 0.3, ease: "easeOut" },
+                default: {
+                  type: "spring",
+                  stiffness: 300,
+                  damping: 26,
+                  mass: 0.8,
+                  delay: Math.min(index * 0.035, 0.18)
+                }
+              }}
+              className={`eva-message-row ${isUserLikeMessage(m) ? 'eva-message-row-user' : 'eva-message-row-assistant'}`}
+            >
                 {/* Slice 4a: no avatar or name label on assistant messages.
-                    ChatGPT and Claude both let the answer start immediately —
+                    ChatGPT and Claude both let the answer start immediately ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
                     repeating "EVA" above every reply is chrome, not
                     information, and it broke the vertical rhythm. The
                     timestamp moved into the hover action row instead. */}
@@ -3386,8 +3879,8 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
                       <textarea value={editText} onChange={e => setEditText(e.target.value)}
                         style={{ width: '100%', minWidth: 300, background: 'var(--input-bg)', border: '1px solid var(--border2)', borderRadius: 10, padding: '10px 12px', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} rows={3} />
                       <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                        <ActionBtn label="✓ Save & Resend" onClick={() => saveEdit(m.id)} />
-                        <ActionBtn label="✕ Cancel" onClick={() => setEditingId(null)} />
+                        <ActionBtn label="ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Save & Resend" onClick={() => saveEdit(m.id)} />
+                        <ActionBtn label="ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢ Cancel" onClick={() => setEditingId(null)} />
                       </div>
                     </div>
                   ) : (
@@ -3454,13 +3947,80 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
                                 images={[{ url: m.imageUrl }]}
                                 prompt={m.text}
                                 onRegenerate={() => generateInlineImage(m.text, m.id)}
+                                onUpscale={(img) => imageUpscale(
+                                  m.id,
+                                  m.text,
+                                  img
+                                )}
                               />
                             ) : null
                           )
                         ) : m.dashboardData ? (
                           <DashboardRenderer data={m.dashboardData} />
                         ) : (
-                          <><ProvenanceBadges show={m.showProvenance} review={m.review} runtime={m.runtime} streaming={m.streaming} /><MarkdownRenderer text={sanitizeAssistantText(m.text || '', m.ragAudit, m.showProvenance)} />{m.runnable && !m.streaming ? <RunCodeButton messageText={m.text || ''} runnable={m.runnable} apiBase={API} token={token} /> : null}{m.streaming && !m.done && <span style={{ display: 'inline-block', width: 8, height: 14, background: 'var(--accent)', borderRadius: 2, marginLeft: 2, animation: 'blink 1s infinite', verticalAlign: 'middle' }} />}</>
+                          <><ProvenanceBadges show={m.showProvenance} review={m.review} runtime={m.runtime} streaming={m.streaming} /><MarkdownRenderer text={sanitizeAssistantText(m.text || '', m.ragAudit, m.showProvenance)} />
+                          {m.agentJobId && Array.isArray(m.agentPending) && m.agentPending.length > 0 && (
+                            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              {m.agentPending.map((item, idx) => (
+                                <div key={`${m.agentJobId}-${idx}`} style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 10 }}>
+                                  <div style={{ marginBottom: 10, whiteSpace: 'pre-wrap' }}>
+                                    <strong>{item.tool || 'Agent action'}:</strong> {item.summary || item.action || 'Approval required'}
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 8 }}>
+                                    <button type="button" onClick={async () => {
+                                      try {
+                                        await window.evaDesktop.approveAgent(m.agentJobId, true);
+                                        setAgentStatus('Approval submitted');
+                                        setAgentPending([]);
+                                      } catch (err) {
+                                        setAgentStatus(`Approval error: ${err?.message || 'Failed'}`);
+                                      }
+                                    }} style={{ padding: '7px 14px', borderRadius: 8, cursor: 'pointer' }}>Approve</button>
+                                    <button type="button" onClick={async () => {
+                                      try {
+                                        await window.evaDesktop.approveAgent(m.agentJobId, false);
+                                        setAgentStatus('Action rejected');
+                                        setAgentPending([]);
+                                      } catch (err) {
+                                        setAgentStatus(`Rejection error: ${err?.message || 'Failed'}`);
+                                      }
+                                    }} style={{ padding: '7px 14px', borderRadius: 8, cursor: 'pointer' }}>Reject</button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {m.runnable && !m.streaming ? <RunCodeButton messageText={m.text || ''} runnable={m.runnable} apiBase={API} token={token} /> : null}{m.streaming && !m.done && (
+                            <motion.span
+                              aria-hidden="true"
+                              initial={{ opacity: 0.35, scaleY: 0.72, scaleX: 0.8 }}
+                              animate={{
+                                opacity: [0.45, 1, 0.45],
+                                scaleY: [0.78, 1, 0.78],
+                                scaleX: [0.9, 1, 0.9],
+                                boxShadow: [
+                                  '0 0 0px var(--accent)',
+                                  '0 0 10px var(--accent)',
+                                  '0 0 0px var(--accent)'
+                                ]
+                              }}
+                              transition={{
+                                duration: 1.05,
+                                repeat: Infinity,
+                                ease: 'easeInOut'
+                              }}
+                              style={{
+                                display: 'inline-block',
+                                width: 3,
+                                height: 17,
+                                background: 'var(--accent)',
+                                borderRadius: 999,
+                                marginLeft: 4,
+                                verticalAlign: 'middle',
+                                transformOrigin: 'center'
+                              }}
+                            />
+                          )}</>
                         )
                       }
                     </div>
@@ -3471,8 +4031,9 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
                   <ProvenanceDetails show={isAssistantLikeMessage(m) && m.showProvenance} ragAudit={m.ragAudit} />
                   {isAssistantLikeMessage(m) && m.done && m.id !== 'init' && !loading && <MessageActions msg={m} />}
                 </div>
-              </div>
+              </motion.div>
           ))}
+          </AnimatePresence>
 
           {loading && !messages.find(m => m.streaming) && (
             <div className="eva-message-row eva-message-row-assistant">
@@ -3547,18 +4108,18 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
           )}
         </div>
 
-        {/* ── INLINE TOOL PANEL ── */}
+        {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ INLINE TOOL PANEL ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
         {activeTool && (
           <div style={{ margin: '0 16px 12px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                {activeTool === 'insights'  && '📊 Data Insights'}
-                {activeTool === 'sentiment' && '😊 Sentiment Analyzer'}
-                {activeTool === 'docintel' && '📑 Doc Intelligence'}
-                {activeTool === 'learning'  && '🎓 Learning Plan'}
-                {activeTool === 'resume'    && '📋 Resume Screener'}
+                {activeTool === 'insights'  && 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  Data Insights'}
+                {activeTool === 'sentiment' && 'ÃƒÂ°Ã…Â¸Ã‹Å“Ã…Â  Sentiment Analyzer'}
+                {activeTool === 'docintel' && 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Ëœ Doc Intelligence'}
+                {activeTool === 'learning'  && 'ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Å“ Learning Plan'}
+                {activeTool === 'resume'    && 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹ Resume Screener'}
               </div>
-              <button onClick={() => setActiveTool(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 18, cursor: 'pointer' }}>✕</button>
+              <button onClick={() => setActiveTool(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 18, cursor: 'pointer' }}>ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢</button>
             </div>
             <div style={{ padding: 14, maxHeight: 420, overflowY: 'auto' }}>
               {activeTool === 'sentiment' && <SentimentTool  API={API} />}
@@ -3654,7 +4215,7 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
           </div>
         )}
 
-        {/* ── INPUT AREA ─────────────────────────────────────── */}
+        {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ INPUT AREA ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
         <div className={isMobile ? 'eva-chat-input-area' : undefined} style={isMobile ? undefined : { display: 'contents' }}>
           {(activeSkill || lastUsedSkill) && (
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
@@ -3675,7 +4236,20 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
             </div>
           )}
           <div className="eva-chat-input-box">
-            <input type="file" ref={fileRef} style={{ display: 'none' }} accept=".pdf,.docx,.txt,.csv,.xlsx,.py,.css,.js,.json," onChange={e => { handleSelectedFile(e.target.files?.[0]); e.target.value = ''; }} />
+{window.evaDesktop?.isDesktop && (
+            <div style={{ position: 'relative', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', margin: '0 8px 0 10px' }}>
+              <button type="button" className="eva-chat-icon-button" onClick={chooseAgentFolder} title="Select project folder" aria-label="Select project folder">
+                <FolderOpen size={17} />
+              </button>
+              {agentPanelOpen && (
+                <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 100, width: 220, padding: 10, border: '1px solid var(--border-color, #444)', borderRadius: 12, background: 'var(--bg-secondary, #202020)', boxShadow: '0 8px 28px #0005', display: 'grid', gap: 8 }}>
+                  <button type="button" className="eva-chat-icon-button" onClick={async () => { await chooseAgentFolder(); setAgentPanelOpen(false); }}>
+                    {selectedAgentFolder ? 'Change folder' : 'Select folder'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}            <input type="file" ref={fileRef} style={{ display: 'none' }} accept=".pdf,.docx,.txt,.csv,.xlsx,.py,.css,.js,.json," onChange={e => { handleSelectedFile(e.target.files?.[0]); e.target.value = ''; }} />
             <input type="file" ref={imageRef} style={{ display: 'none' }} accept="image/png,image/jpeg,image/webp" onChange={e => { handleSelectedFile(e.target.files?.[0]); e.target.value = ''; }} />
 
             <div ref={plusRef} className="eva-chat-tools-anchor">
@@ -3713,6 +4287,9 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
             <textarea ref={textareaRef} value={input}
               onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 112) + 'px'; }}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+              onPaste={handleComposerPaste}
+              onDragOver={e => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); }}
+              onDrop={handleComposerDrop}
               placeholder={t('composer.placeholder')}
               rows={1}
               className="eva-chat-textarea" />
@@ -3742,11 +4319,11 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
             onCapture={(file) => handleSelectedFile(file)}
           />
 
-          {/* Update 62: JARVIS hands-free mode — one button, no new page. */}
+          {/* Update 62: JARVIS hands-free mode ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â one button, no new page. */}
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
             <JarvisMode />
           </div>
-          {!isMobile && <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--accent)', marginTop: 6 }}>Enter to send  •  Shift+Enter for new line  •  Esc to stop</div>}
+          {!isMobile && <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--accent)', marginTop: 6 }}>Enter to send {"\u2022"} Shift+Enter for new line {"\u2022"} Esc to stop</div>}
         </div>
       </div>
       {/* Feature Tools Modal */}
@@ -3976,6 +4553,15 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
         .eva-message-row {
           display: flex;
           width: 100%;
+          box-sizing: border-box;
+          backface-visibility: hidden;
+        }
+        @media (min-width: 769px) {
+          .eva-message-row-user,
+          .eva-message-row-assistant {
+            padding-left: 2px;
+            padding-right: 2px;
+          }
         }
         .eva-message-row-user {
           justify-content: flex-end;
@@ -4006,6 +4592,13 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
           word-break: break-word;
         }
         .eva-message-bubble-user {
+          transition:
+            box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1),
+            border-color 220ms ease,
+            filter 220ms ease,
+            transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+          transform-origin: right center;
+          will-change: transform, box-shadow;
           width: fit-content;
           min-width: 52px;
           max-width: 100%;
@@ -4015,6 +4608,22 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
           border: 1px solid var(--border2);
           border-radius: 18px 18px 4px 18px;
           box-shadow: 0 12px 32px var(--accent-soft);
+        }
+        @media (hover: hover) and (pointer: fine) {
+          .eva-message-bubble-user:hover {
+            border-color: var(--accent);
+            box-shadow:
+              0 16px 36px var(--accent-soft),
+              0 0 0 2px var(--accent-glow);
+            filter: brightness(1.035);
+            transform: translateY(-1px) scale(1.006);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .eva-message-bubble-user {
+            transition: none;
+            transform: none;
+          }
         }
         .eva-message-bubble-assistant {
           padding: 2px 0;
@@ -4316,3 +4925,13 @@ const EXPLICIT_IMAGE_WORD_RE = /\b(image|picture|photo|img|artwork|illustration|
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+

@@ -27,9 +27,9 @@ function getHeaders() {
 const LANGS = ['python']; // HF /code-run-test executes Python only
 
 // Code execution runs on the HF service (Python sandbox), not Render.
-const HF_CODE_API = process.env.REACT_APP_RAG_API_BASE || 'https://keshav1212-eva-ml-service.hf.space';
+const HF_CODE_API = process.env.REACT_APP_RAG_API_BASE || 'http://127.0.0.1:7860';
 
-// ── Code Sandbox Tab ───────────────────────────────────────────────────────────
+// â”€â”€ Code Sandbox Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function SandboxTab() {
   const [code, setCode] = useState('print("Hello from EVA Sandbox!")');
   const [language, setLanguage] = useState('python');
@@ -82,16 +82,16 @@ function SandboxTab() {
           {result.stdout && <pre style={S.pre}>{result.stdout}</pre>}
           {result.stderr && <pre style={{ ...S.pre, color: '#f87171' }}>{result.stderr}</pre>}
           {!result.stdout && !result.stderr && (
-            <span style={{ color: '#4a2d7a', fontSize: 12 }}>No output</span>
+            <span style={{ color: 'var(--text3)', fontSize: 12 }}>No output</span>
           )}
-          <div style={{ color: '#4a2d7a', fontSize: 11, marginTop: 6 }}>Return code: {result.returncode}</div>
+          <div style={{ color: 'var(--text3)', fontSize: 11, marginTop: 6 }}>Return code: {result.returncode}</div>
         </div>
       )}
     </div>
   );
 }
 
-// ── YouTube Monitor Tab ─────────────────────────────────────────────────────────
+// â”€â”€ YouTube Monitor Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function YouTubeTab({ API }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -162,8 +162,8 @@ function YouTubeTab({ API }) {
         {results.map((r, i) => (
           <div key={i} style={S.ytCard}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: '#e8e0ff', fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
-              <div style={{ color: '#4a2d7a', fontSize: 10 }}>{r.channel}</div>
+              <div style={{ color: 'var(--text)', fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
+              <div style={{ color: 'var(--text3)', fontSize: 10 }}>{r.channel}</div>
             </div>
             <button onClick={() => addMonitor(r)} style={S.iconBtn} title="Monitor this channel"><Bell size={12} /></button>
             <a href={r.url} target="_blank" rel="noreferrer" style={{ ...S.iconBtn, textDecoration: 'none', display: 'flex' }}><Play size={12} /></a>
@@ -172,9 +172,9 @@ function YouTubeTab({ API }) {
       </div>
       {monitors.length > 0 && (
         <div style={{ borderTop: '1px solid rgba(255,255,255,.06)', paddingTop: 8 }}>
-          <div style={{ color: '#4a2d7a', fontSize: 10, marginBottom: 6 }}>NEW VIDEO ALERTS</div>
+          <div style={{ color: 'var(--text3)', fontSize: 10, marginBottom: 6 }}>NEW VIDEO ALERTS</div>
           {monitors.map((m, i) => (
-            <div key={i} style={{ fontSize: 11, color: '#22c55e', padding: '3px 0' }}>🔔 {m.title}</div>
+            <div key={i} style={{ fontSize: 11, color: '#22c55e', padding: '3px 0' }}>ðŸ”” {m.title}</div>
           ))}
         </div>
       )}
@@ -182,7 +182,7 @@ function YouTubeTab({ API }) {
   );
 }
 
-// ── Website Monitor Tab ─────────────────────────────────────────────────────────
+// â”€â”€ Website Monitor Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function WebsiteTab({ API }) {
   const [url, setUrl] = useState('');
   const [monitors, setMonitors] = useState([]);
@@ -263,9 +263,9 @@ function WebsiteTab({ API }) {
       {error && <div style={S.errorBox}>{error}</div>}
       {changes.length > 0 && (
         <div style={{ borderTop: '1px solid rgba(255,255,255,.06)', paddingTop: 8 }}>
-          <div style={{ color: '#22c55e', fontSize: 11, marginBottom: 4 }}>🔔 {changes.length} change(s) detected</div>
+          <div style={{ color: '#22c55e', fontSize: 11, marginBottom: 4 }}>ðŸ”” {changes.length} change(s) detected</div>
           {changes.map((c, i) => (
-            <div key={i} style={{ fontSize: 11, color: '#e8e0ff', padding: '3px 0' }}>{c.label}: {c.word_diff > 0 ? '+' : ''}{c.word_diff} words</div>
+            <div key={i} style={{ fontSize: 11, color: 'var(--text)', padding: '3px 0' }}>{c.label}: {c.word_diff > 0 ? '+' : ''}{c.word_diff} words</div>
           ))}
         </div>
       )}
@@ -273,21 +273,21 @@ function WebsiteTab({ API }) {
         {monitors.map(m => (
           <div key={m.id} style={S.ytCard}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: '#e8e0ff', fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</div>
-              <div style={{ color: '#4a2d7a', fontSize: 10 }}>{m.changes?.length || 0} changes recorded</div>
+              <div style={{ color: 'var(--text)', fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</div>
+              <div style={{ color: 'var(--text3)', fontSize: 10 }}>{m.changes?.length || 0} changes recorded</div>
             </div>
             <button onClick={() => removeSite(m.id)} style={S.iconBtn} title="Remove"><Trash2 size={12} /></button>
           </div>
         ))}
-        {monitors.length === 0 && <div style={{ color: '#4a2d7a', fontSize: 12, textAlign: 'center', padding: 16 }}>No websites monitored yet.</div>}
+        {monitors.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 12, textAlign: 'center', padding: 16 }}>No websites monitored yet.</div>}
       </div>
     </div>
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // The Tools Center. Its own three tools plus any `extraTabs` the caller passes
-// — each { id, label, icon, render } — so surfaces that already exist elsewhere
+// â€” each { id, label, icon, render } â€” so surfaces that already exist elsewhere
 // (the Directory, the Skill Library) appear here as tabs rendered INSIDE this
 // modal rather than as competing modal layers. The caller owns those
 // components; this file neither imports nor re-implements them.
@@ -313,7 +313,7 @@ export default function FeatureTools({ open, onClose, initialTab = 'sandbox', AP
       <button type="button" onClick={onClose} style={S.backdrop} aria-label="Close" />
       <div style={wide ? { ...S.modal, ...S.modalWide } : S.modal}>
         <div style={S.header}>
-          <span style={{ color: '#f0e8ff', fontSize: 14, fontWeight: 800 }}>EVA Tools</span>
+          <span style={{ color: 'var(--text)', fontSize: 14, fontWeight: 800 }}>EVA Tools</span>
           <button type="button" onClick={onClose} style={S.closeBtn}><X size={16} /></button>
         </div>
         <div style={S.tabRow}>
@@ -338,27 +338,28 @@ export default function FeatureTools({ open, onClose, initialTab = 'sandbox', AP
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const S = {
   backdrop: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 1100, border: 'none', cursor: 'default' },
   // Both widths are viewport-capped first (96vw), so the modal can never exceed
   // the screen and no horizontal overflow is introduced on small screens; the
   // pixel cap only applies once there is room for it.
   modalWide: { width: 'min(96vw, 880px)' },
-  modal: { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(96vw, 600px)', maxHeight: '85vh', background: 'rgba(7,4,15,.97)', backdropFilter: 'blur(24px)', border: '1px solid rgba(124,58,237,.2)', borderRadius: 16, zIndex: 1101, display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(0,0,0,.8)', overflow: 'hidden' },
+  modal: { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(96vw, 600px)', maxHeight: '85vh', background: 'var(--surface)', backdropFilter: 'blur(24px)', border: '1px solid rgba(124,58,237,.2)', borderRadius: 16, zIndex: 1101, display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(0,0,0,.8)', overflow: 'hidden' },
   header: { display: 'flex', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,.06)', flexShrink: 0 },
-  closeBtn: { marginLeft: 'auto', background: 'none', border: 'none', color: '#4a2d7a', cursor: 'pointer', display: 'flex' },
+  closeBtn: { marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', display: 'flex' },
   tabRow: { display: 'flex', gap: 4, padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,.05)', flexShrink: 0, flexWrap: 'wrap' },
-  tabBtn: { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,.08)', background: 'transparent', color: '#6b47a8', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
-  tabBtnActive: { background: 'rgba(124,58,237,.2)', borderColor: 'rgba(124,58,237,.4)', color: '#c084fc' },
+  tabBtn: { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,.08)', background: 'transparent', color: 'var(--text2)', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  tabBtnActive: { background: 'color-mix(in srgb, var(--accent) 20%, transparent)', border: '1px solid rgba(124,58,237,.4)', color: 'var(--accent)' },
   body: { flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 },
-  select: { background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '7px 10px', color: '#e8e0ff', fontSize: 12 },
-  input: { flex: 1, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '7px 10px', color: '#e8e0ff', fontSize: 12, outline: 'none' },
+  select: { background: 'var(--surface2)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '7px 10px', color: 'var(--text)', fontSize: 12 },
+  input: { flex: 1, background: 'var(--surface2)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '7px 10px', color: 'var(--text)', fontSize: 12, outline: 'none' },
   runBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
-  codeArea: { background: '#020617', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: 12, color: '#cdd5e0', fontSize: 12, fontFamily: 'monospace', resize: 'vertical', outline: 'none' },
-  resultBox: { background: '#020617', border: '1px solid rgba(255,255,255,.06)', borderRadius: 8, padding: 10, maxHeight: 160, overflowY: 'auto' },
-  pre: { margin: 0, fontSize: 12, color: '#cdd5e0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+  codeArea: { background: 'var(--bg)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: 12, color: 'var(--text2)', fontSize: 12, fontFamily: 'monospace', resize: 'vertical', outline: 'none' },
+  resultBox: { background: 'var(--bg)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 8, padding: 10, maxHeight: 160, overflowY: 'auto' },
+  pre: { margin: 0, fontSize: 12, color: 'var(--text2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
   errorBox: { background: 'rgba(248,113,113,.1)', border: '1px solid rgba(248,113,113,.2)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#f87171' },
-  ytCard: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 8 },
-  iconBtn: { background: 'none', border: '1px solid rgba(255,255,255,.08)', borderRadius: 6, color: '#6b47a8', cursor: 'pointer', padding: 5, alignItems: 'center', justifyContent: 'center' },
+  ytCard: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface2)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 8 },
+  iconBtn: { background: 'none', border: '1px solid rgba(255,255,255,.08)', borderRadius: 6, color: 'var(--text2)', cursor: 'pointer', padding: 5, alignItems: 'center', justifyContent: 'center' },
 };
+

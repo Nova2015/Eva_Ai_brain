@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 
 // RAG document storage lives on the HF service (persistent Supabase), not Render.
-const RAG_API = process.env.REACT_APP_RAG_API_BASE || 'https://keshav1212-eva-ml-service.hf.space';
+const RAG_API = process.env.REACT_APP_RAG_API_BASE || 'http://127.0.0.1:7860';
 
 export default function Upload({ API }) {
   const [uploadStatus, setUploadStatus] = useState('');

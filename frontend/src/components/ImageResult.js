@@ -114,18 +114,34 @@ export default function ImageResult({
       </div>
 
       <div className="eva-img-actions">
+        <span style={{ color: 'red', fontSize: 11}}>  
+          UPSCLE-TEST
+        </span>
+        
         <button type="button" disabled={!!busy} onClick={() => run('regen', onRegenerate)}>
           <RefreshCw size={13} className={busy === 'regen' ? 'eva-img-spin' : ''} /> Regenerate
         </button>
+
         <button type="button" disabled={!!busy} onClick={() => run('vary', onVariations)}>
           <Sparkles size={13} className={busy === 'vary' ? 'eva-img-spin' : ''} /> Variations
         </button>
+
+        <button
+          type="button"
+          disabled={!!busy || !onUpscale}
+          onClick={() => run('upscale', onUpscale, images[0])}
+        >
+          <ZoomIn size={13} className={busy === 'upscale' ? 'eva-img-spin' : ''} />
+          Upscale
+        </button>
+
         <button
           type="button"
           onClick={() => { navigator.clipboard.writeText(prompt); flash('Prompt copied'); }}
         >
           <Copy size={13} /> Copy prompt
         </button>
+
         {toast && <span className="eva-img-toast">{toast}</span>}
       </div>
 

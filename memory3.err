@@ -1,0 +1,5 @@
+/COM,ANSYS RELEASE 2025 R2           BUILD 25.2      UP20250519       10:27:20
+
+ *** ERROR ***                           CP =       4.750   TIME= 10:27:23
+ Data file E:\code\Rag project\memory.db has incorrect format, is        
+ missing READ/WRITE permission, or is empty for RESUME.                  

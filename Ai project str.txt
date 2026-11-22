@@ -1,0 +1,80 @@
+Ai project 
+|-Frontent
+| |- aria Dasboard
+| |- build
+| |- node_models
+| |- Public
+| └─ src
+|    |- componets
+|    |   |- Topbar.js
+|    |   |- Sidebar.js
+|    |   |- SecurityDashboard.js            (not undate)
+|    |   |- ThreatMonitor.js                (not undate)
+|    |   └─ SecurityLogs.js (not undate)
+|    |- pages
+|    |   |- Analytics.js
+|    |   |- Chat.js
+|    |   |- DibgitClassifier
+|    |   |- index.html
+|    |   |- IPLPredictor.js
+|    |   |- Login.js
+|    |   |- ML.js
+|    |   |- Setting.js
+|    |   |- Studio.js
+|    |   |- temCodeRunnerFile.js
+|    |   └─ Upload.js
+|    |- api
+|    |- App.css
+|    |- App.js
+|    |- App.test
+|    |- index.css
+|    |- index.js
+|    |- logo
+|    └─ setTests
+└─.env
+|           
+└─src
+  |- ml_model
+  |-__init__.py
+  |- model
+  |- uploads
+  |- ai_routs.py
+  |- app.py
+  |- image_generato.py
+  |- index.html
+  |- llm_fallback.py
+  |- memory_manager.py
+  |- ml_advanced.py
+  |- ml_engine.py
+  |- multi_user_rag.py  
+  |- ocr_indexer.py
+  |- patch.py
+  |- patch_render.py
+  |- patch2.py 
+  |- rang_pipline.py
+  |- requirements.txt
+  |- video_generator.py
+  |- security_routes.py                     (not undate)
+  |- security_config.py                     (not undate)
+  └─ security
+     |-__init__.py
+     |- vector_db_guard.py                 
+     |- hallucination_detector.py           
+     |- pii_detector.py                
+     |- secure_memory.py                  
+     |- audit_monitor.py                      
+     |- model_router_security.py               
+     |- rag_policy_engine.py                   
+     |- prompt_guard.py                       
+     |- rag_guard.py                           
+     |- output_guard.py                        
+     |- auth_guard.py                          
+     |- threat_detector.py                     
+     |- rate_limiter.py                        
+     |- security_logger.py
+     |- api_gateway_guard.py
+     |- zero_trust_security.py
+     |- jwt_guard.py
+     |- aws_iam_guard.py
+     |- bedrock_guard.py                 
+     └─ai_firewall.py                         

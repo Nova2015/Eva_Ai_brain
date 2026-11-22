@@ -1,15 +1,15 @@
 """
 EVA Model Router
 ================
-Intent detection → best LLM selection → fallback cascade
-Supports: Groq (Llama) · Gemini Flash · Qwen · GPT-4o-mini · Claude
+Intent detection â†’ best LLM selection â†’ fallback cascade
+Supports: Groq (Llama) Â· Gemini Flash Â· Qwen Â· GPT-4o-mini Â· Claude
 
 Flow:
   User Query
-    ↓ ML Intent Detection
-    ↓ Model Router
-    ↓ Best LLM
-    ↓ Answer
+    â†“ ML Intent Detection
+    â†“ Model Router
+    â†“ Best LLM
+    â†“ Answer
 """
 
 import os
@@ -19,7 +19,7 @@ from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-# ── Intent patterns (lightweight ML classifier) ───────────────────────────────
+# â”€â”€ Intent patterns (lightweight ML classifier) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import re
 
 INTENT_PATTERNS = {
@@ -31,20 +31,21 @@ INTENT_PATTERNS = {
     "search":   re.compile(r"\b(find|search|look up|retrieve|get me|where is|list all|show me)\b", re.I),
 }
 
-# ── Model routing table ───────────────────────────────────────────────────────
+# â”€â”€ Model routing table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 MODEL_ROUTES: Dict[str, Dict[str, Any]] = {
-    "code":     {"provider": "eva_local",   "model": "qwen2.5:3b",         "fallback": "gemini"},
-    "document": {"provider": "eva_local",   "model": "qwen2.5:3b",         "fallback": "gemini"},
-    "learning": {"provider": "eva_local",   "model": "qwen2.5:3b",         "fallback": "gemini"},
-    "analysis": {"provider": "eva_local",   "model": "qwen2.5:3b",         "fallback": "gemini"},
-    "security": {"provider": "eva_local",   "model": "qwen2.5:3b",         "fallback": "gemini"},
-    "search":   {"provider": "eva_local",   "model": "qwen2.5:3b",         "fallback": "gemini"},
-    "general":  {"provider": "eva_local",   "model": "qwen2.5:3b",         "fallback": "gemini"},
+    "code":     {"provider": "eva_local",   "model": "gemma3:12b",         "fallback": None},
+    "document": {"provider": "eva_local",   "model": "gemma3:12b",         "fallback": None},
+    "learning": {"provider": "eva_local",   "model": "gemma3:12b",         "fallback": None},
+    "analysis": {"provider": "eva_local",   "model": "gemma3:12b",         "fallback": None},
+    "security": {"provider": "eva_local",   "model": "gemma3:12b",         "fallback": None},
+    "search":   {"provider": "eva_local",   "model": "gemma3:12b",         "fallback": None},
+    "general":  {"provider": "eva_local",   "model": "gemma3:12b",         "fallback": None},
 }
 
-# ── Env keys ──────────────────────────────────────────────────────────────────
+# â”€â”€ Env keys â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
-# OPENAI_KEY intentionally excluded — paid. Add manually if needed.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+# OPENAI_KEY intentionally excluded â€” paid. Add manually if needed.
 
 EVA_SYSTEM = """You are EVA (Embedded Virtual Assistant), an intelligent AI for coding, learning, and knowledge work.
 - Be concise, precise, and helpful.
@@ -106,7 +107,7 @@ def _provider_for_model(model: str, default_provider: str) -> str:
     return default_provider
 
 
-# ── LLM callers (free providers only) ────────────────────────────────────────
+# â”€â”€ LLM callers (free providers only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _call_groq(prompt: str, model: str, system: str, history: List[Dict] = None, max_tokens: int = 1024, temperature: float = 0.3) -> str:
     if not GROQ_KEY:
@@ -151,11 +152,11 @@ def _call_gemini(prompt: str, model: str, system: str, history: List[Dict] = Non
 def _call_eva_local(prompt: str, model: str, system: str, history: List[Dict] = None,
                     max_tokens: int = 1024, temperature: float = 0.3) -> str:
     """EVA Server Local (Phase 2 Step 8). Delegates to the backend provider
-    abstraction — no duplicated HTTP or model literal here. Config-driven
+    abstraction â€” no duplicated HTTP or model literal here. Config-driven
     (registry-first, env fallback via providers.eva_local_resolve); requires no
     cloud API key. Reached only when a route/mode selects provider='eva_local';
     the default cloud routes never do."""
-    import providers
+    from src import providers
     messages = [{"role": "system", "content": _chart_system_prompt(system, prompt)}]
     for h in (history or []):
         messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
@@ -165,7 +166,7 @@ def _call_eva_local(prompt: str, model: str, system: str, history: List[Dict] = 
     return (content or "").strip()
 
 
-# ── Main router function ──────────────────────────────────────────────────────
+# â”€â”€ Main router function â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def route_and_call(
     query: str,
@@ -180,7 +181,7 @@ def route_and_call(
 ) -> Dict[str, Any]:
     """
     Main entry point.
-    Detects intent → selects best model → calls LLM → returns answer.
+    Detects intent â†’ selects best model â†’ calls LLM â†’ returns answer.
 
     Args:
         mode: Optional mode config from modes.registry.resolve_mode(). When
@@ -215,58 +216,30 @@ def route_and_call(
     # Build full prompt with context and memory
     full_prompt = _build_prompt(query, context, memory)
 
-    provider = route["provider"]
-    model = route["model"]
-
-    # A mode may pin the model. Re-derive the provider so the model id is not
-    # handed to the wrong SDK.
-    if mode and mode.get("model"):
-        model = mode["model"]
-        provider = _provider_for_model(model, provider)
+    # LOCAL-ONLY ROUTING:
+    # Never derive a cloud provider from a mode/model name and never invoke
+    # Gemini/Groq as a fallback. The actual Ollama model is resolved by the
+    # local provider configuration (registry / environment).
+    provider = "eva_local"
+    model = route.get("model", "gemma3:12b")
 
     used_fallback = False
     answer = ""
     error_chain = []
 
-    # ── Primary call ──────────────────────────────────────
     try:
-        if provider == "groq":
-            answer = _call_groq(full_prompt, model, sys_prompt, history, max_tokens, temperature)
-        elif provider == "gemini":
-            answer = _call_gemini(full_prompt, model, sys_prompt, history, temperature)
-        elif provider == "eva_local":
-            # Config-driven local provider (Step 8). Dormant unless a route/mode
-            # selects it — the default MODEL_ROUTES are cloud, so this is unused
-            # in today's behaviour.
-            answer = _call_eva_local(full_prompt, model, sys_prompt, history, max_tokens, temperature)
+        answer = _call_eva_local(
+            full_prompt, model, sys_prompt, history, max_tokens, temperature
+        )
     except Exception as e:
         error_chain.append(f"{provider}/{model}: {e}")
-        logger.warning(f"Primary LLM failed ({provider}/{model}): {e}")
-
-        # ── Fallback cascade (free only) ──────────────────────
-        used_fallback = True
-        fallback = route.get("fallback", "groq_llama")
-
-        # Try Groq Llama as fallback
-        if fallback == "groq_llama" and GROQ_KEY:
-            try:
-                answer = _call_groq(full_prompt, "llama-3.3-70b-versatile", sys_prompt, history, max_tokens, temperature)
-                provider, model = "groq", "llama-3.3-70b-versatile"
-            except Exception as e2:
-                error_chain.append(f"groq/llama: {e2}")
-
-        # Try Gemini Flash as final free fallback
-        if not answer and GEMINI_KEY:
-            try:
-                answer = _call_gemini(full_prompt, "gemini-1.5-flash", sys_prompt, history, temperature)
-                provider, model = "gemini", "gemini-1.5-flash"
-            except Exception as e3:
-                error_chain.append(f"gemini/flash: {e3}")
+        logger.error("EVA local model failed (%s/%s): %s", provider, model, e)
 
     if not answer:
         answer = (
-            "All LLM providers failed. Please check your API keys in .env file.\n"
-            f"Errors: {'; '.join(error_chain)}"
+            "EVA Local Model is unavailable. Please check that Ollama is running "
+            "and the configured local model is installed.\n"
+            f"Details: {'; '.join(error_chain) if error_chain else 'The local model returned an empty response.'}"
         )
 
     latency = int((time.time() - t0) * 1000)
@@ -294,3 +267,6 @@ def _build_prompt(query: str, context: str = "", memory: str = "") -> str:
         parts.append(f"[Retrieved Context]\n{context.strip()[:2000]}")
     parts.append(f"[Question]\n{query}")
     return "\n\n".join(parts)
+
+
+

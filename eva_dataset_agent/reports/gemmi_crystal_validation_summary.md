@@ -1,0 +1,65 @@
+# EVA Gemmi Crystal Validation
+
+- Gemmi: 0.7.5
+- CIF files: 50
+- PASS: 50
+- REVIEW: 0
+
+## Per-file results
+- mp-1001825.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1057216.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1094135.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1094567.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1094568.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1094600.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1094673.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1101854.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1103120.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1180489.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1180520.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1183341.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1184918.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185253.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185257.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185266.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185275.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185332.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185336.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185337.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185411.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185431.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185455.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185461.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185469.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1185471.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1222412.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1222413.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1232999.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1235252.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1236127.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1236522.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-1546006.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-22902.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-2475638.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-2659.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-569073.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-862658.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-862716.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-865939.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-972285.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-973455.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-973741.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-973748.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-974959.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-975906.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-975909.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-976262.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-976272.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+- mp-995393.cif: PASS (parse=PASS, cell=PASS, atoms=PASS, formula=PASS)
+
+## Limitations
+- This is basic CIF parsing and consistency validation.
+- It does not prove physical correctness or experimental validity.
+- It does not perform full symmetry expansion or bonding validation.
+- Formula comparison supports simple element-count formulas only.
+- A PASS is not approval for model training.

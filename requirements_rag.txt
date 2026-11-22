@@ -1,0 +1,26 @@
+# EVA RAG v2 — Required packages
+# Run: pip install -r requirements_rag.txt
+
+# ── Core RAG ──────────────────────────────────────────────
+sentence-transformers==2.7.0     # Free local embeddings (all-MiniLM-L6-v2, 80MB)
+chromadb==0.5.3                  # Free local vector DB, persistent
+rank_bm25==0.2.2                 # BM25 keyword search
+
+# ── LLM Providers — 100% FREE ─────────────────────────────
+groq==0.9.0                      # Free tier: 14,400 tokens/min (openai/gpt-oss-120b, Qwen Coder)
+google-generativeai==0.7.2       # Free tier: 1500 req/day (Gemini 1.5 Flash)
+
+# ── NOT included (paid) ────────────────────────────────────
+# openai — $0.15/1M tokens — only add if you already have a key
+# anthropic — paid — only add if you already have a key
+
+# ── Document parsing ───────────────────────────────────────
+pypdf==4.2.0                     # PDF text extraction
+python-docx==1.1.2               # DOCX extraction
+httpx==0.27.0                    # Async URL fetching
+
+# ── Already in your app.py ────────────────────────────────
+# fastapi
+# pydantic
+# python-jose[cryptography]
+# slowapi

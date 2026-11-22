@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const defaultApi = window.location.hostname === 'localhost'
-  ? 'http://127.0.0.1:3000'
-  : 'https://eva-ai-1-9wfc.onrender.com';
+  ? 'http://127.0.0.1:8000'
+  : 'http://127.0.0.1:8000';
 
 const tabs = ['My Agents', 'Client Jobs', 'Create Agent', 'Agent Templates', 'Agent Marketplace', 'Agent Analytics', 'Agent Chat'];
 const tabLabels = {
@@ -27,7 +27,7 @@ const agentChatQuickPrompts = [
 ];
 
 const modelOptions = [
-  'llama-3.3-70b-versatile',
+  'openai/gpt-oss-120b',
   'qwen3-coder',
   'gemma2-9b-it',
   'mixtral-8x7b',
@@ -267,7 +267,7 @@ export default function AIStudio({ API = defaultApi, initialTab = 'My Agents' })
           name: source.name,
           description: source.description || '',
           system_prompt: source.system_prompt || 'You are a helpful AI agent.',
-          model: source.model || 'llama-3.3-70b-versatile',
+          model: source.model || 'openai/gpt-oss-120b',
           knowledge_base: source.knowledge_base || [],
           tools: source.tools || [],
           avatar: source.avatar || initials(source.name),
@@ -311,7 +311,7 @@ export default function AIStudio({ API = defaultApi, initialTab = 'My Agents' })
       name: template.name,
       description: template.description || '',
       system_prompt: template.system_prompt || '',
-      model: template.model || 'llama-3.3-70b-versatile',
+      model: template.model || 'openai/gpt-oss-120b',
       knowledge_base: (template.knowledge_base || []).join('\n'),
       tools: template.tools || [],
       avatar: template.avatar || initials(template.name),
@@ -325,7 +325,7 @@ export default function AIStudio({ API = defaultApi, initialTab = 'My Agents' })
       name: template.name,
       description: template.description || '',
       system_prompt: template.system_prompt || 'You are a helpful AI agent.',
-      model: template.model || 'llama-3.3-70b-versatile',
+      model: template.model || 'openai/gpt-oss-120b',
       knowledge_base: template.knowledge_base || [],
       tools: template.tools || [],
       avatar: template.avatar || initials(template.name),
@@ -3462,3 +3462,4 @@ function formatFileSize(bytes) {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
+

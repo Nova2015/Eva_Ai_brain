@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
 const defaultApi = window.location.hostname === 'localhost'
-  ? 'http://localhost:8002'
-  : 'https://eva-ai-1-9wfc.onrender.com';
+  ? 'http://127.0.0.1:8000'
+  : 'http://127.0.0.1:8000';
 
 const tabs = ['Organization', 'Members', 'Roles', 'Shared Chats', 'Shared Documents', 'Shared Memory', 'Usage Analytics'];
 
@@ -519,3 +519,4 @@ function UsageList({ rows }) {
     </div>
   );
 }
+

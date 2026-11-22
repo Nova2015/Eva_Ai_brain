@@ -57,7 +57,7 @@
             "last 1 safari version"
         ]
     },
-    "proxy": "https://epidemic-kindle-greedless.ngrok-free.dev",
+    "proxy": "http://127.0.0.1:8000",
     "allowScripts": {
         "@firebase/util@1.15.1": true,
         "core-js": true,
@@ -66,7 +66,7 @@
     },
     "devDependencies": {
         "concurrently": "^10.0.5",
-        "electron": "^44.3.0",
+        "electron": "^44.7.2",
         "electron-builder": "^26.15.3",
         "wait-on": "^9.1.0"
     },

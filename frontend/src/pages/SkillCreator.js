@@ -5,7 +5,7 @@ import { useState } from 'react';
 // optional "from screen recording" path that drafts the same fields via the HF
 // ML service (POST /skill/from-video). The manual flow is unchanged.
 
-const RAG_API = process.env.REACT_APP_RAG_API_BASE || 'https://keshav1212-eva-ml-service.hf.space';
+const RAG_API = process.env.REACT_APP_RAG_API_BASE || 'http://127.0.0.1:7860';
 
 const TOKEN_KEYS = ['aria_token', 'token', 'access_token', 'authToken'];
 const getToken = () => TOKEN_KEYS.map((k) => localStorage.getItem(k)).find(Boolean) || '';

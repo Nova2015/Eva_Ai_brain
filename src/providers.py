@@ -14,8 +14,8 @@ Behaviour-preserving by construction. It changes no answer and no order:
   * PROVIDER_ORDER controls the configured cloud/local order, the exact order the old backend
     cascade already tried.
   * Model strings are the exact literals the old backend used (groq
-    llama-3.3-70b-versatile, openai gpt-4o-mini). Gemini is the exception: its
-    literal was gemini-1.5-flash, which Google has since retired, so the pin
+    openai/gpt-oss-120b, openai gpt-4o-mini). Gemini is the exception: its
+    literal was gemini-3.5-flash, which Google has since retired, so the pin
     that was meant to preserve behaviour instead returned MODEL_NOT_FOUND on
     every call and removed Gemini from the cascade entirely. It now reads
     GEMINI_MODEL  the variable the ML service and llm_fallback already use  and
@@ -55,15 +55,21 @@ __all__ = [
 #  Provider registry 
 PROVIDER_SPECS: Dict[str, Dict[str, str]] = {
     "openai": {"label": "OpenAI", "env": "OPENAI_API_KEY", "model": "gpt-4o-mini"},
-    # gemini-1.5-flash was retired by Google and now answers MODEL_NOT_FOUND, so
+    
+    # gemini-3.5-flash was retired by Google and now answers MODEL_NOT_FOUND, so
     # the pin that used to preserve behaviour had silently killed this leg of the
     # cascade. Operator-overridable, with a LIVE default so it works unset.
     "gemini": {"label": "Gemini", "env": "GEMINI_API_KEY",
                "model": (os.getenv("GEMINI_MODEL") or "").strip() or "gemini-2.5-flash"},
+    "groq": {
+    "label": "Groq",
+    "env": "GROQ_API_KEY",
+    "model": "openai/gpt-oss-120b",
+    },
     # Local Ollama backstop (JARVIS 3): an OpenAI-compatible endpoint on your own
     # infra, independent of every cloud free-tier quota. "configured" = OLLAMA_URL
     # is set, so it is skipped cleanly when there is no host. LAST in the order.
-    "local":  {"label": "Local",  "env": "OLLAMA_URL",     "model": os.getenv("OLLAMA_MODEL", "qwen2.5:3b")},
+    "local":  {"label": "Local",  "env": "OLLAMA_URL",     "model": os.getenv("OLLAMA_MODEL", "gemma3:12b")},
     # EVA Server Local (Phase 2 Step 8): the same config-driven local capability
     # eva-ml-service has, mirrored here WITHOUT shared code. Config comes from the
     # registry first (none in the backend today) then the env bootstrap
@@ -77,7 +83,7 @@ PROVIDER_SPECS: Dict[str, Dict[str, str]] = {
 # configured on this deployment (see the Update 54 note on _llm_fallback);
 # then OpenAI, then Gemini, then the Local backstop LAST €” a pure floor that
 # changes nothing until the cloud providers ahead of it have all failed.
-PROVIDER_ORDER: List[str] = ["local", "gemini"]
+PROVIDER_ORDER: List[str] = ["groq", "openai", "gemini", "local"]
 
 ERROR_CODES: Tuple[str, ...] = (
     "RATE_LIMITED", "AUTH", "TIMEOUT", "MODEL_NOT_FOUND", "EMPTY_RESPONSE", "ERROR",
@@ -452,6 +458,22 @@ def _messages_with_optional_temperature(model: str, messages: List[Dict[str, str
     return kwargs
 
 
+def _call_groq(messages: List[Dict[str, str]], model: str,
+               max_tokens: int, temperature: Optional[float]) -> str:
+    api_key = os.getenv("GROQ_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY not set")
+
+    from groq import Groq
+
+    client = Groq(api_key=api_key)
+    resp = client.chat.completions.create(
+        **_messages_with_optional_temperature(
+            model, messages, max_tokens, temperature
+        )
+    )
+    return resp.choices[0].message.content or ""
+
 def _call_openai(messages: List[Dict[str, str]], model: str,
                  max_tokens: int, temperature: Optional[float]) -> str:
     import openai
@@ -611,12 +633,15 @@ def stream_eva_local(messages: List[Dict[str, str]], *, max_tokens: int = 1024,
         record("eva_local", ok=False, code="EMPTY_RESPONSE", latency_ms=latency_ms)
 
 
+
 _ADAPTERS: Dict[str, Callable[[List[Dict[str, str]], str, int, Optional[float]], str]] = {
-    "openai": _call_openai,
+    "groq": _call_groq,
     "gemini": _call_gemini,
+    "openai": _call_openai,
     "local": _call_local,
     "eva_local": _call_eva_local,
 }
+
 
 
 #  Dispatch / failover / cascade 

@@ -1,4 +1,4 @@
-﻿"""Understanding â€” Step 3 of the Cognitive Engine.
+"""Understanding â€” Step 3 of the Cognitive Engine.
 
 This is NOT an intent classifier. A classifier answers "what kind of question
 is this" and stops. This stage answers four things, and the last two are what

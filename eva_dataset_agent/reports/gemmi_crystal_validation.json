@@ -1,0 +1,1473 @@
+{
+  "created_utc": "2026-11-05T08:29:00.445433+00:00",
+  "gemmi_version": "0.7.5",
+  "csv_path": "D:\\Eva_Ai_brain\\eva_dataset_agent\\workspace\\validated\\materials_cleaned.csv",
+  "csv_sha256": "2b18945d53689c23c3356579a857ebc2dc479c9d164655a718288fda07aed105",
+  "cif_directory": "D:\\Eva_Ai_brain\\archive\\cif_files",
+  "cif_file_count": 50,
+  "csv_material_count": 21747,
+  "overall_counts": {
+    "PASS": 50
+  },
+  "passed": 50,
+  "review": 0,
+  "results": [
+    {
+      "file": "mp-1001825.cif",
+      "material_id": "mp-1001825",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiBe",
+      "cell": {
+        "_cell_length_a": 3.720967,
+        "_cell_length_b": 2.258778,
+        "_cell_length_c": 5.45480548,
+        "_cell_angle_alpha": 76.59505175,
+        "_cell_angle_beta": 90.0,
+        "_cell_angle_gamma": 90.0
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Be",
+        "Li"
+      ],
+      "csv_formula": "LiBe",
+      "cif_formula": "LiBe"
+    },
+    {
+      "file": "mp-1057216.cif",
+      "material_id": "mp-1057216",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiS",
+      "cell": {
+        "_cell_length_a": 4.29883593,
+        "_cell_length_b": 4.29883593,
+        "_cell_length_c": 4.29883593,
+        "_cell_angle_alpha": 139.2627337,
+        "_cell_angle_beta": 139.2627337,
+        "_cell_angle_gamma": 58.97446239
+      },
+      "atom_site_rows": 2,
+      "elements_in_atom_sites": [
+        "Li",
+        "S"
+      ],
+      "csv_formula": "LiS",
+      "cif_formula": "LiS"
+    },
+    {
+      "file": "mp-1094135.cif",
+      "material_id": "mp-1094135",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiO2",
+      "cell": {
+        "_cell_length_a": 4.19837889,
+        "_cell_length_b": 4.19837889,
+        "_cell_length_c": 4.14137099,
+        "_cell_angle_alpha": 61.9786555,
+        "_cell_angle_beta": 61.9786555,
+        "_cell_angle_gamma": 88.79297862
+      },
+      "atom_site_rows": 6,
+      "elements_in_atom_sites": [
+        "Li",
+        "O"
+      ],
+      "csv_formula": "LiO2",
+      "cif_formula": "LiO2"
+    },
+    {
+      "file": "mp-1094567.cif",
+      "material_id": "mp-1094567",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiMg3",
+      "cell": {
+        "_cell_length_a": 5.32268846,
+        "_cell_length_b": 5.32268846,
+        "_cell_length_c": 5.32268846,
+        "_cell_angle_alpha": 129.43611603,
+        "_cell_angle_beta": 129.43611603,
+        "_cell_angle_gamma": 74.30984949
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Mg"
+      ],
+      "csv_formula": "LiMg3",
+      "cif_formula": "LiMg3"
+    },
+    {
+      "file": "mp-1094568.cif",
+      "material_id": "mp-1094568",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiMg",
+      "cell": {
+        "_cell_length_a": 5.90261616,
+        "_cell_length_b": 5.90261616,
+        "_cell_length_c": 5.3552067,
+        "_cell_angle_alpha": 63.83838951,
+        "_cell_angle_beta": 63.83838951,
+        "_cell_angle_gamma": 30.32935172
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Mg"
+      ],
+      "csv_formula": "LiMg",
+      "cif_formula": "LiMg"
+    },
+    {
+      "file": "mp-1094600.cif",
+      "material_id": "mp-1094600",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiMg2",
+      "cell": {
+        "_cell_length_a": 5.88579166,
+        "_cell_length_b": 5.88579166,
+        "_cell_length_c": 7.37704918,
+        "_cell_angle_alpha": 75.29884993,
+        "_cell_angle_beta": 75.29884993,
+        "_cell_angle_gamma": 31.57851631
+      },
+      "atom_site_rows": 6,
+      "elements_in_atom_sites": [
+        "Li",
+        "Mg"
+      ],
+      "csv_formula": "LiMg2",
+      "cif_formula": "LiMg2"
+    },
+    {
+      "file": "mp-1094673.cif",
+      "material_id": "mp-1094673",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiMg",
+      "cell": {
+        "_cell_length_a": 3.378185,
+        "_cell_length_b": 3.378185,
+        "_cell_length_c": 3.55261,
+        "_cell_angle_alpha": 90.0,
+        "_cell_angle_beta": 90.0,
+        "_cell_angle_gamma": 90.0
+      },
+      "atom_site_rows": 2,
+      "elements_in_atom_sites": [
+        "Li",
+        "Mg"
+      ],
+      "csv_formula": "LiMg",
+      "cif_formula": "LiMg"
+    },
+    {
+      "file": "mp-1101854.cif",
+      "material_id": "mp-1101854",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiB11",
+      "cell": {
+        "_cell_length_a": 5.18627592,
+        "_cell_length_b": 5.18627592,
+        "_cell_length_c": 5.18627592,
+        "_cell_angle_alpha": 128.38440513,
+        "_cell_angle_beta": 128.38440513,
+        "_cell_angle_gamma": 76.00312934
+      },
+      "atom_site_rows": 12,
+      "elements_in_atom_sites": [
+        "B",
+        "Li"
+      ],
+      "csv_formula": "LiB11",
+      "cif_formula": "LiB11"
+    },
+    {
+      "file": "mp-1103120.cif",
+      "material_id": "mp-1103120",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiB11",
+      "cell": {
+        "_cell_length_a": 4.75390086,
+        "_cell_length_b": 4.75390086,
+        "_cell_length_c": 4.75390086,
+        "_cell_angle_alpha": 110.18791289,
+        "_cell_angle_beta": 110.18791289,
+        "_cell_angle_gamma": 108.04715304
+      },
+      "atom_site_rows": 12,
+      "elements_in_atom_sites": [
+        "B",
+        "Li"
+      ],
+      "csv_formula": "LiB11",
+      "cif_formula": "LiB11"
+    },
+    {
+      "file": "mp-1180489.cif",
+      "material_id": "mp-1180489",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiN",
+      "cell": {
+        "_cell_length_a": 5.77086135,
+        "_cell_length_b": 5.77086135,
+        "_cell_length_c": 5.77086135,
+        "_cell_angle_alpha": 132.36297183,
+        "_cell_angle_beta": 132.36297183,
+        "_cell_angle_gamma": 69.65635296
+      },
+      "atom_site_rows": 8,
+      "elements_in_atom_sites": [
+        "Li",
+        "N"
+      ],
+      "csv_formula": "LiN",
+      "cif_formula": "LiN"
+    },
+    {
+      "file": "mp-1180520.cif",
+      "material_id": "mp-1180520",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiS",
+      "cell": {
+        "_cell_length_a": 7.75944595,
+        "_cell_length_b": 7.75944595,
+        "_cell_length_c": 7.75944595,
+        "_cell_angle_alpha": 144.12837251,
+        "_cell_angle_beta": 144.12837251,
+        "_cell_angle_gamma": 51.6353738
+      },
+      "atom_site_rows": 8,
+      "elements_in_atom_sites": [
+        "Li",
+        "S"
+      ],
+      "csv_formula": "LiS",
+      "cif_formula": "LiS"
+    },
+    {
+      "file": "mp-1183341.cif",
+      "material_id": "mp-1183341",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "Ba3Li",
+      "cell": {
+        "_cell_length_a": 7.68765028,
+        "_cell_length_b": 7.68765028,
+        "_cell_length_c": 7.68765028,
+        "_cell_angle_alpha": 135.56098581,
+        "_cell_angle_beta": 135.56098581,
+        "_cell_angle_gamma": 64.6597932
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Ba",
+        "Li"
+      ],
+      "csv_formula": "Ba3Li",
+      "cif_formula": "Ba3Li"
+    },
+    {
+      "file": "mp-1184918.cif",
+      "material_id": "mp-1184918",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "K3Li",
+      "cell": {
+        "_cell_length_a": 7.58388079,
+        "_cell_length_b": 7.58388079,
+        "_cell_length_c": 7.58388079,
+        "_cell_angle_alpha": 132.5610042,
+        "_cell_angle_beta": 132.5610042,
+        "_cell_angle_gamma": 69.34441192
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "K",
+        "Li"
+      ],
+      "csv_formula": "K3Li",
+      "cif_formula": "K3Li"
+    },
+    {
+      "file": "mp-1185253.cif",
+      "material_id": "mp-1185253",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiTl3",
+      "cell": {
+        "_cell_length_a": 5.84370077,
+        "_cell_length_b": 5.84370077,
+        "_cell_length_c": 5.84370077,
+        "_cell_angle_alpha": 133.09546644,
+        "_cell_angle_beta": 133.09546644,
+        "_cell_angle_gamma": 68.50426333
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Tl"
+      ],
+      "csv_formula": "LiTl3",
+      "cif_formula": "LiTl3"
+    },
+    {
+      "file": "mp-1185257.cif",
+      "material_id": "mp-1185257",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiY3",
+      "cell": {
+        "_cell_length_a": 6.29128784,
+        "_cell_length_b": 6.29128784,
+        "_cell_length_c": 6.29128784,
+        "_cell_angle_alpha": 135.79498956,
+        "_cell_angle_beta": 135.79498956,
+        "_cell_angle_gamma": 64.29744427
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Y"
+      ],
+      "csv_formula": "LiY3",
+      "cif_formula": "LiY3"
+    },
+    {
+      "file": "mp-1185266.cif",
+      "material_id": "mp-1185266",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiNi3",
+      "cell": {
+        "_cell_length_a": 4.23469403,
+        "_cell_length_b": 4.23469403,
+        "_cell_length_c": 4.23469403,
+        "_cell_angle_alpha": 131.29107681,
+        "_cell_angle_beta": 131.29107681,
+        "_cell_angle_gamma": 71.35102523
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Ni"
+      ],
+      "csv_formula": "LiNi3",
+      "cif_formula": "LiNi3"
+    },
+    {
+      "file": "mp-1185275.cif",
+      "material_id": "mp-1185275",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiPb3",
+      "cell": {
+        "_cell_length_a": 5.94504894,
+        "_cell_length_b": 5.94504894,
+        "_cell_length_c": 5.94504894,
+        "_cell_angle_alpha": 132.58831515,
+        "_cell_angle_beta": 132.58831515,
+        "_cell_angle_gamma": 69.30141919
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Pb"
+      ],
+      "csv_formula": "LiPb3",
+      "cif_formula": "LiPb3"
+    },
+    {
+      "file": "mp-1185332.cif",
+      "material_id": "mp-1185332",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiGa3",
+      "cell": {
+        "_cell_length_a": 4.94933631,
+        "_cell_length_b": 4.94933631,
+        "_cell_length_c": 4.94933631,
+        "_cell_angle_alpha": 132.60442757,
+        "_cell_angle_beta": 132.60442757,
+        "_cell_angle_gamma": 69.27605822
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Ga",
+        "Li"
+      ],
+      "csv_formula": "LiGa3",
+      "cif_formula": "LiGa3"
+    },
+    {
+      "file": "mp-1185336.cif",
+      "material_id": "mp-1185336",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiGe3",
+      "cell": {
+        "_cell_length_a": 5.22079097,
+        "_cell_length_b": 5.22079097,
+        "_cell_length_c": 5.22079097,
+        "_cell_angle_alpha": 133.98417975,
+        "_cell_angle_beta": 133.98417975,
+        "_cell_angle_gamma": 67.11271911
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Ge",
+        "Li"
+      ],
+      "csv_formula": "LiGe3",
+      "cif_formula": "LiGe3"
+    },
+    {
+      "file": "mp-1185337.cif",
+      "material_id": "mp-1185337",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiHg3",
+      "cell": {
+        "_cell_length_a": 5.31615707,
+        "_cell_length_b": 5.31615707,
+        "_cell_length_c": 5.31615707,
+        "_cell_angle_alpha": 129.09652942,
+        "_cell_angle_beta": 129.09652942,
+        "_cell_angle_gamma": 74.85530337
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Hg",
+        "Li"
+      ],
+      "csv_formula": "LiHg3",
+      "cif_formula": "LiHg3"
+    },
+    {
+      "file": "mp-1185411.cif",
+      "material_id": "mp-1185411",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiEu3",
+      "cell": {
+        "_cell_length_a": 6.80749733,
+        "_cell_length_b": 6.80749733,
+        "_cell_length_c": 6.80749733,
+        "_cell_angle_alpha": 135.09054698,
+        "_cell_angle_beta": 135.09054698,
+        "_cell_angle_gamma": 65.38954246
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Eu",
+        "Li"
+      ],
+      "csv_formula": "LiEu3",
+      "cif_formula": "LiEu3"
+    },
+    {
+      "file": "mp-1185431.cif",
+      "material_id": "mp-1185431",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiSi3",
+      "cell": {
+        "_cell_length_a": 4.81963155,
+        "_cell_length_b": 4.81963155,
+        "_cell_length_c": 4.81963155,
+        "_cell_angle_alpha": 134.22026202,
+        "_cell_angle_beta": 134.22026202,
+        "_cell_angle_gamma": 66.74418062
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Si"
+      ],
+      "csv_formula": "LiSi3",
+      "cif_formula": "LiSi3"
+    },
+    {
+      "file": "mp-1185455.cif",
+      "material_id": "mp-1185455",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiRh3",
+      "cell": {
+        "_cell_length_a": 4.67692926,
+        "_cell_length_b": 4.67692926,
+        "_cell_length_c": 4.67692926,
+        "_cell_angle_alpha": 132.36483191,
+        "_cell_angle_beta": 132.36483191,
+        "_cell_angle_gamma": 69.65342132
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Rh"
+      ],
+      "csv_formula": "LiRh3",
+      "cif_formula": "LiRh3"
+    },
+    {
+      "file": "mp-1185461.cif",
+      "material_id": "mp-1185461",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiSn3",
+      "cell": {
+        "_cell_length_a": 5.73202391,
+        "_cell_length_b": 5.73202391,
+        "_cell_length_c": 5.73202391,
+        "_cell_angle_alpha": 133.22393809,
+        "_cell_angle_beta": 133.22393809,
+        "_cell_angle_gamma": 68.30268496
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Sn"
+      ],
+      "csv_formula": "LiSn3",
+      "cif_formula": "LiSn3"
+    },
+    {
+      "file": "mp-1185469.cif",
+      "material_id": "mp-1185469",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiYb3",
+      "cell": {
+        "_cell_length_a": 6.02419591,
+        "_cell_length_b": 6.02419591,
+        "_cell_length_c": 6.02419591,
+        "_cell_angle_alpha": 133.82779145,
+        "_cell_angle_beta": 133.82779145,
+        "_cell_angle_gamma": 67.35710604
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Yb"
+      ],
+      "csv_formula": "LiYb3",
+      "cif_formula": "LiYb3"
+    },
+    {
+      "file": "mp-1185471.cif",
+      "material_id": "mp-1185471",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiTb3",
+      "cell": {
+        "_cell_length_a": 5.95128403,
+        "_cell_length_b": 5.95128403,
+        "_cell_length_c": 5.95128403,
+        "_cell_angle_alpha": 131.39739778,
+        "_cell_angle_beta": 131.39739778,
+        "_cell_angle_gamma": 71.18245305
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Tb"
+      ],
+      "csv_formula": "LiTb3",
+      "cif_formula": "LiTb3"
+    },
+    {
+      "file": "mp-1222412.cif",
+      "material_id": "mp-1222412",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiB3",
+      "cell": {
+        "_cell_length_a": 4.12242405,
+        "_cell_length_b": 4.12242405,
+        "_cell_length_c": 4.358704,
+        "_cell_angle_alpha": 90.0,
+        "_cell_angle_beta": 90.0,
+        "_cell_angle_gamma": 90.0
+      },
+      "atom_site_rows": 8,
+      "elements_in_atom_sites": [
+        "B",
+        "Li"
+      ],
+      "csv_formula": "LiB3",
+      "cif_formula": "LiB3"
+    },
+    {
+      "file": "mp-1222413.cif",
+      "material_id": "mp-1222413",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiB3",
+      "cell": {
+        "_cell_length_a": 4.14105703,
+        "_cell_length_b": 5.95595135,
+        "_cell_length_c": 5.95595135,
+        "_cell_angle_alpha": 90.0,
+        "_cell_angle_beta": 90.0,
+        "_cell_angle_gamma": 90.0
+      },
+      "atom_site_rows": 16,
+      "elements_in_atom_sites": [
+        "B",
+        "Li"
+      ],
+      "csv_formula": "LiB3",
+      "cif_formula": "LiB3"
+    },
+    {
+      "file": "mp-1232999.cif",
+      "material_id": "mp-1232999",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiO8",
+      "cell": {
+        "_cell_length_a": 4.62593833,
+        "_cell_length_b": 5.27028813,
+        "_cell_length_c": 6.05959243,
+        "_cell_angle_alpha": 61.11996665,
+        "_cell_angle_beta": 62.15496861,
+        "_cell_angle_gamma": 69.35234031
+      },
+      "atom_site_rows": 9,
+      "elements_in_atom_sites": [
+        "Li",
+        "O"
+      ],
+      "csv_formula": "LiO8",
+      "cif_formula": "LiO8"
+    },
+    {
+      "file": "mp-1235252.cif",
+      "material_id": "mp-1235252",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiO8",
+      "cell": {
+        "_cell_length_a": 4.12997229,
+        "_cell_length_b": 5.55428754,
+        "_cell_length_c": 5.55428816,
+        "_cell_angle_alpha": 72.91261653,
+        "_cell_angle_beta": 71.73453222,
+        "_cell_angle_gamma": 71.73452295
+      },
+      "atom_site_rows": 9,
+      "elements_in_atom_sites": [
+        "Li",
+        "O"
+      ],
+      "csv_formula": "LiO8",
+      "cif_formula": "LiO8"
+    },
+    {
+      "file": "mp-1236127.cif",
+      "material_id": "mp-1236127",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiO8",
+      "cell": {
+        "_cell_length_a": 4.47701927,
+        "_cell_length_b": 5.52679381,
+        "_cell_length_c": 5.52637534,
+        "_cell_angle_alpha": 70.19354205,
+        "_cell_angle_beta": 69.90760857,
+        "_cell_angle_gamma": 71.71516408
+      },
+      "atom_site_rows": 9,
+      "elements_in_atom_sites": [
+        "Li",
+        "O"
+      ],
+      "csv_formula": "LiO8",
+      "cif_formula": "LiO8"
+    },
+    {
+      "file": "mp-1236522.cif",
+      "material_id": "mp-1236522",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiO8",
+      "cell": {
+        "_cell_length_a": 4.64925563,
+        "_cell_length_b": 5.67366876,
+        "_cell_length_c": 5.67366871,
+        "_cell_angle_alpha": 68.87925124,
+        "_cell_angle_beta": 69.22566535,
+        "_cell_angle_gamma": 69.22565439
+      },
+      "atom_site_rows": 9,
+      "elements_in_atom_sites": [
+        "Li",
+        "O"
+      ],
+      "csv_formula": "LiO8",
+      "cif_formula": "LiO8"
+    },
+    {
+      "file": "mp-1546006.cif",
+      "material_id": "mp-1546006",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiS4",
+      "cell": {
+        "_cell_length_a": 12.58265738,
+        "_cell_length_b": 11.77495974,
+        "_cell_length_c": 13.06503333,
+        "_cell_angle_alpha": 86.59073602,
+        "_cell_angle_beta": 95.84073235,
+        "_cell_angle_gamma": 96.19317079
+      },
+      "atom_site_rows": 10,
+      "elements_in_atom_sites": [
+        "Li",
+        "S"
+      ],
+      "csv_formula": "LiS4",
+      "cif_formula": "LiS4"
+    },
+    {
+      "file": "mp-22902.cif",
+      "material_id": "mp-22902",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiBi",
+      "cell": {
+        "_cell_length_a": 3.32059003,
+        "_cell_length_b": 3.32059003,
+        "_cell_length_c": 4.31978816,
+        "_cell_angle_alpha": 90.0,
+        "_cell_angle_beta": 90.0,
+        "_cell_angle_gamma": 90.0
+      },
+      "atom_site_rows": 2,
+      "elements_in_atom_sites": [
+        "Bi",
+        "Li"
+      ],
+      "csv_formula": "LiBi",
+      "cif_formula": "LiBi"
+    },
+    {
+      "file": "mp-2475638.cif",
+      "material_id": "mp-2475638",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiBe",
+      "cell": {
+        "_cell_length_a": 3.61277298,
+        "_cell_length_b": 2.29598615,
+        "_cell_length_c": 5.82984801,
+        "_cell_angle_alpha": 71.03917386,
+        "_cell_angle_beta": 90.0,
+        "_cell_angle_gamma": 90.0
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Be",
+        "Li"
+      ],
+      "csv_formula": "LiBe",
+      "cif_formula": "LiBe"
+    },
+    {
+      "file": "mp-2659.cif",
+      "material_id": "mp-2659",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiN3",
+      "cell": {
+        "_cell_length_a": 3.20008856,
+        "_cell_length_b": 3.2000891,
+        "_cell_length_c": 4.84021176,
+        "_cell_angle_alpha": 77.32715246,
+        "_cell_angle_beta": 77.3271531,
+        "_cell_angle_gamma": 61.42453645
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "N"
+      ],
+      "csv_formula": "LiN3",
+      "cif_formula": "LiN3"
+    },
+    {
+      "file": "mp-569073.cif",
+      "material_id": "mp-569073",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiSn",
+      "cell": {
+        "_cell_length_a": 3.13853384,
+        "_cell_length_b": 5.18086578,
+        "_cell_length_c": 7.84491741,
+        "_cell_angle_alpha": 105.52934702,
+        "_cell_angle_beta": 90.0,
+        "_cell_angle_gamma": 90.0
+      },
+      "atom_site_rows": 6,
+      "elements_in_atom_sites": [
+        "Li",
+        "Sn"
+      ],
+      "csv_formula": "LiSn",
+      "cif_formula": "LiSn"
+    },
+    {
+      "file": "mp-862658.cif",
+      "material_id": "mp-862658",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiCu3",
+      "cell": {
+        "_cell_length_a": 4.4125427,
+        "_cell_length_b": 4.4125427,
+        "_cell_length_c": 4.4125427,
+        "_cell_angle_alpha": 132.14779156,
+        "_cell_angle_beta": 132.14779156,
+        "_cell_angle_gamma": 69.99570612
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Cu",
+        "Li"
+      ],
+      "csv_formula": "LiCu3",
+      "cif_formula": "LiCu3"
+    },
+    {
+      "file": "mp-862716.cif",
+      "material_id": "mp-862716",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiAg3",
+      "cell": {
+        "_cell_length_a": 4.95795191,
+        "_cell_length_b": 4.95795191,
+        "_cell_length_c": 4.95795191,
+        "_cell_angle_alpha": 131.86493592,
+        "_cell_angle_beta": 131.86493592,
+        "_cell_angle_gamma": 70.44242974
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Ag",
+        "Li"
+      ],
+      "csv_formula": "LiAg3",
+      "cif_formula": "LiAg3"
+    },
+    {
+      "file": "mp-865939.cif",
+      "material_id": "mp-865939",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiMg2",
+      "cell": {
+        "_cell_length_a": 3.45383493,
+        "_cell_length_b": 5.70530008,
+        "_cell_length_c": 3.4649173,
+        "_cell_angle_alpha": 72.19886975,
+        "_cell_angle_beta": 90.0,
+        "_cell_angle_gamma": 107.61904442
+      },
+      "atom_site_rows": 3,
+      "elements_in_atom_sites": [
+        "Li",
+        "Mg"
+      ],
+      "csv_formula": "LiMg2",
+      "cif_formula": "LiMg2"
+    },
+    {
+      "file": "mp-972285.cif",
+      "material_id": "mp-972285",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "Sr3Li",
+      "cell": {
+        "_cell_length_a": 7.25583338,
+        "_cell_length_b": 7.25583338,
+        "_cell_length_c": 7.25583338,
+        "_cell_angle_alpha": 134.52606878,
+        "_cell_angle_beta": 134.52606878,
+        "_cell_angle_gamma": 66.26748019
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Sr"
+      ],
+      "csv_formula": "Sr3Li",
+      "cif_formula": "Sr3Li"
+    },
+    {
+      "file": "mp-973455.cif",
+      "material_id": "mp-973455",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiMg2",
+      "cell": {
+        "_cell_length_a": 5.63522981,
+        "_cell_length_b": 5.63522981,
+        "_cell_length_c": 7.14123775,
+        "_cell_angle_alpha": 71.66242381,
+        "_cell_angle_beta": 71.66242381,
+        "_cell_angle_gamma": 35.46567742
+      },
+      "atom_site_rows": 6,
+      "elements_in_atom_sites": [
+        "Li",
+        "Mg"
+      ],
+      "csv_formula": "LiMg2",
+      "cif_formula": "LiMg2"
+    },
+    {
+      "file": "mp-973741.cif",
+      "material_id": "mp-973741",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiHo3",
+      "cell": {
+        "_cell_length_a": 6.09648087,
+        "_cell_length_b": 6.09648087,
+        "_cell_length_c": 6.09648087,
+        "_cell_angle_alpha": 133.89681739,
+        "_cell_angle_beta": 133.89681739,
+        "_cell_angle_gamma": 67.24921445
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Ho",
+        "Li"
+      ],
+      "csv_formula": "LiHo3",
+      "cif_formula": "LiHo3"
+    },
+    {
+      "file": "mp-973748.cif",
+      "material_id": "mp-973748",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiIn3",
+      "cell": {
+        "_cell_length_a": 5.57789223,
+        "_cell_length_b": 5.57789223,
+        "_cell_length_c": 5.57789223,
+        "_cell_angle_alpha": 132.68984581,
+        "_cell_angle_beta": 132.68984581,
+        "_cell_angle_gamma": 69.14164845
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "In",
+        "Li"
+      ],
+      "csv_formula": "LiIn3",
+      "cif_formula": "LiIn3"
+    },
+    {
+      "file": "mp-974959.cif",
+      "material_id": "mp-974959",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "Rb3Li",
+      "cell": {
+        "_cell_length_a": 7.95610348,
+        "_cell_length_b": 7.95610348,
+        "_cell_length_c": 7.95610348,
+        "_cell_angle_alpha": 131.254077,
+        "_cell_angle_beta": 131.254077,
+        "_cell_angle_gamma": 71.40971368
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Li",
+        "Rb"
+      ],
+      "csv_formula": "Rb3Li",
+      "cif_formula": "Rb3Li"
+    },
+    {
+      "file": "mp-975906.cif",
+      "material_id": "mp-975906",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiAl3",
+      "cell": {
+        "_cell_length_a": 4.88817397,
+        "_cell_length_b": 4.88817397,
+        "_cell_length_c": 4.88817397,
+        "_cell_angle_alpha": 131.65465922,
+        "_cell_angle_beta": 131.65465922,
+        "_cell_angle_gamma": 70.77500501
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Al",
+        "Li"
+      ],
+      "csv_formula": "LiAl3",
+      "cif_formula": "LiAl3"
+    },
+    {
+      "file": "mp-975909.cif",
+      "material_id": "mp-975909",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiAu3",
+      "cell": {
+        "_cell_length_a": 5.02958822,
+        "_cell_length_b": 5.02958822,
+        "_cell_length_c": 5.02958822,
+        "_cell_angle_alpha": 133.5251633,
+        "_cell_angle_beta": 133.5251633,
+        "_cell_angle_gamma": 67.83060561
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Au",
+        "Li"
+      ],
+      "csv_formula": "LiAu3",
+      "cif_formula": "LiAu3"
+    },
+    {
+      "file": "mp-976262.cif",
+      "material_id": "mp-976262",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiMg",
+      "cell": {
+        "_cell_length_a": 5.656821,
+        "_cell_length_b": 5.656821,
+        "_cell_length_c": 7.15659339,
+        "_cell_angle_alpha": 71.95892554,
+        "_cell_angle_beta": 71.95892554,
+        "_cell_angle_gamma": 34.33834633
+      },
+      "atom_site_rows": 6,
+      "elements_in_atom_sites": [
+        "Li",
+        "Mg"
+      ],
+      "csv_formula": "LiMg",
+      "cif_formula": "LiMg"
+    },
+    {
+      "file": "mp-976272.cif",
+      "material_id": "mp-976272",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiCa3",
+      "cell": {
+        "_cell_length_a": 6.66526832,
+        "_cell_length_b": 6.66526832,
+        "_cell_length_c": 6.66526832,
+        "_cell_angle_alpha": 134.0934031,
+        "_cell_angle_beta": 134.0934031,
+        "_cell_angle_gamma": 66.94215753
+      },
+      "atom_site_rows": 4,
+      "elements_in_atom_sites": [
+        "Ca",
+        "Li"
+      ],
+      "csv_formula": "LiCa3",
+      "cif_formula": "LiCa3"
+    },
+    {
+      "file": "mp-995393.cif",
+      "material_id": "mp-995393",
+      "parse": "PASS",
+      "checks": {
+        "cell_parameters": "PASS",
+        "atomic_coordinates": "PASS",
+        "csv_formula_match": "PASS",
+        "overall_basic": "PASS"
+      },
+      "errors": [],
+      "warnings": [],
+      "block_name": "LiS4",
+      "cell": {
+        "_cell_length_a": 12.35602,
+        "_cell_length_b": 12.86585511,
+        "_cell_length_c": 13.38132891,
+        "_cell_angle_alpha": 95.66762429,
+        "_cell_angle_beta": 92.33615182,
+        "_cell_angle_gamma": 89.87000746
+      },
+      "atom_site_rows": 10,
+      "elements_in_atom_sites": [
+        "Li",
+        "S"
+      ],
+      "csv_formula": "LiS4",
+      "cif_formula": "LiS4"
+    }
+  ],
+  "limitations": [
+    "This is basic CIF parsing and consistency validation.",
+    "It does not prove physical correctness or experimental validity.",
+    "It does not perform full symmetry expansion or bonding validation.",
+    "Formula comparison supports simple element-count formulas only.",
+    "A PASS is not approval for model training."
+  ]
+}

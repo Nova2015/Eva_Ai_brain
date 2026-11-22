@@ -1,0 +1,17 @@
+{
+  "agent": "EVA Dataset Agent",
+  "version": "1.0.0",
+  "mode": "DRY_RUN",
+  "created_at": "2026-11-05T07:48:00.660581+00:00",
+  "source_scope": "workspace/incoming ONLY",
+  "source_root": "D:\\Eva_Ai_brain\\eva_dataset_agent\\workspace\\incoming",
+  "source_files_found": 0,
+  "files": [],
+  "summary": {
+    "candidate_files": 0,
+    "review_required": 0,
+    "errors": 0,
+    "records": 0,
+    "valid_records": 0
+  }
+}

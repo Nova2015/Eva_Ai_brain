@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, Search, Plus, GitBranch, Sparkles, Code2, ChevronRight } from 'lucide-react';
 
 // ── Directory data ─────────────────────────────────────────────────────────────
@@ -31,6 +32,7 @@ const PLUGINS = [
 // centred modal box or its header — the Tools Center already provides those.
 // One component, two presentations; nothing is duplicated.
 export default function DirectoryModal({ tab, onTabChange, onClose, embedded = false }) {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState(null);
 
@@ -57,7 +59,7 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
   const handleAction = (item) => {
     if (item.comingSoon) return; // capability has no backend yet — must never navigate (a dead route fell through App.js's `path="*"` catch-all and silently bounced to /chat)
     if (tab === 'skills' && item.route) {
-      window.location.assign(item.route);
+      navigate(item.route);
       onClose();
     } else if (tab === 'connectors') {
       alert(`Connect ${item.title}: Coming soon. OAuth integration required.`);
@@ -74,10 +76,10 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
       : tab === 'connectors' ? (isConnected ? 'Connected' : 'Connect')
       : (isEnabled ? 'Enabled' : 'Enable');
     const color = tab === 'connectors'
-      ? (isConnected ? '#22c55e' : '#7c3aed')
+      ? (isConnected ? '#22c55e' : 'var(--accent)')
       : tab === 'plugins'
-      ? (isEnabled ? '#22c55e' : '#7c3aed')
-      : '#7c3aed';
+      ? (isEnabled ? '#22c55e' : 'var(--accent)')
+      : 'var(--accent)';
     return { label, color };
   };
 
@@ -98,7 +100,7 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
         transform: 'translate(-50%, -50%)',
         width: 'min(96vw, 880px)',
         height: 'min(85vh, 600px)',
-        background: 'rgba(7,4,15,.97)',
+        background: 'var(--surface)',
         backdropFilter: 'blur(24px)',
         border: '1px solid rgba(124,58,237,.2)',
         borderRadius: 18,
@@ -117,10 +119,10 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
         {/* Header — the Tools Center supplies its own when embedded */}
         {!embedded && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,.06)', flexShrink: 0 }}>
-          <Sparkles size={16} style={{ color: '#7c3aed' }} />
-          <span style={{ color: '#f0e8ff', fontSize: 15, fontWeight: 800 }}>EVA Directory</span>
-          <span style={{ color: '#4a2d7a', fontSize: 11 }}>Skills · Connectors · Plugins</span>
-          <button type="button" onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#4a2d7a', cursor: 'pointer', display: 'flex', padding: 4 }}>
+          <Sparkles size={16} style={{ color: 'var(--accent)' }} />
+          <span style={{ color: 'var(--text)', fontSize: 15, fontWeight: 800 }}>EVA Directory</span>
+          <span style={{ color: 'var(--text3)', fontSize: 11 }}>Skills · Connectors · Plugins</span>
+          <button type="button" onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', display: 'flex', padding: 4 }}>
             <X size={16} />
           </button>
         </div>
@@ -134,13 +136,13 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
 
             {/* Search */}
             <div style={{ padding: '12px 12px 8px', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '6px 10px' }}>
-                <Search size={12} style={{ color: '#4a2d7a', flexShrink: 0 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '6px 10px' }}>
+                <Search size={12} style={{ color: 'var(--text3)', flexShrink: 0 }} />
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder={`Search ${current.label.toLowerCase()}...`}
-                  style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: '#e8e0ff', fontSize: 12, minWidth: 0 }}
+                  style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 12, minWidth: 0 }}
                 />
               </div>
             </div>
@@ -157,22 +159,22 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
                       style={{
                         width: '100%', display: 'flex', alignItems: 'center', gap: 8,
                         padding: '8px 10px', borderRadius: 8,
-                        border: `1px solid ${isActiveCat ? 'rgba(124,58,237,.4)' : 'transparent'}`,
-                        background: isActiveCat ? 'rgba(124,58,237,.2)' : 'transparent',
-                        color: isActiveCat ? '#c084fc' : '#6b47a8',
+                        border: `1px solid ${isActiveCat ? 'color-mix(in srgb, var(--accent) 40%, transparent)' : 'transparent'}`,
+                        background: isActiveCat ? 'color-mix(in srgb, var(--accent) 20%, transparent)' : 'transparent',
+                        color: isActiveCat ? 'var(--accent)' : 'var(--text2)',
                         fontSize: 12.5, fontWeight: 700, cursor: 'pointer', transition: '.15s', textAlign: 'left',
                       }}
                     >
                       <ChevronRight size={13} style={{ transform: isActiveCat ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }} />
                       {t.icon}
                       <span style={{ flex: 1 }}>{t.label}</span>
-                      <span style={{ color: '#4a2d7a', fontSize: 10, background: 'rgba(255,255,255,.05)', padding: '1px 7px', borderRadius: 99 }}>{t.data.length}</span>
+                      <span style={{ color: 'var(--text3)', fontSize: 10, background: 'var(--surface2)', padding: '1px 7px', borderRadius: 99 }}>{t.data.length}</span>
                     </button>
 
                     {isActiveCat && (
                       <div style={{ padding: '4px 0 6px 6px' }}>
                         {filtered.length === 0 && (
-                          <div style={{ color: '#4a2d7a', fontSize: 12, padding: '8px 12px' }}>No results for "{search}"</div>
+                          <div style={{ color: 'var(--text3)', fontSize: 12, padding: '8px 12px' }}>No results for "{search}"</div>
                         )}
                         {filtered.map(item => {
                           const isSel = selected && selected.id === item.id;
@@ -184,9 +186,9 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
                               style={{
                                 width: '100%', display: 'flex', alignItems: 'center', gap: 9,
                                 padding: '7px 10px', marginBottom: 2, borderRadius: 8,
-                                border: `1px solid ${isSel ? 'rgba(124,58,237,.3)' : 'transparent'}`,
-                                background: isSel ? 'rgba(124,58,237,.12)' : 'transparent',
-                                color: isSel ? '#f0e8ff' : '#8b7ab0',
+                                border: `1px solid ${isSel ? 'color-mix(in srgb, var(--accent) 30%, transparent)' : 'transparent'}`,
+                                background: isSel ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
+                                color: isSel ? 'var(--text)' : 'var(--text2)',
                                 fontSize: 12.5, fontWeight: isSel ? 600 : 500, cursor: 'pointer', transition: '.12s', textAlign: 'left',
                               }}
                             >
@@ -212,10 +214,10 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
               <>
                 <div style={{ fontSize: 46, lineHeight: 1, marginBottom: 16 }}>{selected.icon}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-                  <span style={{ color: '#f0e8ff', fontSize: 21, fontWeight: 800, letterSpacing: '-0.01em' }}>{selected.title}</span>
-                  <span style={{ color: '#4a2d7a', fontSize: 11, background: 'rgba(255,255,255,.04)', padding: '2px 9px', borderRadius: 99, border: '1px solid rgba(255,255,255,.07)' }}>{selected.provider}</span>
+                  <span style={{ color: 'var(--text)', fontSize: 21, fontWeight: 800, letterSpacing: '-0.01em' }}>{selected.title}</span>
+                  <span style={{ color: 'var(--text3)', fontSize: 11, background: 'var(--surface2)', padding: '2px 9px', borderRadius: 99, border: '1px solid rgba(255,255,255,.07)' }}>{selected.provider}</span>
                 </div>
-                <div style={{ color: '#8b7ab0', fontSize: 14, lineHeight: 1.65, maxWidth: 520, marginBottom: 24 }}>{selected.description}</div>
+                <div style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.65, maxWidth: 520, marginBottom: 24 }}>{selected.description}</div>
 
                 {selected.comingSoon ? (
                   <div>
@@ -226,13 +228,13 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
                         display: 'inline-flex', alignItems: 'center', gap: 6,
                         padding: '9px 18px', borderRadius: 9,
                         border: '1px solid rgba(255,255,255,.08)',
-                        background: 'rgba(255,255,255,.03)',
-                        color: '#6b47a8', fontSize: 13, fontWeight: 700, cursor: 'not-allowed',
+                        background: 'var(--surface2)',
+                        color: 'var(--text2)', fontSize: 13, fontWeight: 700, cursor: 'not-allowed',
                       }}
                     >
                       Coming Soon
                     </button>
-                    <div style={{ color: '#4a2d7a', fontSize: 12, marginTop: 10, maxWidth: 520, lineHeight: 1.5 }}>
+                    <div style={{ color: 'var(--text3)', fontSize: 12, marginTop: 10, maxWidth: 520, lineHeight: 1.5 }}>
                       Not available yet — there is no backend for this capability. It will open here once it ships.
                     </div>
                   </div>
@@ -244,7 +246,7 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
                       display: 'inline-flex', alignItems: 'center', gap: 6,
                       padding: '9px 18px', borderRadius: 9,
                       border: `1px solid ${actionMeta(selected).color}55`,
-                      background: `${actionMeta(selected).color}22`,
+                      background:  `color-mix(in srgb, ${actionMeta(selected).color} 14%, transparent)`,
                       color: actionMeta(selected).color, fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: '.15s',
                     }}
                   >
@@ -254,7 +256,7 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
                 )}
               </>
             ) : (
-              <div style={{ color: '#4a2d7a', fontSize: 13, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ color: 'var(--text3)', fontSize: 13, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 No {current.label.toLowerCase()} to show.
               </div>
             )}
@@ -262,7 +264,7 @@ export default function DirectoryModal({ tab, onTabChange, onClose, embedded = f
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '10px 20px', borderTop: '1px solid rgba(255,255,255,.05)', fontSize: 11, color: '#2a1f4a', flexShrink: 0 }}>
+        <div style={{ padding: '10px 20px', borderTop: '1px solid rgba(255,255,255,.05)', fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>
           {filtered.length} {current.label.toLowerCase()} available
         </div>
 

@@ -1,0 +1,64 @@
+{
+  "created_utc": "2026-11-05T08:35:36.921557+00:00",
+  "source": "D:\\Eva_Ai_brain\\eva_dataset_agent\\workspace\\validated\\materials_cleaned.csv",
+  "source_sha256": "2b18945d53689c23c3356579a857ebc2dc479c9d164655a718288fda07aed105",
+  "source_rows": 21747,
+  "unique_material_ids": 21747,
+  "unique_formula_groups": 9523,
+  "seed": 42,
+  "group_column": "formula_pretty",
+  "target": "band_gap",
+  "target_units": "UNVERIFIED; values appear standardized",
+  "features": [
+    "formation_energy_per_atom",
+    "energy_per_atom",
+    "density",
+    "volume",
+    "n_elements",
+    "contains_transition_metal"
+  ],
+  "excluded_target_derived_feature": "is_semiconductor",
+  "split_method": "deterministic formula-group split",
+  "requested_group_ratios": {
+    "train": 0.8,
+    "validation": 0.1,
+    "test": 0.1
+  },
+  "splits": {
+    "train": {
+      "rows": 17181,
+      "formula_groups": 7618,
+      "target_mean": -0.011856896930300712,
+      "target_min": -0.8682128617659177,
+      "target_max": 5.033427948623555,
+      "sha256": "e38a22cb5a2175473615563dbdafdf4271615ffddc2f96b64503c8f9b8375086",
+      "file": "D:\\Eva_Ai_brain\\eva_dataset_agent\\workspace\\baseline_splits\\materials_train.csv"
+    },
+    "validation": {
+      "rows": 2421,
+      "formula_groups": 952,
+      "target_mean": 0.12263720844950912,
+      "target_min": -0.8682128617659177,
+      "target_max": 4.952447207131078,
+      "sha256": "a22659edc5be19b129a7c473aaa33f497c44adb14148c026c16badbf474136ac",
+      "file": "D:\\Eva_Ai_brain\\eva_dataset_agent\\workspace\\baseline_splits\\materials_validation.csv"
+    },
+    "test": {
+      "rows": 2145,
+      "formula_groups": 953,
+      "target_mean": -0.043445844054294795,
+      "target_min": -0.8682128617659177,
+      "target_max": 4.061794470013981,
+      "sha256": "92a50e3c92432bc8eba4d2dca768c3b869e3287838121d9e800ec9450c328fb9",
+      "file": "D:\\Eva_Ai_brain\\eva_dataset_agent\\workspace\\baseline_splits\\materials_test.csv"
+    }
+  },
+  "formula_leakage_check": "PASS",
+  "training_authorized": false,
+  "limitations": [
+    "This creates splits only; it does not train a model.",
+    "Formula grouping does not guarantee independence of related materials.",
+    "Target units and original scaler parameters remain unverified.",
+    "No target stratification is performed."
+  ]
+}

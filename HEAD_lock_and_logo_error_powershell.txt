@@ -1,0 +1,58 @@
+This usually means browser asked for a JavaScript file, but server returned **HTML** instead.
+
+So `main.56f8cee7.js` is not loading as JS. It is probably getting `index.html` or an error page.
+
+The `logo192.png` warning is small. Ignore it for now.
+
+
+Run this from frontend:
+
+```powershell
+cd "E:\code\Rag project\frontend"
+
+Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force node_modules\.cache -ErrorAction SilentlyContinue
+
+npm install
+npm run build
+
+Then restart backend:
+powershell
+cd "E:\code\Rag project"
+
+python -m uvicorn src.app:app --host 0.0.0.0 --port 8002 --reload
+
+Then open:
+
+http://localhost:8002/chat
+
+Press hard refresh:
+
+Ctrl + Shift + R
+
+This error means Git is stuck because a lock file is still inside your repo:
+
+powershell
+E:\code\Rag project\.git\HEAD.lock
+
+Now check again:
+
+powershell
+cd "E:\code\Rag project"
+
+Remove-Item -Force ".git\index.lock"
+
+git restore "src/__pycache__/app.cpython-314.pyc"
+
+git status
+
+git add frontend/src/pages/Chat.js frontend/src/pages/DirectoryModal.js src/app.py frontend/build
+
+git commit -m "add web artifacts and directory updates"
+
+git push origin main
+
+
+
+
+

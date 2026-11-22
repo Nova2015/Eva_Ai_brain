@@ -4,7 +4,7 @@ import { apiFetch, authFetch } from '../api';
 // EVA Support Center â” Slice 1 (tickets + FAQ + contact).
 // Backend: /api/support/* on the eva-ml-service (same host Chat.js uses for RAG).
 // NOTE: no status/health widget on this page by design (later slice).
-const SUPPORT_API = (process.env.REACT_APP_RAG_API_BASE || 'https://keshav1212-eva-ml-service.hf.space').replace(/\/+$/, '');
+const SUPPORT_API = (process.env.REACT_APP_RAG_API_BASE || 'http://127.0.0.1:7860').replace(/\/+$/, '');
 
 const CATEGORIES = [
   { value: 'bug_report',        label: 'Bug report' },
@@ -27,7 +27,7 @@ const DESC_MAX = 5000;
 const FAQ = [
   {
     q: 'How does EVA answer questions from my documents (RAG)?',
-    a: 'Uploaded documents are split into chunks and embedded into a Supabase Postgres database using pgvector. When you ask a question, EVA runs a hybrid search (BM25 keyword matching plus vector similarity), reranks the best chunks, and passes them as context to Groq Llama 3.3 70B (with a Gemini fallback), which writes the answer and cites the retrieved sources.',
+    a: 'Uploaded documents are split into chunks and embedded into a Supabase Postgres database using pgvector. When you ask a question, EVA runs a hybrid search (BM25 keyword matching plus vector similarity), reranks the best chunks, and passes them as context to Groq openai/gpt-oss-120b (with a Gemini fallback), which writes the answer and cites the retrieved sources.',
   },
   {
     q: 'How do I upload files?',

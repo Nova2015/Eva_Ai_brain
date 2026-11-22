@@ -1,0 +1,29 @@
+{
+  "installed": [
+    {
+      "id": "github-actions",
+      "name": "GitHub Actions",
+      "enabled": true,
+      "installed_at": "2026-11-04T12:48:06.900750"
+    },
+    {
+      "id": "notion-sync",
+      "name": "Notion Sync",
+      "enabled": true,
+      "installed_at": "2026-11-04T12:48:12.445717"
+    },
+    {
+      "id": "slack-briefing",
+      "name": "Slack Briefing",
+      "enabled": true,
+      "installed_at": "2026-11-04T12:48:14.082181"
+    },
+    {
+      "id": "webhook-runner",
+      "name": "Webhook Runner",
+      "enabled": true,
+      "installed_at": "2026-11-04T12:48:15.909469"
+    }
+  ],
+  "updated_at": "2026-11-04T12:48:15.909469"
+}

@@ -1,0 +1,48 @@
+import torch
+import torch.nn as nn
+from nltk.translate.bleu_score import sentence_bleu
+from rouge import Rouge
+
+# Define the evaluation function
+def evaluate_model(model, test_dataset, reference_sequences):
+ # Initialize evaluation metrics
+ bleu_scores = []
+ rouge_scores = []
+ perplexity_values = []
+ accuracy_values = []
+ f1_scores = []
+
+ # Generate output sequences
+ for i, (input_sequence, reference_sequence) in enumerate(zip(test_dataset, reference_sequences)):
+ output_sequence = model(input_sequence)
+ # Calculate evaluation metrics
+ bleu_score = sentence_bleu([reference_sequence], output_sequence)
+ rouge_score = Rouge().get_scores([output_sequence], [reference_sequence])
+ perplexity_value = model.perplexity(output_sequence)
+ accuracy_value = model.accuracy(output_sequence, reference_sequence)
+ f1_score = model.f1_score(output_sequence, reference_sequence)
+
+ # Append evaluation metrics to lists
+ bleu_scores.append(bleu_score)
+ rouge_scores.append(rouge_score)
+ perplexity_values.append(perplexity_value)
+ accuracy_values.append(accuracy_value)
+ f1_scores.append(f1_score)
+
+ # Calculate average evaluation metrics
+ average_bleu_score = sum(bleu_scores) / len(bleu_scores)
+ average_rouge_score = sum(rouge_scores) / len(rouge_scores)
+ average_perplexity_value = sum(perplexity_values) / len(perplexity_values)
+ average_accuracy_value = sum(accuracy_values) / len(accuracy_values)
+ average_f1_score = sum(f1_scores) / len(f1_scores)
+
+ return {'bleu_score': average_bleu_score,
+ 'rouge_score': average_rouge_score,
+ 'perplexity': average_perplexity_value,
+ 'accuracy': average_accuracy_value,
+ 'f1_score': average_f1_score
+ }
+
+# Evaluate the model
+evaluation_results = evaluate_model(model, test_dataset, reference_sequences)
+print(evaluation_results)

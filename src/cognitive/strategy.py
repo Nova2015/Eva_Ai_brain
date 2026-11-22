@@ -1,4 +1,4 @@
-"""Strategy Selector — Step 5 of the Cognitive Engine.
+"""Strategy Selector â€” Step 5 of the Cognitive Engine.
 
 Answers: **how should EVA approach this problem?**
 
@@ -7,10 +7,10 @@ The boundary against the neighbouring stages:
 
     Step 3  what is the problem, and what is unclear?
     Step 4  are we ready to choose an approach?
-    Step 5  which approach — and what would prove it worked?
+    Step 5  which approach â€” and what would prove it worked?
     Step 6  what are the concrete tasks?  (not here)
 
-FULLY DETERMINISTIC — AND NO llm HOOK
+FULLY DETERMINISTIC â€” AND NO llm HOOK
 =====================================
 Steps 3 and 4 both take an optional injected `llm`. This one deliberately does
 not. Strategy selection is a rule problem: given a category, a complexity
@@ -19,12 +19,12 @@ would add latency and provider spend to every message and make the choice
 non-reproducible, in exchange for a decision the rules already make correctly.
 
 If a future case genuinely needs judgement, the honest fix is a new rule with a
-test — not an escape hatch that quietly turns a deterministic selector into a
+test â€” not an escape hatch that quietly turns a deterministic selector into a
 model call. That is why there is no parameter to pass one.
 
 REUSES EXISTING VOCABULARY
 ==========================
-  ReasoningStrategy   Step 2's enum, unchanged — all eight members already existed.
+  ReasoningStrategy   Step 2's enum, unchanged â€” all eight members already existed.
   required_tools      autopilot's actual whitelist (web_search, read_url,
                       rag_query, think). Naming a tool that does not exist would
                       hand Step 7 an unroutable capability.
@@ -37,7 +37,7 @@ WHY A SEPARATE DECISION TYPE
 Step 2's StrategySelection carries strategy, reason, required_capabilities,
 required_tools, verification_required (a bool) and deterministic. Step 5 must
 also return required_context and a *list* of verification requirements. Rather
-than widen the Step 2 model — off-limits — StrategyDecision is the full output
+than widen the Step 2 model â€” off-limits â€” StrategyDecision is the full output
 and to_strategy_selection() projects it down, exactly as Step 4 does with
 AssessmentReport. Step 2 stays untouched.
 
@@ -106,7 +106,7 @@ class StrategyDecision(_Base):
     # What would have proven this answer right but cannot be run here. Recorded
     # rather than dropped: this is the only trace of where EVA's verification
     # coverage stops, and Step 12 learns its VERIFICATION_GAP lessons from it.
-    # A requirement listed here was NEVER executed — VERIFIED alongside a
+    # A requirement listed here was NEVER executed â€” VERIFIED alongside a
     # non-empty list means "verified to the extent this runtime can verify".
     unavailable_requirements: List[VerificationRequirement] = Field(default_factory=list)
     deterministic: bool = True
@@ -138,7 +138,7 @@ class StrategyDecision(_Base):
         )
 
 
-# ── complexity ───────────────────────────────────────────────────────────────
+# â”€â”€ complexity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Multi-part requests need a plan rather than a single answer. Counted from
 # structure, not guessed: conjunctions joining clauses, enumerated parts, and
 # how many distinct information needs are still open.
@@ -209,6 +209,8 @@ _PROCEDURE_CATEGORIES = {"procedure"}
 _TRIVIAL_CATEGORIES = {"greeting", "identity"}
 
 # Needs that can only be met by going outside EVA's own knowledge.
+_URL_NEED_RE = re.compile(r"https?://[^\s]+", re.I)
+
 _EXTERNAL_NEED_RE = re.compile(
     r"\b(latest|current|today|recent|news|price|weather|release|version|"
     r"documentation|changelog|upstream)\b", re.I,
@@ -240,8 +242,8 @@ def _verification_for(strategy: ReasoningStrategy,
     # DIRECT: a diagram or chart answer still has a real validator available.
     #
     # Matched against the REQUEST as well as the derived outcome. Step 3's
-    # deterministic path never writes "diagram" into desired_outcome — it emits
-    # "a direct answer to the question" or "a generated image" — so keying on
+    # deterministic path never writes "diagram" into desired_outcome â€” it emits
+    # "a direct answer to the question" or "a generated image" â€” so keying on
     # that alone made both validators unreachable from /chat however plainly
     # the user asked. This is the same blindness Steps 4 and 7 each had to fix
     # by reading the raw words.
@@ -322,7 +324,7 @@ def select_strategy(
         )
 
     # 2. Safety. A CRITICAL assessment must not be answered with a strategy
-    #    that runs code or reaches outside — not as enforcement (the firewall
+    #    that runs code or reaches outside â€” not as enforcement (the firewall
     #    owns that and has already run), but because selecting an executing
     #    approach for a request flagged critical is the wrong recommendation to
     #    hand the next stage.
@@ -342,6 +344,33 @@ def select_strategy(
             capabilities=["general_reasoning"],
         )
 
+    # 4. External evidence takes deterministic tool routing before generic
+    # multi-step planning, so compound research requests never fall into the
+    # model-backed autopilot planner.
+    url_requested = bool(_URL_NEED_RE.search(problem or ""))
+    needs_external = any(_EXTERNAL_NEED_RE.search(m) for m in assessment.missing_information) \
+        or bool(_EXTERNAL_NEED_RE.search(problem or ""))
+    if url_requested:
+        tools = [TOOL_READ_URL]
+        if needs_external:
+            tools.append(TOOL_WEB_SEARCH)
+        return decide(
+            ReasoningStrategy.TOOL_ASSISTED,
+            "external evidence requested; use deterministic external tools before answering",
+            capabilities=["tool_use", "retrieval"],
+            tools=tools,
+            context=[RequiredContext.EXTERNAL_SOURCES],
+            fallback=ReasoningStrategy.DIRECT,
+        )
+    if needs_external:
+        return decide(
+            ReasoningStrategy.TOOL_ASSISTED,
+            "external evidence requested; search the public web before answering",
+            capabilities=["tool_use", "retrieval"],
+            tools=[TOOL_WEB_SEARCH],
+            context=[RequiredContext.EXTERNAL_SOURCES],
+            fallback=ReasoningStrategy.DIRECT,
+        )
     # 4. Multi-part work needs a plan before an answer, whatever its subject.
     #    Checked before the subject rules so a compound coding request becomes
     #    MULTI_STEP rather than a single CODE answer that addresses one part.
@@ -370,12 +399,12 @@ def select_strategy(
     # "what is react?" and "search the web for the latest react version" were
     # both CODE, because Step 3 falls back to the production router when its own
     # regex does not fire, and that router answers "the code agent handles
-    # this" — a routing decision, which understanding.py itself flags as "a
+    # this" â€” a routing decision, which understanding.py itself flags as "a
     # routing heuristic, not an understanding". Reading it as "the user wants
     # code" attributed every question ABOUT programming to a strategy for
     # WRITING it, and Step 12 then recorded the outcome under strategy=CODE.
     #
-    # The test is whether the request asks for a code ARTEFACT — written,
+    # The test is whether the request asks for a code ARTEFACT â€” written,
     # repaired, or named as the thing wanted ("code", "script", "regex",
     # "query"). That covers diagnosis too, since "my code throws an exception"
     # names one. A question that merely mentions programming does not.
@@ -415,18 +444,6 @@ def select_strategy(
         )
 
     # 6. Evidence gaps that EVA's own knowledge cannot close.
-    needs_external = any(_EXTERNAL_NEED_RE.search(m) for m in assessment.missing_information) \
-        or bool(_EXTERNAL_NEED_RE.search(problem or ""))
-    if assessment.exploration_required and needs_external:
-        return decide(
-            ReasoningStrategy.TOOL_ASSISTED,
-            "missing information is external; gather it before answering",
-            capabilities=["tool_use", "retrieval"],
-            tools=[TOOL_WEB_SEARCH, TOOL_READ_URL],
-            context=[RequiredContext.EXTERNAL_SOURCES],
-            fallback=ReasoningStrategy.DIRECT,
-        )
-
     # 7. Gaps that EVA's own corpus might close.
     if assessment.exploration_required and assessment.evidence_sufficiency in (
         EvidenceSufficiency.INSUFFICIENT, EvidenceSufficiency.PARTIAL
@@ -446,3 +463,8 @@ def select_strategy(
         "understanding and evidence are sufficient to answer directly",
         capabilities=["general_reasoning"],
     )
+
+
+
+
+

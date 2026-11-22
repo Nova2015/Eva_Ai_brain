@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+﻿import { useState, useRef, useCallback, useEffect } from 'react';
 import './uploadProgress.css';
 
-// ── Fetch with timeout ────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Fetch with timeout Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 async function fetchWithTimeout(url, options = {}, ms = 245000, attempt = 0) {
   const controller = new AbortController();
   const tid = setTimeout(() => controller.abort(), ms);
@@ -24,10 +24,10 @@ async function fetchWithTimeout(url, options = {}, ms = 245000, attempt = 0) {
   }
 }
 
-const defaultApi = process.env.REACT_APP_API_BASE || 'https://eva-ai-1-9wfc.onrender.com';
+const defaultApi = process.env.REACT_APP_API_BASE || 'http://127.0.0.1:8000';
 // RAG service (upload / ingest / query / stats / documents) lives on the HF service with
-// persistent Supabase storage — not Render. Override with REACT_APP_RAG_API_BASE if needed.
-const RAG_API = process.env.REACT_APP_RAG_API_BASE || 'https://keshav1212-eva-ml-service.hf.space';
+// persistent Supabase storage Ã¢â‚¬â€ not Render. Override with REACT_APP_RAG_API_BASE if needed.
+const RAG_API = process.env.REACT_APP_RAG_API_BASE || 'http://127.0.0.1:7860';
 
 function getHeaders() {
   const token = ['aria_token', 'token', 'access_token', 'authToken']
@@ -44,7 +44,7 @@ function getHeaders() {
   };
 }
 
-// ── ML Intent Detection (client-side lightweight classifier) ──────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ ML Intent Detection (client-side lightweight classifier) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function getLocalUserNamespace() {
   try {
     const user = JSON.parse(localStorage.getItem('aria_user') || '{}');
@@ -69,7 +69,7 @@ async function readJsonResponse(res) {
 
 function ragErrorMessage(res, data, action) {
   if (res.status === 401) return 'Session expired or missing. Please log in again before using RAG.';
-  // Update 65: writes are gated by X-Train-Key — say exactly how to fix it
+  // Update 65: writes are gated by X-Train-Key Ã¢â‚¬â€ say exactly how to fix it
   // rather than surfacing a bare 403.
   if (res.status === 403) {
     return `RAG ${action} needs the admin key. Open the Training Center `
@@ -95,17 +95,17 @@ function detectIntent(query) {
   return 'general';
 }
 
-// ── Model Router ──────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Model Router Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 const MODEL_ROUTES = {
-  code:     { model: 'Qwen Coder / Claude',   color: '#818cf8', emoji: '⚡' },
-  document: { model: 'Gemini Flash',          color: '#34d399', emoji: '📄' },
-  learning: { model: 'GPT-4o-mini',           color: '#fbbf24', emoji: '📚' },
-  search:   { model: 'Gemini Flash',          color: '#38bdf8', emoji: '🔍' },
-  analysis: { model: 'Claude Sonnet',         color: '#f472b6', emoji: '🧠' },
-  general:  { model: 'Groq Llama / Gemini Flash', color: '#a78bfa', emoji: '💬' },
+  code:     { model: 'Qwen Coder / Claude',   color: '#818cf8', emoji: 'Ã¢Å¡Â¡' },
+  document: { model: 'Gemini Flash',          color: '#34d399', emoji: 'Ã°Å¸â€œâ€ž' },
+  learning: { model: 'GPT-4o-mini',           color: '#fbbf24', emoji: 'Ã°Å¸â€œÅ¡' },
+  search:   { model: 'Gemini Flash',          color: '#38bdf8', emoji: 'Ã°Å¸â€Â' },
+  analysis: { model: 'Claude Sonnet',         color: '#f472b6', emoji: 'Ã°Å¸Â§Â ' },
+  general:  { model: 'Groq Llama / Gemini Flash', color: '#a78bfa', emoji: 'Ã°Å¸â€™Â¬' },
 };
 
-// ── Source badge ──────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Source badge Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function SourceBadge({ source }) {
   return (
     <span style={{
@@ -113,12 +113,12 @@ function SourceBadge({ source }) {
       padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 700,
       background: 'rgba(56,189,248,.1)', border: '1px solid rgba(56,189,248,.2)', color: '#7dd3fc',
     }}>
-      📎 {source}
+      Ã°Å¸â€œÅ½ {source}
     </span>
   );
 }
 
-// ── Message bubble ────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Message bubble Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 const RAG_MODES = [
   ['auto', 'Automatic', 'EVA chooses best'],
   ['hybrid', 'Hybrid', 'Best accuracy'],
@@ -163,7 +163,7 @@ function MessageBubble({ msg }) {
         {msg.intent && (
           <div style={{ fontSize: 10, color: '#4a2d7a', display: 'flex', gap: 6 }}>
             <span>Intent: <span style={{ color: MODEL_ROUTES[msg.intent]?.color }}>{msg.intent}</span></span>
-            <span>→ {MODEL_ROUTES[msg.intent]?.model}</span>
+            <span>â†’ {MODEL_ROUTES[msg.intent]?.model}</span>
           </div>
         )}
         {!isUser && msg.modeUsed && (
@@ -177,7 +177,7 @@ function MessageBubble({ msg }) {
   );
 }
 
-// ── Document card ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Document card Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function DocCard({ doc, onDelete }) {
   return (
     <div style={{
@@ -185,35 +185,35 @@ function DocCard({ doc, onDelete }) {
       borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
     }}>
       <div style={{ fontSize: 20, flexShrink: 0 }}>
-        {doc.type === 'pdf' ? '📄' : doc.type === 'txt' ? '📝' : doc.type === 'url' ? '🌐' : '📁'}
+        {doc.type === 'pdf' ? 'Ã°Å¸â€œâ€ž' : doc.type === 'txt' ? 'Ã°Å¸â€œÂ' : doc.type === 'url' ? 'Ã°Å¸Å’Â' : 'Ã°Å¸â€œÂ'}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ color: '#e8e0ff', fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</div>
-        <div style={{ color: '#4a2d7a', fontSize: 10, marginTop: 2 }}>{doc.chunks} chunks · {doc.category}</div>
+        <div style={{ color: '#4a2d7a', fontSize: 10, marginTop: 2 }}>{doc.chunks} chunks Ã‚Â· {doc.category}</div>
       </div>
       <div style={{ display: 'flex', gap: 4 }}>
         <span style={{
           padding: '2px 6px', borderRadius: 999, fontSize: 9, fontWeight: 700,
           background: 'rgba(52,211,153,.1)', border: '1px solid rgba(52,211,153,.2)', color: '#34d399',
         }}>indexed</span>
-        <button onClick={() => onDelete(doc.id)} style={{ background: 'none', border: 'none', color: '#4a2d7a', cursor: 'pointer', fontSize: 14, padding: '0 2px' }}>×</button>
+        <button onClick={() => onDelete(doc.id)} style={{ background: 'none', border: 'none', color: '#4a2d7a', cursor: 'pointer', fontSize: 14, padding: '0 2px' }}>Ãƒâ€”</button>
       </div>
     </div>
   );
 }
 
-// ── Upload progress (async job) ───────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Upload progress (async job) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Friendly text for every REAL backend state (job_manager.py). CHUNKING and
-// VALIDATING are real states the backend emits, so they are covered here — no
+// VALIDATING are real states the backend emits, so they are covered here Ã¢â‚¬â€ no
 // state is dropped. Any status not in this map falls back to the backend's own
 // `current_step` string, so nothing is ever labelled with an invented name.
 export const STAGE_LABELS = {
-  QUEUED:    'Queued for processing…',
-  PARSING:   'Reading document…',
-  CHUNKING:  'Chunking text…',
-  VALIDATING:'Validating chunks…',
-  EMBEDDING: 'Generating embeddings…',
-  INDEXING:  'Indexing vectors…',
+  QUEUED:    'Queued for processingÃ¢â‚¬Â¦',
+  PARSING:   'Reading documentÃ¢â‚¬Â¦',
+  CHUNKING:  'Chunking textÃ¢â‚¬Â¦',
+  VALIDATING:'Validating chunksÃ¢â‚¬Â¦',
+  EMBEDDING: 'Generating embeddingsÃ¢â‚¬Â¦',
+  INDEXING:  'Indexing vectorsÃ¢â‚¬Â¦',
   COMPLETE:  'Upload complete',
   FAILED:    'Upload failed',
   CANCELLED: 'Upload cancelled',
@@ -222,7 +222,7 @@ const TERMINAL_STATES = new Set(['COMPLETE', 'FAILED', 'CANCELLED']);
 
 export function stageLabel(job) {
   if (!job) return '';
-  return STAGE_LABELS[job.status] || job.current_step || 'Processing…';
+  return STAGE_LABELS[job.status] || job.current_step || 'ProcessingÃ¢â‚¬Â¦';
 }
 
 // Renders real job state. Progress bar animates from the payload's numeric
@@ -252,9 +252,9 @@ export function UploadProgress({ job, stalled }) {
           className={`eva-up__label${isComplete ? ' eva-up__check' : ''}`.trim()}
           aria-live="polite"
         >
-          {isComplete ? '✓ ' : isFailed ? '✕ ' : isCancelled ? '⊘ ' : ''}{label}
+          {isComplete ? 'âœ“ ' : isFailed ? 'âœ• ' : isCancelled ? 'âŠ˜ ' : ''}{label}
           {isComplete && typeof job.chunk_count === 'number' && job.chunk_count > 0
-            ? ` — ${job.chunk_count} chunks`
+            ? ` â€” ${job.chunk_count} chunks`
             : ''}
         </span>
         {pct != null && !isFailed && !isCancelled && (
@@ -275,13 +275,13 @@ export function UploadProgress({ job, stalled }) {
         <div className="eva-up__stall" style={{ color: '#f87171' }}>{job.error}</div>
       )}
       {stalled && !TERMINAL_STATES.has(status) && (
-        <div className="eva-up__stall" aria-live="polite">⚠ Taking longer than expected… still working.</div>
+        <div className="eva-up__stall" aria-live="polite">Ã¢Å¡Â  Taking longer than expectedÃ¢â‚¬Â¦ still working.</div>
       )}
     </div>
   );
 }
 
-// ── Main RAG 2.0 Component ────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Main RAG 2.0 Component Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // eslint-disable-next-line no-unused-vars -- API prop kept intentionally; RAG calls now use RAG_API (HF).
 export default function RAGCenter({ API = defaultApi }) {
   const [messages, setMessages] = useState([
@@ -326,7 +326,7 @@ export default function RAGCenter({ API = defaultApi }) {
     if (stallRef.current) { clearTimeout(stallRef.current); stallRef.current = null; }
   }, []);
 
-  // Cleanup on unmount — assert no interval/timeout leaks past this component.
+  // Cleanup on unmount Ã¢â‚¬â€ assert no interval/timeout leaks past this component.
   useEffect(() => clearUploadTimers, [clearUploadTimers]);
 
   useEffect(() => {
@@ -493,7 +493,7 @@ export default function RAGCenter({ API = defaultApi }) {
 
       if (!data.job_id) throw new Error(data.detail || 'Upload job was not created');
 
-      // Async job accepted — clear the pre-job message and drive the animated
+      // Async job accepted Ã¢â‚¬â€ clear the pre-job message and drive the animated
       // stage UI from the real /rag/jobs/{id} payload.
       setUploadMsg('');
       setUploadStall(false);
@@ -509,7 +509,7 @@ export default function RAGCenter({ API = defaultApi }) {
         let lastStatus = null;
 
         // Arm a 20s stall timer for the CURRENT state. If the same state
-        // persists past 20s we surface an honest notice but KEEP polling —
+        // persists past 20s we surface an honest notice but KEEP polling Ã¢â‚¬â€
         // CPU embedding can legitimately be slow; we never auto-fail.
         const armStall = (status) => {
           if (stallRef.current) clearTimeout(stallRef.current);
@@ -576,7 +576,7 @@ export default function RAGCenter({ API = defaultApi }) {
       }, 30000);
       const data = await readJsonResponse(res);
       if (!res.ok) throw new Error(ragErrorMessage(res, data, 'URL ingest'));
-      setUploadMsg(`✅ URL indexed: ${data.chunks_created || '?'} chunks`);
+      setUploadMsg(`âœ… URL indexed: ${data.chunks_created || '?'} chunks`);
       setUrlInput('');
       await loadDocuments();
       await loadStats();
@@ -617,7 +617,7 @@ export default function RAGCenter({ API = defaultApi }) {
       <div style={S.header}>
         <div style={S.headerLeft}>
           <div style={S.logo}>RAG 2.0</div>
-          <div style={S.logoSub}>Retrieval-Augmented Generation · Intent-Aware · Model-Routed</div>
+          <div style={S.logoSub}>Retrieval-Augmented Generation Ã‚Â· Intent-Aware Ã‚Â· Model-Routed</div>
         </div>
         <div style={S.headerStats}>
           <StatusBadge label="Mode" value={selectedWorkspaceId ? 'Workspace Selected' : 'Ready User Mode'} />
@@ -634,14 +634,14 @@ export default function RAGCenter({ API = defaultApi }) {
       <div style={S.tabs}>
         {['chat', 'documents', 'settings'].map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ ...S.tab, ...(tab === t ? S.tabActive : {}) }}>
-            {t === 'chat' ? '💬 Chat' : t === 'documents' ? '📁 Documents' : '⚙️ Settings'}
+            {t === 'chat' ? 'Ã°Å¸â€™Â¬ Chat' : t === 'documents' ? 'Ã°Å¸â€œÂ Documents' : 'Ã¢Å¡â„¢Ã¯Â¸Â Settings'}
           </button>
         ))}
       </div>
 
-      {error && <div style={S.error}>⚠ {error} <button onClick={() => setError('')} style={S.errorClose}>×</button></div>}
+      {error && <div style={S.error}>Ã¢Å¡Â  {error} <button onClick={() => setError('')} style={S.errorClose}>Ãƒâ€”</button></div>}
 
-      {/* ── CHAT TAB ── */}
+      {/* Ã¢â€â‚¬Ã¢â€â‚¬ CHAT TAB Ã¢â€â‚¬Ã¢â€â‚¬ */}
       {tab === 'chat' && (
         <div style={S.chatLayout}>
           <div style={S.chatMessages}>
@@ -677,7 +677,7 @@ export default function RAGCenter({ API = defaultApi }) {
               <div style={S.routerBadge}>
                 <span>{currentRoute.emoji} Routing to</span>
                 <span style={{ color: currentRoute.color, fontWeight: 700 }}>{currentRoute.model}</span>
-                <span style={{ color: '#4a2d7a' }}>· intent: {currentIntent}</span>
+                <span style={{ color: '#4a2d7a' }}>Ã‚Â· intent: {currentIntent}</span>
               </div>
             )}
             <div style={S.inputRow}>
@@ -686,37 +686,37 @@ export default function RAGCenter({ API = defaultApi }) {
                 style={S.textarea}
                 value={query}
                 onChange={e => setQuery(e.target.value)}
-                placeholder="Ask anything — EVA detects intent and routes to the best model..."
+                placeholder="Ask anything Ã¢â‚¬â€ EVA detects intent and routes to the best model..."
                 rows={2}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); } }}
               />
               <div style={S.inputButtons}>
                 <button onClick={sendQuery} disabled={loading || !query.trim()} style={S.sendBtn}>
-                  {loading ? '⏳' : '↑'}
+                  {loading ? 'Ã¢ÂÂ³' : 'Ã¢â€ â€˜'}
                 </button>
-                <button onClick={clearConversation} style={S.clearBtn} title="Clear chat">🗑</button>
+                <button onClick={clearConversation} style={S.clearBtn} title="Clear chat">Ã°Å¸â€”â€˜</button>
               </div>
             </div>
-            <div style={S.inputHint}>Enter to send · Shift+Enter for newline</div>
+            <div style={S.inputHint}>Enter to send Ã‚Â· Shift+Enter for newline</div>
           </div>
         </div>
       )}
 
-      {/* ── DOCUMENTS TAB ── */}
+      {/* Ã¢â€â‚¬Ã¢â€â‚¬ DOCUMENTS TAB Ã¢â€â‚¬Ã¢â€â‚¬ */}
       {tab === 'documents' && (
         <div style={S.docsLayout}>
           <div style={S.uploadSection}>
             <div style={S.sectionTitle}>Upload Documents</div>
             <div style={S.uploadGrid}>
               <button style={S.uploadBtn} onClick={() => fileRef.current?.click()} disabled={docsLoading}>
-                <span style={{ fontSize: 24 }}>📄</span>
+                <span style={{ fontSize: 24 }}>Ã°Å¸â€œâ€ž</span>
                 <span style={{ fontWeight: 700, color: '#e8e0ff' }}>Upload File</span>
                 <span style={{ fontSize: 11, color: '#4a2d7a' }}>
                   PDF, TXT, MD, DOCX (max {uploadLimitLabel}{uploadLimits?.mode === 'local' ? ', local mode' : ''})
                 </span>
               </button>
               <div style={S.urlIngest}>
-                <div style={{ color: '#8b7ab0', fontSize: 12, marginBottom: 6 }}>🌐 Ingest URL</div>
+                <div style={{ color: '#8b7ab0', fontSize: 12, marginBottom: 6 }}>Ã°Å¸Å’Â Ingest URL</div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input
                     style={S.urlInput}
@@ -726,7 +726,7 @@ export default function RAGCenter({ API = defaultApi }) {
                     onKeyDown={e => e.key === 'Enter' && ingestUrl()}
                   />
                   <button style={S.ingestBtn} onClick={ingestUrl} disabled={docsLoading || !urlInput.trim()}>
-                    {docsLoading ? '…' : 'Ingest'}
+                    {docsLoading ? 'â€¦' : 'Ingest'}
                   </button>
                 </div>
               </div>
@@ -749,7 +749,7 @@ export default function RAGCenter({ API = defaultApi }) {
         </div>
       )}
 
-      {/* ── SETTINGS TAB ── */}
+      {/* Ã¢â€â‚¬Ã¢â€â‚¬ SETTINGS TAB Ã¢â€â‚¬Ã¢â€â‚¬ */}
       {tab === 'settings' && (
         <div style={S.settingsLayout}>
           <div style={S.settingsSection}>
@@ -758,7 +758,7 @@ export default function RAGCenter({ API = defaultApi }) {
               <input type="range" min={1} max={20} value={topK} onChange={e => setTopK(Number(e.target.value))} style={{ flex: 1 }} />
               <span style={S.settingValue}>{topK}</span>
             </SettingRow>
-            <SettingRow label="Score Threshold" hint="Minimum similarity score (0–1)">
+            <SettingRow label="Score Threshold" hint="Minimum similarity score (0Ã¢â‚¬â€œ1)">
               <input type="range" min={0} max={1} step={0.05} value={scoreThreshold} onChange={e => setScoreThreshold(Number(e.target.value))} style={{ flex: 1 }} />
               <span style={S.settingValue}>{scoreThreshold.toFixed(2)}</span>
             </SettingRow>
@@ -774,7 +774,7 @@ export default function RAGCenter({ API = defaultApi }) {
                 <label key={opt} style={S.radioRow}>
                   <input type="radio" name="model" value={opt} checked={selectedModel === opt} onChange={() => setSelectedModel(opt)} />
                   <span style={{ color: '#e8e0ff', fontSize: 12 }}>
-                    {opt === 'auto' ? '🤖 Auto (intent-based routing)' : `${MODEL_ROUTES[opt].emoji} ${opt} → ${MODEL_ROUTES[opt].model}`}
+                    {opt === 'auto' ? 'ðŸ¤– Auto (intent-based routing)' : `${MODEL_ROUTES[opt].emoji} ${opt} â†’ ${MODEL_ROUTES[opt].model}`}
                   </span>
                 </label>
               ))}
@@ -786,13 +786,13 @@ export default function RAGCenter({ API = defaultApi }) {
             <div style={S.archDiagram}>
               {[
                 ['User Question', '#e8e0ff'],
-                ['↓ ML Intent Detection', '#a78bfa'],
-                ['↓ RAG Retriever', '#38bdf8'],
-                ['↓ Model Router', '#fbbf24'],
-                ['↓ Best LLM', '#34d399'],
-                ['↓ Answer + Feedback', '#f472b6'],
+                ['Ã¢â€ â€œ ML Intent Detection', '#a78bfa'],
+                ['Ã¢â€ â€œ RAG Retriever', '#38bdf8'],
+                ['Ã¢â€ â€œ Model Router', '#fbbf24'],
+                ['Ã¢â€ â€œ Best LLM', '#34d399'],
+                ['Ã¢â€ â€œ Answer + Feedback', '#f472b6'],
               ].map(([step, color], i) => (
-                <div key={i} style={{ color, fontSize: 12, fontWeight: step.startsWith('↓') ? 400 : 700, padding: '3px 0' }}>{step}</div>
+                <div key={i} style={{ color, fontSize: 12, fontWeight: step.startsWith('â†“') ? 400 : 700, padding: '3px 0' }}>{step}</div>
               ))}
             </div>
           </div>
@@ -810,7 +810,7 @@ export default function RAGCenter({ API = defaultApi }) {
   );
 }
 
-// ── Small sub-components ──────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Small sub-components Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function StatPill({ label, value, color }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 12px', background: 'rgba(255,255,255,.04)', borderRadius: 8, border: '1px solid rgba(255,255,255,.08)' }}>
@@ -846,7 +846,7 @@ function SettingRow({ label, hint, children }) {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Styles Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 const S = {
   root: { display: 'flex', flexDirection: 'column', height: '100%', background: '#060b16', color: '#e8e0ff', fontFamily: 'inherit', overflow: 'hidden' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,.07)', flexShrink: 0, flexWrap: 'wrap', gap: 10 },
@@ -895,3 +895,5 @@ const S = {
   radioRow: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 0' },
   archDiagram: { background: '#020617', borderRadius: 8, padding: '12px 16px', border: '1px solid rgba(255,255,255,.06)', lineHeight: 1.8 },
 };
+
+

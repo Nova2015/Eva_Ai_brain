@@ -63,6 +63,7 @@ MAX_TRANSITIONS_CEILING = 100
 # chain-of-thought dumping ground.
 REASON_MAX = 400
 TEXT_MAX = 4000
+EVIDENCE_MAX = 12000
 
 
 def _utcnow() -> str:
@@ -369,6 +370,7 @@ class GateDecision(_Base):
     action: GateAction = GateAction.PROCEED
     safety: SafetyAssessment = Field(default_factory=SafetyAssessment)
     solution_paths: SolutionPaths = SolutionPaths.OBVIOUS
+    strategy: ReasoningStrategy = ReasoningStrategy.DIRECT
     confidence: float = 0.0
     needs_clarification: bool = False
     # User-facing text — used to build a reply. NEVER placed in telemetry().
@@ -377,6 +379,11 @@ class GateDecision(_Base):
     assumptions: List[str] = Field(default_factory=list)
     unknowns: List[str] = Field(default_factory=list)
 
+
+    # Internal preparation objects are runtime-only and never serialized/telemetried.
+    _understanding: Any = PrivateAttr(default=None)
+    _assessment: Any = PrivateAttr(default=None)
+    _strategy_decision: Any = PrivateAttr(default=None)
     @field_validator("clarification_question")
     @classmethod
     def _scrub_q(cls, v: str) -> str:
@@ -474,6 +481,7 @@ class Observation(_Base):
     observation_id: str = Field(default_factory=lambda: f"obs_{uuid.uuid4().hex[:10]}")
     task_id: Optional[str] = None
     summary: str = ""
+    evidence: str = ""
     evidence_refs: List[str] = Field(default_factory=list)
     recorded_at: str = Field(default_factory=_utcnow)
 
@@ -481,6 +489,11 @@ class Observation(_Base):
     @classmethod
     def _scrub(cls, v: str) -> str:
         return _clean(v, REASON_MAX) or ""
+
+    @field_validator("evidence")
+    @classmethod
+    def _scrub_evidence(cls, v: str) -> str:
+        return _clean(v, EVIDENCE_MAX) or ""
 
     @field_validator("evidence_refs")
     @classmethod
@@ -763,3 +776,4 @@ class CognitiveState(_Base):
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "CognitiveState":
         return cls.model_validate(payload)
+

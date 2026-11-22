@@ -56,6 +56,15 @@ from .state import (
 
 SUMMARY_MAX = 300
 
+# Requests whose answer depends on information that can change over time.
+# Assessment only marks the need for exploration; it never fetches anything.
+_EXTERNAL_FRESHNESS_RE = re.compile(
+    r"\b(latest|current|today|recent|recently|news|price|prices|weather|"
+    r"release|released|newest|up[- ]to[- ]date)\b",
+    re.IGNORECASE,
+)
+
+
 
 # ── vocabularies ─────────────────────────────────────────────────────────────
 class EvidenceSufficiency(str, Enum):
@@ -505,7 +514,14 @@ def assess(
     constraint_status, unmet = _assess_constraints(understanding, evidence)
 
     # ── decisions ────────────────────────────────────────────────────────────
-    exploration_required = bool(still_missing) or bool(conflicts)
+    freshness_requested = bool(
+        _EXTERNAL_FRESHNESS_RE.search(problem or "")
+    )
+    exploration_required = (
+        bool(still_missing)
+        or bool(conflicts)
+        or freshness_requested
+    )
     clarification_required = ambiguity_status is AmbiguityStatus.BLOCKING
 
     ready_for_strategy = (

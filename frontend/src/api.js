@@ -1,20 +1,16 @@
 /**
  * EVA — Centralized API Utility
- * Handles all fetch calls, JSON parsing, auth errors, and ngrok headers
+ * Handles all fetch calls, JSON parsing, auth errors, and local API headers
  */
 
-const NGROK_HEADER = { 'ngrok-skip-browser-warning': 'true' };
 
 /**
  * Core fetch wrapper — safe JSON parsing, error handling, logging
  */
 export async function apiFetch(url, options = {}) {
   try {
-    // Merge ngrok header into every request
-    const headers = {
-      ...NGROK_HEADER,
-      ...(options.headers || {}),
-    };
+    // Merge request headers
+    const headers = { ...(options.headers || {}) };
 
     const res = await fetch(url, { ...options, headers });
 
@@ -33,7 +29,7 @@ export async function apiFetch(url, options = {}) {
     } catch {
       // Backend returned HTML (ngrok warning page, 502, etc.)
       if (text.includes('<!DOCTYPE') || text.includes('<html')) {
-        throw new Error('Backend returned an HTML page — is the server running?');
+        throw new Error('Backend returned an HTML page — is the local server running?');
       }
       throw new Error(`Invalid JSON from ${url}: ${text.slice(0, 100)}`);
     }
@@ -83,9 +79,7 @@ export async function apiPost(url, body, token) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': 'true',
       ...(token && token !== 'offline' ? { Authorization: `Bearer ${token}` } : {}),
-      ...NGROK_HEADER,
     },
     body: JSON.stringify(body),
   });

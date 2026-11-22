@@ -53,11 +53,12 @@ from .act import act, ActStatus
 from .assessment import assess
 from .correction import correct, CorrectionStatus
 from .executor import ExecutionResult, ExecutionStatus
+from . import executor as _execution_backend
 # _outcome_of is Step 12's answer to "did this remedy actually work". Reused
 # rather than restated so the bridge and the learning record cannot disagree
 # about whether a correction succeeded.
 from .learning import CorrectionCycle, CorrectionOutcome, learn, _outcome_of
-from .planning import TaskPlan
+from .planning import TaskPlan, plan_for
 from .state import (
     CognitivePhase,
     CognitiveState,
@@ -69,6 +70,7 @@ from .state import (
     redact_secrets,
 )
 from .strategy import select_strategy, VerificationRequirement
+from .capabilities import select_capabilities
 from .understanding import understand
 # Phase 1 pre-answer decision gate, re-exported so app.py still reaches the
 # engine through this one door. Optional: a fault in the gate must never disable
@@ -84,10 +86,131 @@ from .verification import (
     review_key, review_once,
 )
 
+# Structured reasoning verification is exposed through this bridge.
+try:
+    from .reasoning_orchestrator import verify_reasoning_answer
+    from .reasoning_eligibility import is_reasoning_eligible
+    from .provider_callback import build_reasoning_llm
+    REASONING_VERIFICATION_AVAILABLE = True
+except Exception:  # pragma: no cover
+    verify_reasoning_answer = None
+    is_reasoning_eligible = None
+    build_reasoning_llm = None
+    REASONING_VERIFICATION_AVAILABLE = False
+
 # One task id for the one artefact a chat turn produces. The engine's models are
 # per-task; a chat reply is a single artefact, so the id is a constant rather
 # than something derived from user input.
 CHAT_TASK = "chat_answer"
+
+
+def orchestrate_preanswer(
+    question: str,
+    history: Optional[Sequence[dict]] = None,
+) -> dict:
+    """Prepare a chat turn through the cognitive planning stages.
+
+    This stage does not execute tools or generate an answer. It prepares the
+    strategy, plan, and capability selection while preserving the existing
+    /chat execution path.
+    """
+    if not question or not question.strip():
+        return {
+            "allowed": False,
+            "reason": "empty_question",
+            "strategy": None,
+            "plan": None,
+            "selection": None,
+        }
+
+    try:
+        if decide is not None:
+            gate = decide(
+                question,
+                history=history,
+                has_image=False,
+            )
+            if gate.action is not GateAction.PROCEED:
+                return {
+                    "allowed": False,
+                    "reason": gate.action.value,
+                    "strategy": gate.strategy.value,
+                    "plan": None,
+                    "selection": None,
+                    "gate": gate,
+                }
+
+        context = [
+            str(item.get("content", ""))
+            for item in (history or [])
+            if isinstance(item, dict) and item.get("content")
+        ]
+
+        comprehension = getattr(gate, "_understanding", None)
+        knowledge = getattr(gate, "_assessment", None)
+        decision = getattr(gate, "_strategy_decision", None)
+
+        if comprehension is None:
+            comprehension = understand(
+                question,
+                context=context,
+                has_image=False,
+            )
+        if knowledge is None:
+            knowledge = assess(
+                comprehension,
+                context=context,
+                problem=question,
+            )
+        if decision is None:
+            decision = select_strategy(
+                comprehension,
+                knowledge,
+                problem=question,
+                available=available_requirements(),
+            )
+
+        state = CognitiveState(problem=question)
+        state.strategy = StrategySelection(strategy=decision.strategy)
+
+        plan = plan_for(
+            comprehension,
+            knowledge,
+            decision,
+            problem=question,
+        )
+
+        selection = select_capabilities(
+            plan,
+            comprehension,
+            knowledge,
+            decision,
+            problem=question,
+        )
+
+        return {
+            "allowed": True,
+            "reason": decision.reason,
+            "strategy": decision.strategy.value,
+            "plan": plan,
+            "selection": selection,
+            "state": state,
+            "decision": decision,
+            "gate": gate if decide is not None else None,
+            "understanding": comprehension,
+            "assessment": knowledge,
+        }
+
+    except Exception as exc:
+        return {
+            "allowed": False,
+            "reason": "cognitive_preparation_failed",
+            "strategy": None,
+            "plan": None,
+            "selection": None,
+            "error": type(exc).__name__,
+        }
+
 
 _ENV_FLAG = "COGNITIVE_ENGINE_ENABLED"
 _ENV_TIMEOUT = "COGNITIVE_TIMEOUT_SECONDS"

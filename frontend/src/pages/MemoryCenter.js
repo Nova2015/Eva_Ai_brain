@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
 const defaultApi = window.location.hostname === 'localhost'
-  ? 'http://localhost:8002'
-  : 'https://eva-ai-1-9wfc.onrender.com';
+  ? 'http://127.0.0.1:8000'
+  : 'http://127.0.0.1:8000';
 
 export default function MemoryCenter({ API = defaultApi }) {
   const storedUser = (() => {
@@ -349,3 +349,4 @@ function Stat({ label, value }) {
     </div>
   );
 }
+

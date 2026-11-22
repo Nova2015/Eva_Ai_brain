@@ -40,7 +40,7 @@ def _llm_call(system: str, user: str) -> str:
         from groq import Groq
         client = Groq(api_key=api_key)
         resp = client.chat.completions.create(
-            model=os.getenv("CODE_MODEL", "llama-3.3-70b-versatile"),
+            model=os.getenv("CODE_MODEL", "openai/gpt-oss-120b"),
             messages=[{"role": "system", "content": _chart_system_prompt(system, user)},
                       {"role": "user",   "content": user}],
             max_tokens=2048,

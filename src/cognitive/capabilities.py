@@ -1,4 +1,4 @@
-"""Capability selection — Step 7 of the Cognitive Engine.
+"""Capability selection â€” Step 7 of the Cognitive Engine.
 
 Answers: **what capabilities are needed to execute this plan?**
 
@@ -6,18 +6,18 @@ Four decisions that are easy to collapse into one, kept apart:
 
     STRATEGY    how should we reason about this?      (Step 5)
     CAPABILITY  what ability is needed?               (here)
-    PROVIDER    which model answers?                  (model_router — NOT here)
-    TOOL        what concrete mechanism runs?         (Step 8 — NOT here)
+    PROVIDER    which model answers?                  (model_router â€” NOT here)
+    TOOL        what concrete mechanism runs?         (Step 8 â€” NOT here)
 
 So this module names CALCULATION, never "python"; RETRIEVAL, never "groq". It
 selects nothing, calls nothing, and executes nothing.
 
 EVERY CAPABILITY IS BACKED BY SOMETHING REAL
 ============================================
-§4 of the brief lists candidate capabilities but says to create only those the
+Â§4 of the brief lists candidate capabilities but says to create only those the
 architecture actually supports. Each member of `Capability` below names the
 system that implements it, and CAPABILITY_BACKING records that mapping. A
-capability with nothing behind it is a promise the executor cannot keep — it
+capability with nothing behind it is a promise the executor cannot keep â€” it
 would pass validation here and fail at Step 8, which is the worst place to
 discover it.
 
@@ -68,7 +68,7 @@ class Capability(str, Enum):
 
 
 # What implements each capability today. Used by validation, and the reason the
-# enum stops where it does — there is no DATA_ANALYSIS member because nothing
+# enum stops where it does â€” there is no DATA_ANALYSIS member because nothing
 # in this repository backs one.
 CAPABILITY_BACKING: Dict[Capability, str] = {
     Capability.GENERAL_REASONING: "agents/chat_agent",
@@ -81,13 +81,13 @@ CAPABILITY_BACKING: Dict[Capability, str] = {
     Capability.CLASSIFICATION: "ML service /ml/classify",
     Capability.IMAGE_ANALYSIS: "agents/vision_agent",
     Capability.MECHANICAL_ANALYSIS: "modes/registry: mechanical",
-    Capability.RESEARCH: "autopilot web_search + read_url tools",
+    Capability.RESEARCH: "external research tools",
     Capability.VERIFICATION: "review_engine",
     Capability.STRUCTURED_ANALYSIS: "agents/chat_agent",
     Capability.DIALOGUE: "chat response path",
     Capability.PLANNING: "autopilot._make_plan",
     Capability.MEMORY_READ: "memory_manager (read)",
-    Capability.MEMORY_WRITE: "memory_manager (write) — never auto-selected",
+    Capability.MEMORY_WRITE: "memory_manager (write) â€” never auto-selected",
 }
 
 # Capabilities that change state. Everything else is read-only.
@@ -123,7 +123,7 @@ class CapabilitySelection(_Base):
     capabilities: List[CapabilityRequirement] = Field(default_factory=list)
     selection_confidence: float = 0.0
     selection_reason: str = ""
-    # Named requirements the engine cannot satisfy — an unsupported capability,
+    # Named requirements the engine cannot satisfy â€” an unsupported capability,
     # or a write blocked by a read-only constraint. Surfaced rather than
     # dropped: silently omitting a needed capability produces a plan that fails
     # at execution with no explanation.
@@ -152,7 +152,7 @@ class CapabilitySelection(_Base):
         return [c.capability_id for c in self.capabilities if task_id in c.task_ids]
 
 
-# ── deterministic signals ────────────────────────────────────────────────────
+# â”€â”€ deterministic signals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Step 5/6 already emit capability strings; map them rather than re-deriving.
 _STRING_TO_CAPABILITY: Dict[str, Capability] = {
     "general_reasoning": Capability.GENERAL_REASONING,
@@ -162,7 +162,7 @@ _STRING_TO_CAPABILITY: Dict[str, Capability] = {
     "structured_analysis": Capability.STRUCTURED_ANALYSIS,
     "planning": Capability.PLANNING,
     "dialogue": Capability.DIALOGUE,
-    # tool_use is not a capability — it is how a capability is delivered. The
+    # tool_use is not a capability â€” it is how a capability is delivered. The
     # actual capability comes from which tool the task names.
 }
 
@@ -258,7 +258,7 @@ def select_capabilities(
         for capability in _capabilities_for_task(task):
             by_capability.setdefault(capability, set()).add(task.task_id)
 
-    # Category and strategy add capabilities the per-task view can miss — a
+    # Category and strategy add capabilities the per-task view can miss â€” a
     # document question whose tasks all use `think`, for instance.
     category_capability = _CATEGORY_TO_CAPABILITY.get((understanding.problem_category or "").lower())
     if category_capability and plan.tasks:
@@ -266,7 +266,7 @@ def select_capabilities(
 
     # The user's own words carry signals the derived fields do not. "Debug this
     # Python traceback" needs CODE_ANALYSIS, but by the time it becomes a task
-    # objective it reads "working code or a diagnosis" — the words `debug` and
+    # objective it reads "working code or a diagnosis" â€” the words `debug` and
     # `traceback` are gone. Scanning only objectives silently dropped the
     # capability; this is the same blind spot Step 4 had with risk.
     if problem and plan.tasks:
@@ -276,7 +276,7 @@ def select_capabilities(
     if decision.strategy is ReasoningStrategy.MULTI_STEP and plan.tasks:
         by_capability.setdefault(Capability.PLANNING, set()).add(plan.tasks[0].task_id)
 
-    # §15: verification is a capability, but performing it belongs to
+    # Â§15: verification is a capability, but performing it belongs to
     # review_engine. Naming it here is the whole contribution.
     if verification_task_ids:
         by_capability.setdefault(Capability.VERIFICATION, set()).update(verification_task_ids)
@@ -287,7 +287,7 @@ def select_capabilities(
     for capability, task_ids in sorted(by_capability.items(), key=lambda kv: kv[0].value):
         is_write = capability in _WRITE_CAPABILITIES
 
-        # §14: a write under an explicit read-only constraint is refused, not
+        # Â§14: a write under an explicit read-only constraint is refused, not
         # silently downgraded or silently granted.
         if is_write and read_only_required:
             unresolved.append(
@@ -295,7 +295,7 @@ def select_capabilities(
             )
             continue
 
-        # §13: a capability that changes state under CRITICAL risk is left
+        # Â§13: a capability that changes state under CRITICAL risk is left
         # unresolved for a human/authorised path rather than requested here.
         if is_write and assessment.risk_level is RiskLevel.CRITICAL:
             unresolved.append(f"{capability.value} withheld: request assessed CRITICAL risk")
@@ -339,7 +339,7 @@ def _apply_assist(
 
     Untrusted by construction: unknown capability ids, unknown task ids,
     duplicates and write capabilities are all rejected. Any failure leaves the
-    deterministic selection exactly as it was — an assist that misbehaves must
+    deterministic selection exactly as it was â€” an assist that misbehaves must
     never widen what the engine is allowed to do.
     """
     try:
@@ -387,3 +387,4 @@ def _apply_assist(
         unresolved_capabilities=selection.unresolved_capabilities,
         requires_dynamic_resolution=selection.requires_dynamic_resolution,
     )
+

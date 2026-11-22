@@ -1,0 +1,22 @@
+{
+  "agent": "EVA Dataset Quality Analyzer",
+  "version": "1.0.0",
+  "created_at": "2026-11-05T07:51:45.917156+00:00",
+  "mode": "DRY_RUN",
+  "scope": "workspace/incoming ONLY",
+  "files_scanned": 0,
+  "total_records": 0,
+  "valid_records": 0,
+  "malformed_records": 0,
+  "duplicate_records": 0,
+  "cross_file_duplicates": 0,
+  "split_overlap": {},
+  "files": [],
+  "limitations": [
+    "Language identification is a rough script-based estimate, not full language detection.",
+    "A quality score is a heuristic, not proof of factual correctness.",
+    "License and source metadata must be independently verified.",
+    "Split overlap detection relies on filenames containing train, validation, or test.",
+    "No files are cleaned, moved, deleted, or used for training."
+  ]
+}

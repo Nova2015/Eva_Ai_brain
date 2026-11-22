@@ -442,6 +442,7 @@ def run_plan(
         result.observations.append(Observation(
             task_id=task.task_id,
             summary=summary,
+            evidence=output,
             evidence_refs=[tool],
         ))
         result.outcomes.append(TaskOutcome(

@@ -5,7 +5,7 @@ How it works:
   1. RAG pipeline answers first (your FAISS index)
   2. If RAG confidence < threshold → try Groq (LLaMA)
   3. If Groq fails or key missing → try OpenAI (GPT-4o-mini)
-  4. If OpenAI fails → try Gemini (gemini-1.5-flash)
+  4. If OpenAI fails → try Gemini (gemini-3.5-flash)
   5. Always returns best available answer + which provider was used
 
 Setup (.env):
@@ -29,7 +29,7 @@ GROQ_KEY      = os.getenv("GROQ_API_KEY", "")
 OPENAI_KEY    = os.getenv("OPENAI_API_KEY", "")
 GEMINI_KEY    = os.getenv("GEMINI_API_KEY", "")
 THRESHOLD     = float(os.getenv("RAG_CONFIDENCE_THRESHOLD", "0.35"))
-GROQ_MODEL    = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL    = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 OPENAI_MODEL  = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 GEMINI_MODEL  = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
 

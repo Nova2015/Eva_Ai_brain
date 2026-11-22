@@ -1,7 +1,7 @@
-// useWebSocket.js — drop in src/hooks/
+﻿// useWebSocket.js â€” drop in src/hooks/
 import { useEffect, useRef, useState } from 'react';
 
-const HF_WS = 'wss://keshav1212-eva-ml-service.hf.space/ws';
+const HF_WS = 'ws://127.0.0.1:8000/ws';
 
 export default function useJobProgress(jobId) {
   const [progress, setProgress] = useState({ step: '', message: '', percent: 0, done: false, error: null });
@@ -25,3 +25,5 @@ export default function useJobProgress(jobId) {
 
   return progress;
 }
+
+

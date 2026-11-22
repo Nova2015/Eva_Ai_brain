@@ -106,10 +106,11 @@ def decide(question: str, history=None, has_image: bool = False,
             action = GateAction.PROCEED
 
         clarifying = action is GateAction.CLARIFY
-        return GateDecision(
+        decision = GateDecision(
             action=action,
             safety=safety,
             solution_paths=paths,
+            strategy=(strat.strategy if strat is not None else ReasoningStrategy.DIRECT),
             confidence=u.confidence,
             needs_clarification=will_clarify,
             clarification_question=_clarify_question(u, a) if clarifying else "",
@@ -117,6 +118,10 @@ def decide(question: str, history=None, has_image: bool = False,
             assumptions=_derive_assumptions(u, a, clarifying),
             unknowns=list(a.missing_information),
         )
+        decision._understanding = u
+        decision._assessment = a
+        decision._strategy_decision = strat
+        return decision
     except Exception:
         # The gate must never cost a user their answer: default to PROCEED.
         return GateDecision(action=GateAction.PROCEED)

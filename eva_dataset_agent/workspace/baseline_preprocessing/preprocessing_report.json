@@ -1,0 +1,75 @@
+{
+  "created_utc": "2026-11-05T08:37:34.276195+00:00",
+  "features": [
+    "formation_energy_per_atom",
+    "energy_per_atom",
+    "density",
+    "volume",
+    "n_elements",
+    "contains_transition_metal"
+  ],
+  "target": "band_gap",
+  "target_units": "UNVERIFIED; retained source standardized values",
+  "feature_scaler": {
+    "type": "StandardScaler",
+    "fit_on": "train_only",
+    "mean": [
+      0.014385870276779903,
+      0.000662562309219871,
+      0.009697636827348637,
+      -0.01808277202612435,
+      3.8790524416506607,
+      0.5007275478726501
+    ],
+    "scale": [
+      1.0080482296674,
+      1.0081618311069858,
+      1.0049543480804466,
+      0.9819527281269237,
+      0.7509445761576785,
+      0.49999947067370787
+    ]
+  },
+  "target_scaling": "No additional target scaling",
+  "baseline": {
+    "type": "constant train-target-mean predictor",
+    "train_target_mean": -0.011856896930308664,
+    "metrics": {
+      "train": {
+        "mae": 0.8175651214386518,
+        "rmse": 0.9977381012202642,
+        "r2": 0.0
+      },
+      "validation": {
+        "mae": 0.8725920266067727,
+        "rmse": 1.0673774194912309,
+        "r2": -0.016133222740762454
+      },
+      "test": {
+        "mae": 0.7806783354872231,
+        "rmse": 0.9382969915977107,
+        "r2": -0.0011347029131905106
+      }
+    }
+  },
+  "split_files": {
+    "train": {
+      "rows": 17181,
+      "sha256": "a1558d942e0db0cb749897da7b6053ca027f577efd5ea09b6aa1841756f64539"
+    },
+    "validation": {
+      "rows": 2421,
+      "sha256": "b6c4013b24ae8b046beb5b42729a839765c3f794b177f62da4bbd927f4bf03b6"
+    },
+    "test": {
+      "rows": 2145,
+      "sha256": "25af168229ad543b929289ed6f382ccb4c5a37fbea3ea98ecf1d1cb32c919dae"
+    }
+  },
+  "training_authorized": false,
+  "limitations": [
+    "This is a mean-predictor baseline, not a trained ML model.",
+    "Target physical units and provenance remain unverified.",
+    "Feature scaling does not establish scientific validity."
+  ]
+}

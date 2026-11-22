@@ -486,7 +486,7 @@ async def build_dataset(body: BuildBody = BuildBody(), _: bool = Depends(require
     push_detail: Dict[str, Any] = {}
     try:
         import httpx
-        hf_url = os.getenv("HF_ML_URL", "https://keshav1212-eva-ml-service.hf.space").rstrip("/")
+        hf_url = os.getenv("HF_ML_URL", "http://127.0.0.1:7860").rstrip("/")
         headers = {}
         if ADMIN_KEY:
             headers["X-Train-Key"] = ADMIN_KEY

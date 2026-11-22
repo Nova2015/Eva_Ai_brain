@@ -309,7 +309,7 @@ def _providers() -> List[Dict[str, Any]]:
     """Real availability only — a provider without a configured key is listed
     as unavailable, never faked."""
     return [
-        {"id": "eva-groq-llama", "label": "EVA · Groq Llama 3.3 70B",
+        {"id": "eva-groq-llama", "label": "EVA · Groq openai/gpt-oss-120b",
          "available": bool(os.getenv("GROQ_API_KEY"))},
         {"id": "gemini", "label": f"Gemini · {GEMINI_MODEL}",
          "available": bool(os.getenv("GEMINI_API_KEY"))},
@@ -331,7 +331,7 @@ def _call_provider(pid: str, prompt: str) -> str:
         from groq import Groq
         client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
         r = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}], max_tokens=700,
         )
         return r.choices[0].message.content or ""
@@ -670,7 +670,7 @@ async def synthetic(body: SyntheticBody, _: bool = Depends(require_train_admin))
                 "answer, provider, model, intent, agent, confidence, sources, "
                 "fingerprint, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (cid, _now(), f"synthetic:{source_ref}"[:80], q, a, "groq",
-                 "llama-3.3-70b-versatile", "synthetic", "", 0.0, "[]", fp, STATUS_PENDING),
+                 "openai/gpt-oss-120b", "synthetic", "", 0.0, "[]", fp, STATUS_PENDING),
             )
             created.append(cid)
         conn.commit()

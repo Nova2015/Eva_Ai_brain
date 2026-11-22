@@ -6,7 +6,7 @@ import {
   AlertTriangle, Zap, Folder, SendHorizontal,
 } from 'lucide-react';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const TOKEN_KEYS = ['aria_token', 'token', 'access_token', 'authToken'];
 const getToken = () => TOKEN_KEYS.map((key) => localStorage.getItem(key)).find(Boolean) || '';
 
@@ -20,7 +20,7 @@ function authHeaders(extra = {}) {
   };
 }
 
-// ── Fetch with timeout to prevent frozen loading state ────────────────────────
+// â”€â”€ Fetch with timeout to prevent frozen loading state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function fetchWithTimeout(url, options = {}, ms = 10000) {
   const controller = new AbortController();
   const tid = setTimeout(() => controller.abort(), ms);
@@ -30,7 +30,7 @@ async function fetchWithTimeout(url, options = {}, ms = 10000) {
     return res;
   } catch (err) {
     clearTimeout(tid);
-    if (err.name === 'AbortError') throw new Error('Request timed out. Server may be sleeping — try again.');
+    if (err.name === 'AbortError') throw new Error('Request timed out. Server may be sleeping â€” try again.');
     throw err;
   }
 }
@@ -51,7 +51,7 @@ async function apiFetch(API, path, body) {
   return res.json();
 }
 
-// ── Model Router ──────────────────────────────────────────────────────────────
+// â”€â”€ Model Router â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MODEL_ROUTER = {
   generate:  { label: 'Qwen Coder / Claude',    hint: 'Code generation' },
   explain:   { label: 'Gemini Flash',            hint: 'Fast explanation' },
@@ -68,14 +68,14 @@ const LANG_MAP = {
 const langFromName = (name = '') => LANG_MAP[name.split('.').pop()?.toLowerCase()] || 'text';
 const extIcon = (name = '') => {
   const ext = name.split('.').pop()?.toLowerCase();
-  if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) return '⚡';
-  if (ext === 'py') return '🐍';
-  if (['css', 'scss'].includes(ext)) return '🎨';
-  if (ext === 'html') return '🌐';
+  if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) return 'âš¡';
+  if (ext === 'py') return 'ðŸ';
+  if (['css', 'scss'].includes(ext)) return 'ðŸŽ¨';
+  if (ext === 'html') return 'ðŸŒ';
   if (ext === 'json') return '{}';
-  if (ext === 'md') return '📝';
-  if (['sh', 'bash'].includes(ext)) return '💻';
-  return '📄';
+  if (ext === 'md') return 'ðŸ“';
+  if (['sh', 'bash'].includes(ext)) return 'ðŸ’»';
+  return 'ðŸ“„';
 };
 
 const STARTER_FILES = [
@@ -84,7 +84,7 @@ const STARTER_FILES = [
   { name: 'README.md', content: '# My Project\n\nAI-assisted development with EVA.\n', type: 'file' },
 ];
 
-// ── Syntax highlight ──────────────────────────────────────────────────────────
+// â”€â”€ Syntax highlight â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function highlight(code = '', lang = 'text') {
   let html = code
     .replace(/&/g, '&amp;')
@@ -102,7 +102,7 @@ function highlight(code = '', lang = 'text') {
   return html;
 }
 
-// ── File Tree Node ────────────────────────────────────────────────────────────
+// â”€â”€ File Tree Node â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function FileNode({ node, depth = 0, active, onSelect, onDelete }) {
   const [open, setOpen] = useState(true);
   const isDir = node.type === 'folder';
@@ -135,7 +135,7 @@ function FileNode({ node, depth = 0, active, onSelect, onDelete }) {
   );
 }
 
-// ── Diff View ─────────────────────────────────────────────────────────────────
+// â”€â”€ Diff View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function DiffView({ patch }) {
   if (!patch) return null;
   return (
@@ -153,7 +153,7 @@ function DiffView({ patch }) {
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const LOCAL_API = 'http://127.0.0.1:8000';
 
 export default function CodeAssistant({ API = '', onSendToChat }) {
@@ -164,7 +164,7 @@ export default function CodeAssistant({ API = '', onSendToChat }) {
   const [selected, setSelected] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // AI panel — NOTE: renamed state to aiPrompt to avoid conflict with window.prompt
+  // AI panel â€” NOTE: renamed state to aiPrompt to avoid conflict with window.prompt
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiOutput, setAiOutput] = useState('');
   const [aiMode, setAiMode] = useState('generate');
@@ -225,7 +225,7 @@ export default function CodeAssistant({ API = '', onSendToChat }) {
 
   const codeToSend = selected.trim() || code;
 
-  // ── AI Actions ──────────────────────────────────────────────────────────────
+  // â”€â”€ AI Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const runAI = useCallback(async (mode) => {
     if (!codeToSend && mode !== 'generate') { setError('No code to analyze.'); return; }
     if (mode === 'generate' && !aiPrompt.trim()) { setError('Enter a prompt first.'); return; }
@@ -337,9 +337,9 @@ export default function CodeAssistant({ API = '', onSendToChat }) {
       );
       setFiles(loaded);
       if (loaded.length) { setActiveFile(loaded[0]); setCode(loaded[0].content); }
-      setRepoMsg(`✅ Loaded ${loaded.length} files from ${owner}/${repo}`);
+      setRepoMsg(`âœ… Loaded ${loaded.length} files from ${owner}/${repo}`);
     } catch (e) {
-      setRepoMsg(`❌ ${e.message}`);
+      setRepoMsg(`âŒ ${e.message}`);
     }
     setRepoLoading(false);
   };
@@ -372,7 +372,7 @@ export default function CodeAssistant({ API = '', onSendToChat }) {
       const loaded = Array.isArray(data.files) ? data.files : [];
       setFiles(loaded);
       if (loaded.length) { setActiveFile(loaded[0]); setCode(loaded[0].content || ''); }
-      setRepoMsg(`✅ Loaded ${loaded.length} files from ${file.name}`);
+      setRepoMsg(`âœ… Loaded ${loaded.length} files from ${file.name}`);
       if (isMobile) setActivePanel('editor');
     } catch (err) {
       setError(err.message || 'ZIP upload failed');
@@ -398,9 +398,8 @@ export default function CodeAssistant({ API = '', onSendToChat }) {
     try {
       const runApi =
         window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-          ? 'http://127.0.0.1:8002'
-          : 'https://keshav1212-eva-ml-service.hf.space';
-
+          ? 'http://127.0.0.1:8000'
+          : 'http://127.0.0.1:8000'
       const res = await fetchWithTimeout(`${runApi}/code-run-test`, {
         method: 'POST',
         headers: {
@@ -441,7 +440,7 @@ export default function CodeAssistant({ API = '', onSendToChat }) {
     { mode: 'patch',    icon: <Diff size={13} />,     label: 'Patch' },
   ];
 
-  // ── File Explorer Panel ──────────────────────────────────────────────────────
+  // â”€â”€ File Explorer Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const ExplorerPanel = () => (
     <div className="eva-code-explorer">
       <div className="eva-code-panel-header">
@@ -491,10 +490,10 @@ export default function CodeAssistant({ API = '', onSendToChat }) {
     </div>
   );
 
-  // ── Editor Panel ─────────────────────────────────────────────────────────────
+  // â”€â”€ Editor Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
-  // ── AI Panel ─────────────────────────────────────────────────────────────────
+  // â”€â”€ AI Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const MobileTabBar = () => (
     <div className="eva-code-mobile-tabs">
@@ -561,7 +560,7 @@ export default function CodeAssistant({ API = '', onSendToChat }) {
               {selected && <span className="eva-code-sel-badge">Selection active</span>}
             </div>
             <div className="eva-code-router-bar">
-              <span className="eva-code-router-label">🧠 Model:</span>
+              <span className="eva-code-router-label">ðŸ§  Model:</span>
               <span className="eva-code-router-model">{(MODEL_ROUTER[aiMode] || {}).label}</span>
               <span className="eva-code-router-hint">{(MODEL_ROUTER[aiMode] || {}).hint}</span>
             </div>
@@ -594,7 +593,7 @@ export default function CodeAssistant({ API = '', onSendToChat }) {
                     <button className="eva-code-out-btn" onClick={copyOutput}>{copied ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}</button>
                     {aiOutput && aiMode !== 'explain' && <button className="eva-code-out-btn is-apply" onClick={applyToEditor}><Check size={12} /> Apply</button>}
                     {patch && !patchApplied && <button className="eva-code-out-btn is-apply" onClick={applyPatch}><Diff size={12} /> Apply Patch</button>}
-                    {patchApplied && <span style={{ fontSize: 11, color: '#4ade80' }}>✓ Applied</span>}
+                    {patchApplied && <span style={{ fontSize: 11, color: '#4ade80' }}>âœ“ Applied</span>}
                   </div>
                 </div>
                 <div className="eva-code-output-body">
@@ -739,3 +738,4 @@ export default function CodeAssistant({ API = '', onSendToChat }) {
     </div>
   );
 }
+

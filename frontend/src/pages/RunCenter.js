@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
 const defaultApi = window.location.hostname === 'localhost'
-  ? 'http://localhost:8002'
-  : 'https://eva-ai-1-9wfc.onrender.com';
+  ? 'http://127.0.0.1:8000'
+  : 'http://127.0.0.1:8000';
 
 const tabs = [
   { id: '', label: 'All Runs' },
@@ -357,3 +357,4 @@ function formatDuration(ms) {
   if (value < 60_000) return `${(value / 1000).toFixed(1)} sec`;
   return `${(value / 60_000).toFixed(1)} min`;
 }
+

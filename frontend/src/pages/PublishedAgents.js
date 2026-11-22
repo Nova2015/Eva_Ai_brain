@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
 const defaultApi = window.location.hostname === 'localhost'
-  ? 'http://localhost:8002'
-  : 'https://eva-ai-1-9wfc.onrender.com';
+  ? 'http://127.0.0.1:8000'
+  : 'http://127.0.0.1:8000';
 
 const emptyPublish = {
   agent_id: '',
@@ -412,3 +412,4 @@ function styles(loading) {
     avatar: { width: 42, height: 42, borderRadius: 8, background: 'linear-gradient(135deg,#2563eb,#14b8a6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, flexShrink: 0 },
   };
 }
+

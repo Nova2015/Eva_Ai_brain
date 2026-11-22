@@ -5,7 +5,7 @@ const LOCAL_TOKEN = 'offline_4173';
 const LOCAL_USER = {
   name: 'EVA Local User',
   email: 'local@eva.ai',
-  role: 'admin',
+  role: 'user',
   provider: 'local-preview',
 };
 

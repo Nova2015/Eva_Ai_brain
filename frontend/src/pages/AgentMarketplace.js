@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 const defaultApi = window.location.hostname === 'localhost'
-  ? 'http://localhost:8002'
-  : 'https://eva-ai-1-9wfc.onrender.com';
+  ? 'http://127.0.0.1:8000'
+  : 'http://127.0.0.1:8000';
 
 export default function AgentMarketplace({ API = defaultApi, shareMode = false }) {
   const { slug } = useParams();
@@ -360,3 +360,4 @@ function styles(loading) {
     review: { display: 'grid', gridTemplateColumns: '46px 1fr', gap: 10, background: '#111827', border: '1px solid rgba(148,163,184,.14)', borderRadius: 8, padding: 10, marginBottom: 8 },
   };
 }
+

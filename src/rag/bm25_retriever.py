@@ -4,7 +4,7 @@ from collections import Counter
 from typing import Any, Dict, Iterable, List
 
 
-TOKEN_RE = re.compile(r"[a-zA-Z0-9_]+")
+TOKEN_RE = re.compile(r"[a-zA-Z0-9_\u0900-\u097F]+")
 
 
 def tokenize(text: str) -> List[str]:

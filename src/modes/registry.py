@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional
 # ── Default model ────────────────────────────────────────────────────────────
 # Matches MODEL_ROUTES["general"]["model"] in src/rag/model_router.py so that a
 # mode which does not care about the model is a no-op on model selection.
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
 
 DEFAULT_MODE_ID = "general"
 

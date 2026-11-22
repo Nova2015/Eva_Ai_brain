@@ -1,0 +1,54 @@
+[1mdiff --git a/src/app.py b/src/app.py[m
+[1mindex 825efa9..84b03cf 100644[m
+[1m--- a/src/app.py[m
+[1m+++ b/src/app.py[m
+[36m@@ -99,12 +99,7 @@[m [mfor _path in (str(ROOT_DIR), str(BASE_DIR)):[m
+     if _path not in sys.path:[m
+         sys.path.insert(0, _path)[m
+ [m
+[31m-try:[m
+[31m-    from rag.rag_routes_v2 import router as rag_router_v2[m
+[31m-    print("RAG v2 routes loaded")[m
+[31m-except Exception as e:[m
+[31m-    rag_router_v2 = None[m
+[31m-    print(f"RAG v2 routes failed: {e}")[m
+[32m+[m[32m# RAG is served by the dedicated EVA ML service on port 7860.[m
+ [m
+ try:[m
+     from backend.code_workspace.code_routes import router as code_router[m
+[36m@@ -3024,7 +3019,7 @@[m [mapp.add_middleware([m
+ [m
+ # 1. SECURITY ROUTES FIRST[m
+ if security_router: app.include_router(security_router)[m
+[31m-if rag_router_v2:   app.include_router(rag_router_v2, prefix="/api/rag", tags=["RAG v2"])[m
+[32m+[m[32m# RAG routes are owned by eva-ml-service (port 7860).[m
+ [m
+ # 2. AI ROUTES SECOND[m
+ if ai_router:       app.include_router(ai_router)[m
+[36m@@ -3398,7 +3393,7 @@[m [masync def admin_intelligence_project(admin: Dict[str, Any] = Depends(require_adm[m
+         "package_json_exists": package_json.exists(),[m
+         "app_py_exists": app_py.exists(),[m
+         "current_routes_count": len(routes),[m
+[31m-        "rag_status_available": _api_route_available("/api/rag/status"),[m
+[32m+[m[32m        "rag_status_available": "External ML service (7860)",[m
+         "docs_available": _api_route_available("/api/docs") or app.docs_url == "/api/docs",[m
+     }[m
+ [m
+[36m@@ -3408,7 +3403,7 @@[m [masync def admin_intelligence_health(admin: Dict[str, Any] = Depends(require_admi[m
+     return {[m
+         "backend": "online",[m
+         "docs": "/api/docs",[m
+[31m-        "rag_status": "/api/rag/status",[m
+[32m+[m[32m        "rag_status": "ML service: /rag/status (port 7860)",[m
+         "timestamp": _now_iso(),[m
+     }[m
+ [m
+[36m@@ -12381,7 +12376,7 @@[m [masync def serve_react(full_path: str):[m
+         {[m
+             "detail": "EVA backend API only ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â React build not found",[m
+             "docs": "/api/docs",[m
+[31m-            "rag_status": "/api/rag/status",[m
+[32m+[m[32m            "rag_status": "ML service: /rag/status (port 7860)",[m
+             "login": "/auth/login",[m
+             "path": f"/{full_path}",[m
+         },[m

@@ -1,9 +1,6 @@
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Building2, ChevronDown, CreditCard, HelpCircle, LogOut, Menu, Settings, Shield, UserCircle } from 'lucide-react';
-import { ensureLocalAuth, isLocalNoAuthEnabled } from '../localAuth';
-
+import { useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Menu } from 'lucide-react';
 const titles = {
   '/chat': ['Chat', 'EVA / chat'],
   '/knowledge': ['Files', 'EVA / files'],
@@ -31,7 +28,7 @@ const HEALTH_STATE = {
   UNKNOWN: 'UNKNOWN',
   CHECKING: 'CHECKING',
   ONLINE: 'ONLINE',
-  // Some recent answers failed but not all — a provider hiccup with successful
+  // Some recent answers failed but not all â€” a provider hiccup with successful
   // retries is not an outage, and flapping straight to Offline on one blip
   // teaches people to ignore the indicator.
   DEGRADED: 'DEGRADED',
@@ -40,7 +37,7 @@ const HEALTH_STATE = {
 
 export default function Topbar({ API, onMenuClick, isMobile, onOpenSettings, onLogout }) {
   const { pathname } = useLocation();
-  const navigate = useNavigate();
+  
   // Two REAL statuses, labeled distinctly. "Backend" = the main API (Render);
   // "AI" = the HF ML/RAG service Chat actually talks to. Never conflate them.
   const [backendHealth, setBackendHealth] = useState(HEALTH_STATE.UNKNOWN);
@@ -51,10 +48,6 @@ export default function Topbar({ API, onMenuClick, isMobile, onOpenSettings, onL
     ? ['Published Agent', 'EVA / marketplace']
     : ['EVA', 'EVA']);
 
-  const rawRole = (storedUser.role || 'user').toLowerCase();
-  const rawUserName = String(storedUser.username || storedUser.name || storedUser.email || '').toLowerCase();
-  const isAdmin = ['admin', 'administrator', 'superadmin', 'super_admin'].includes(rawRole) || rawUserName === 'admin' || rawUserName === 'admin@eva.ai' || storedUser.isAdmin === true || storedUser.is_admin === true || localStorage.getItem('aria_is_admin') === 'true';
-  const isAdminWorkspace = window.location.port === '8003' && process.env.REACT_APP_ADMIN_MODE === 'true';
 
   useEffect(() => {
     let cancelled = false;
@@ -78,7 +71,7 @@ export default function Topbar({ API, onMenuClick, isMobile, onOpenSettings, onL
       }
     };
 
-    const RAG_API = (process.env.REACT_APP_RAG_API_BASE || 'https://keshav1212-eva-ml-service.hf.space').replace(/\/+$/, '');
+    const RAG_API = (process.env.REACT_APP_RAG_API_BASE || 'http://127.0.0.1:8000').replace(/\/+$/, '');
 
     // The AI indicator used to poll the ML service's /health, which returns
     // {"status":"ok"} whenever the process is alive. It therefore read
@@ -148,7 +141,7 @@ export default function Topbar({ API, onMenuClick, isMobile, onOpenSettings, onL
   // infrastructure on screen for users who cannot act on it. Only trouble shows,
   // and it says what it means for the person rather than which service failed.
   //
-  // UNKNOWN and CHECKING deliberately count as "no problem yet" — the first poll
+  // UNKNOWN and CHECKING deliberately count as "no problem yet" â€” the first poll
   // has not answered, and flashing a warning on every page load would be a lie.
   const backendDown = backendHealth === HEALTH_STATE.OFFLINE;
   const aiDown = aiHealth === HEALTH_STATE.OFFLINE;
@@ -177,7 +170,7 @@ export default function Topbar({ API, onMenuClick, isMobile, onOpenSettings, onL
             className={`eva-topbar-status ${troubleIsSevere ? 'is-offline' : 'is-degraded'}`}
             role="status"
             title={troubleIsSevere
-              ? 'EVA is having trouble right now. Some answers may fail — please try again shortly.'
+              ? 'EVA is having trouble right now. Some answers may fail â€” please try again shortly.'
               : 'EVA is responding slowly right now. Answers may take longer than usual.'}
           >
             <span />
@@ -188,3 +181,4 @@ export default function Topbar({ API, onMenuClick, isMobile, onOpenSettings, onL
     </header>
   );
 }
+

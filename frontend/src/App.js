@@ -28,7 +28,7 @@ import AIStudio from './pages/AIStudio';
 import RunCenter from './pages/RunCenter';
 import AgentMarketplace from './pages/AgentMarketplace';
 import PublishedAgents from './pages/PublishedAgents';
-// BillingCenter (live /billing/* dashboard) unmounted for Slice 3 — the import
+// BillingCenter (live /billing/* dashboard) unmounted for Slice 3 â€” the import
 // is removed so CRA's unused-import warning can't fail CI builds. Re-import
 // alongside real billing endpoints.
 import RAGCenter from './pages/RAGCenter';
@@ -39,8 +39,9 @@ import PricingPage from './pages/PricingPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 import { ThemeProvider } from './context/ThemeContext';
+import AgentPanel from './pages/AgentPanel';
 
-const API = (process.env.REACT_APP_API_BASE || 'http://127.0.0.1:8002').replace(/\/+$/, '');
+const API = (process.env.REACT_APP_API_BASE || 'http://127.0.0.1:8000').replace(/\/+$/, '');
 const ADMIN_WORKSPACE_PORT = '8003';
 const isAdminPort = () => (typeof window !== 'undefined' && window.location.port === ADMIN_WORKSPACE_PORT);
 const isAdminWorkspaceMode = () => (
@@ -69,8 +70,8 @@ function LocalAdminGate({ onUnlock }) {
     event.preventDefault();
     setError('');
 
-    if (username.trim().toLowerCase() !== 'admin' || password !== 'admin123') {
-      setError('Admin access required.');
+    if (!username.trim() || !password) {
+      setError('Enter your admin username and password.');
       return;
     }
 
@@ -78,27 +79,44 @@ function LocalAdminGate({ onUnlock }) {
     try {
       const res = await fetch(buildApiUrl('/auth/login'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-        body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+        }),
       });
+
       const data = await res.json().catch(() => ({}));
-      if (res.ok && (data.access_token || data.token)) {
-        localStorage.setItem('aria_token', data.access_token || data.token);
-        localStorage.setItem('aria_user', JSON.stringify(data.user || { name: 'Admin', username: 'admin', email: 'admin@eva.ai', role: 'administrator' }));
-      } else {
-        localStorage.setItem('aria_token', 'local_admin_gate');
-        localStorage.setItem('aria_user', JSON.stringify({ name: 'Admin', username: 'admin', email: 'admin@eva.ai', role: 'administrator' }));
+      const token = data.access_token || data.token;
+      const role = String(data.user?.role || '').toLowerCase();
+
+      if (!res.ok || !token) {
+        throw new Error(data.detail || 'Backend login failed.');
       }
-      sessionStorage.setItem('eva_local_admin_workspace', 'true');
+
+      if (!['admin', 'administrator', 'superadmin', 'super_admin'].includes(role)) {
+        throw new Error('This account does not have administrator access.');
+      }
+
+      const verifyRes = await fetch(
+        buildApiUrl('/api/admin/intelligence/status'),
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (!verifyRes.ok) {
+        throw new Error('Backend did not authorize administrator access.');
+      }
+
+      localStorage.setItem('aria_token', token);
+      localStorage.setItem('aria_user', JSON.stringify(data.user));
+      setPassword('');
       onUnlock?.();
-    } catch {
-      localStorage.setItem('aria_token', 'local_admin_gate');
-      localStorage.setItem('aria_user', JSON.stringify({ name: 'Admin', username: 'admin', email: 'admin@eva.ai', role: 'administrator' }));
-      sessionStorage.setItem('eva_local_admin_workspace', 'true');
-      onUnlock?.();
+    } catch (err) {
+      if (localStorage.getItem('aria_token') === 'local_admin_gate') {
+        localStorage.removeItem('aria_token');
+        localStorage.removeItem('aria_user');
+      }
+      setError(err.message || 'Admin authentication failed.');
     } finally {
       setLoading(false);
     }
@@ -109,7 +127,7 @@ function LocalAdminGate({ onUnlock }) {
       <form onSubmit={submit} style={{ width: 'min(420px, 100%)', display: 'grid', gap: 14, border: '1px solid var(--border)', borderRadius: 8, padding: 24, background: 'rgba(15,23,42,.88)' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 24 }}>Local Admin Workspace</h1>
-          <p style={{ margin: '8px 0 0', color: 'var(--text3)', lineHeight: 1.45 }}>Update Intelligence is local-only on port 8003.</p>
+          <p style={{ margin: '8px 0 0', color: 'var(--text3)', lineHeight: 1.45 }}>Administrator access is verified by the EVA backend.</p>
         </div>
         <label style={{ display: 'grid', gap: 6, color: 'var(--text2)', fontSize: 13 }}>
           Username
@@ -119,9 +137,9 @@ function LocalAdminGate({ onUnlock }) {
           Password
           <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" style={{ minHeight: 40, borderRadius: 8, border: '1px solid var(--border)', background: 'rgba(2,6,23,.8)', color: 'var(--text)', padding: '0 12px' }} />
         </label>
-        {error && <div style={{ color: 'var(--danger-text)', fontSize: 13 }}>{error}</div>}
+        {error && <div role="alert" style={{ color: 'var(--danger-text)', fontSize: 13 }}>{error}</div>}
         <button type="submit" disabled={loading} style={{ minHeight: 40, borderRadius: 8, border: '1px solid rgba(96,165,250,.36)', background: 'rgba(37,99,235,.32)', color: 'var(--info-text)', fontWeight: 850, cursor: loading ? 'wait' : 'pointer' }}>
-          {loading ? 'Opening...' : 'Open Admin Workspace'}
+          {loading ? 'Verifying...' : 'Open Admin Workspace'}
         </button>
       </form>
     </section>
@@ -859,7 +877,7 @@ function EvaApp() {
   ensureLocalAuth();
 
   const [loggedIn, setLoggedIn] = useState(true);
-  const [adminUnlocked, setAdminUnlocked] = useState(() => sessionStorage.getItem('eva_local_admin_workspace') === 'true');
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('general');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -895,11 +913,11 @@ function EvaApp() {
           <Route path="/about" element={<AboutPage />} />
           <Route path="/contact" element={<ContactPage />} />
 
-          {/* Login page — no sidebar, no topbar */}
+          {/* Login page â€” no sidebar, no topbar */}
           <Route path="/login" element={IS_ADMIN_WORKSPACE ? <Navigate to="/update-intelligence" replace /> : <Login />} />
           <Route path="/signup" element={IS_ADMIN_WORKSPACE ? <Navigate to="/update-intelligence" replace /> : <Login initialScreen="signup" />} />
 
-          {/* All other pages — with sidebar + topbar */}
+          {/* All other pages â€” with sidebar + topbar */}
           <Route path="/*" element={
             <div className={`eva-app-shell ${sidebarOpen ? 'is-sidebar-open' : ''}`}>
               {isMobile && sidebarOpen && <div className="eva-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
@@ -1200,6 +1218,14 @@ function EvaApp() {
                       </AuthGuard>
                     }
                   />
+                  <Route
+                    path="/agent"
+                    element={
+                      <AuthGuard adminOnly>
+                        <AgentPanel />
+                      </AuthGuard>
+                    }
+                  />
 
                   <Route path="*" element={<Navigate to="/chat" replace />} />
                 </Routes>
@@ -1219,3 +1245,4 @@ function EvaApp() {
     </GoogleOAuthProvider>
   );
 }
+

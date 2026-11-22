@@ -10,14 +10,14 @@ router = APIRouter(tags=["settings"])
 
 PROVIDERS = {
     "OpenAI": ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"],
-    "Gemini": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.5-flash"],
+    "Gemini": ["gemini-3.5-flash", "gemini-1.5-pro", "gemini-2.5-flash"],
     "Claude": ["claude-3-5-sonnet", "claude-3-5-haiku", "claude-3-opus"],
-    "Groq": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+    "Groq": ["openai/gpt-oss-120b", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
     "Local Model": ["llama.cpp", "ollama:llama3", "local-custom"],
 }
 
 DEFAULT_SETTINGS = {
-    "default_model": "Groq:llama-3.3-70b-versatile",
+    "default_model": "Groq:openai/gpt-oss-120b",
     "providers": {
         provider: {
             "enabled": provider in ("Groq", "Local Model"),

@@ -6,6 +6,7 @@ data/learning_datasets/
 .env
 .env.*
 !.env.example
+!.env.template
 
 # Generated artifacts
 *.pptx
@@ -26,3 +27,67 @@ __pycache__/
 # Local backup files
 *.backup*
 *-backup
+# Local development environments
+.venv*/
+**/.venv*/
+**/venv/
+**/node_modules/
+
+# Local uploads and temporary data
+**/uploads/
+**/temp_*/
+**/tmp/
+
+# Generated databases and vector stores
+**/chroma_db/
+**/faiss_index/
+**/user_knowledge_bases/
+
+# Training artifacts and model binaries
+**/training_runs/
+**/unsloth_compiled_cache/
+*.keras
+*.pkl
+*.pickle
+*.safetensors
+*.gguf
+*.onnx
+*.pt
+*.pth
+
+# Logs and generated build output
+*.log
+*.tmp
+**/logs/
+**/build/
+**/dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Local backup files
+*.bak
+*.before-*
+*.pre_*
+
+
+# Environment secrets
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Local EVA backups and private RAG databases
+EVA-backup-*.bundle
+eva-ml-service_backup_*/
+data/chroma_*/
+src/rag/data/chroma_db/
+
+# Local backups and private training datasets
+eva-acl-backup.txt
+eva-current-changes.patch
+data/marathi_triplets_audit/

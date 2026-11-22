@@ -4,14 +4,14 @@ import './ModelSettingsPanel.css';
 
 const providerModels = {
   OpenAI: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'],
-  Gemini: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.5-flash'],
+  Gemini: ['gemini-3.5-flash', 'gemini-1.5-pro', 'gemini-2.5-flash'],
   Claude: ['claude-3-5-sonnet', 'claude-3-5-haiku', 'claude-3-opus'],
-  Groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
+  Groq: ['openai/gpt-oss-120b', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
   'Local Model': ['llama.cpp', 'ollama:llama3', 'local-custom'],
 };
 
 const defaults = {
-  default_model: 'Groq:llama-3.3-70b-versatile',
+  default_model: 'Groq:openai/gpt-oss-120b',
   providers: Object.fromEntries(Object.entries(providerModels).map(([provider, models]) => [
     provider,
     { enabled: provider === 'Groq', api_key: '', model: models[0], temperature: 0.3, max_tokens: 2048, status: 'not_configured' },

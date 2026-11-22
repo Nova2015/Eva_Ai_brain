@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
 
 const API = window.location.hostname === 'localhost'
-  ? 'http://localhost:8002'
-  : 'https://eva-ai-1-9wfc.onrender.com';
+  ? 'http://127.0.0.1:8000'
+  : 'http://127.0.0.1:8000';
 
 const TOKEN_KEYS = ['aria_token', 'token', 'access_token', 'authToken'];
 const getToken = () => TOKEN_KEYS.map((k) => localStorage.getItem(k)).find(Boolean) || '';
@@ -19,23 +19,23 @@ const IMG_STYLES = [
 ];
 
 const IMG_SUGGESTIONS = [
-  { icon: '✨', label: 'Enhance quality', prompt: 'ultra high quality, masterpiece, ' },
-  { icon: '🌅', label: 'Golden hour', prompt: 'golden hour lighting, warm sunlight, ' },
-  { icon: '🌙', label: 'Night scene', prompt: 'night scene, moonlight, dark atmosphere, ' },
-  { icon: '🎭', label: 'Dramatic', prompt: 'dramatic lighting, high contrast, cinematic, ' },
-  { icon: '🌸', label: 'Soft & dreamy', prompt: 'soft light, dreamy, pastel colors, ethereal, ' },
-  { icon: '🏙️', label: 'Cyberpunk city', prompt: 'cyberpunk city, neon lights, futuristic, rain, ' },
-  { icon: '🦋', label: 'Fantasy', prompt: 'fantasy world, magical, mythical creatures, enchanted, ' },
-  { icon: '📸', label: 'Portrait', prompt: 'professional portrait, studio lighting, sharp focus, ' },
+  { icon: 'âœ¨', label: 'Enhance quality', prompt: 'ultra high quality, masterpiece, ' },
+  { icon: 'ðŸŒ…', label: 'Golden hour', prompt: 'golden hour lighting, warm sunlight, ' },
+  { icon: 'ðŸŒ™', label: 'Night scene', prompt: 'night scene, moonlight, dark atmosphere, ' },
+  { icon: 'ðŸŽ­', label: 'Dramatic', prompt: 'dramatic lighting, high contrast, cinematic, ' },
+  { icon: 'ðŸŒ¸', label: 'Soft & dreamy', prompt: 'soft light, dreamy, pastel colors, ethereal, ' },
+  { icon: 'ðŸ™ï¸', label: 'Cyberpunk city', prompt: 'cyberpunk city, neon lights, futuristic, rain, ' },
+  { icon: 'ðŸ¦‹', label: 'Fantasy', prompt: 'fantasy world, magical, mythical creatures, enchanted, ' },
+  { icon: 'ðŸ“¸', label: 'Portrait', prompt: 'professional portrait, studio lighting, sharp focus, ' },
 ];
 
 const VID_SUGGESTIONS = [
-  { icon: '🌊', label: 'Ocean waves', prompt: 'Calm ocean waves at sunset, gentle motion' },
-  { icon: '🔥', label: 'Fire effect', prompt: 'Flickering fire flames, dynamic motion, warm glow' },
-  { icon: '🌌', label: 'Space', prompt: 'Stars moving through space, nebula, cosmic journey' },
-  { icon: '🌿', label: 'Nature', prompt: 'Leaves swaying in wind, peaceful forest, sunlight' },
-  { icon: '🏙️', label: 'City timelapse', prompt: 'City streets at night, car lights, urban energy' },
-  { icon: '💨', label: 'Clouds', prompt: 'Clouds moving across blue sky, time lapse style' },
+  { icon: 'ðŸŒŠ', label: 'Ocean waves', prompt: 'Calm ocean waves at sunset, gentle motion' },
+  { icon: 'ðŸ”¥', label: 'Fire effect', prompt: 'Flickering fire flames, dynamic motion, warm glow' },
+  { icon: 'ðŸŒŒ', label: 'Space', prompt: 'Stars moving through space, nebula, cosmic journey' },
+  { icon: 'ðŸŒ¿', label: 'Nature', prompt: 'Leaves swaying in wind, peaceful forest, sunlight' },
+  { icon: 'ðŸ™ï¸', label: 'City timelapse', prompt: 'City streets at night, car lights, urban energy' },
+  { icon: 'ðŸ’¨', label: 'Clouds', prompt: 'Clouds moving across blue sky, time lapse style' },
 ];
 
 const downloadFile = (dataUrl, filename) => {
@@ -64,7 +64,7 @@ export default function Studio() {
   const refFileRef = useRef();
   const textareaRef = useRef();
 
-  // ── Generate Image ──────────────────────────────────────
+  // â”€â”€ Generate Image â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const generateImage = async (customPrompt) => {
     const p = customPrompt || prompt;
     if (!p.trim()) { setError('Enter a prompt first'); return; }
@@ -100,7 +100,7 @@ export default function Studio() {
     setLoading(false);
   };
 
-  // ── Generate Video ──────────────────────────────────────
+  // â”€â”€ Generate Video â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const generateVideo = async (customPrompt) => {
     const p = customPrompt || prompt;
     setLoading(true); setError(''); setVidResult(null);
@@ -178,16 +178,16 @@ export default function Studio() {
   return (
     <div style={{ minHeight: '100vh', background: '#e3e3f0', color: '#0d0f11', display: 'flex', flexDirection: 'column' }}>
 
-      {/* ── Header ── */}
+      {/* â”€â”€ Header â”€â”€ */}
       <div style={{ padding: '20px 24px 0', maxWidth: 760, margin: '0 auto', width: '100%' }}>
         <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
-          🎨 AI Studio
+          ðŸŽ¨ AI Studio
         </div>
         <div style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>Generate images and videos with AI</div>
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-          {[['image', '🖼️', 'Image Generation']].map(([id, icon, label]) => (
+          {[['image', 'ðŸ–¼ï¸', 'Image Generation']].map(([id, icon, label]) => (
             <button key={id}
               onClick={() => { setTab(id); setError(''); setLiked(null); }}
               style={{
@@ -204,10 +204,10 @@ export default function Studio() {
         </div>
       </div>
 
-      {/* ── Main Content ── */}
+      {/* â”€â”€ Main Content â”€â”€ */}
       <div style={{ flex: 1, maxWidth: 760, margin: '0 auto', width: '100%', padding: '0 24px' }}>
 
-        {/* ── IMAGE TAB ── */}
+        {/* â”€â”€ IMAGE TAB â”€â”€ */}
         {tab === 'image' && (
           <>
             {/* Style chips */}
@@ -234,7 +234,7 @@ export default function Studio() {
                   <div style={{ fontSize: 12, color: '#94a3b8' }}>Used as style/composition reference</div>
                 </div>
                 <button onClick={() => { setRefImage(null); setRefPreview(null); }}
-                  style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 18 }}>×</button>
+                  style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 18 }}>Ã—</button>
               </div>
             )}
 
@@ -247,13 +247,13 @@ export default function Studio() {
                 <div style={{ padding: '12px 16px', background: '#c8cedc', display: 'flex', alignItems: 'center', gap: 10 }}>
                   {/* Like/Dislike */}
                   <button onClick={() => setLiked(true)}
-                    style={{ background: liked === true ? 'rgba(99,241,132,.15)' : 'none', border: `1px solid ${liked === true ? '#4ade80' : '#1e2d45'}`, borderRadius: 8, padding: '6px 12px', color: liked === true ? '#4ade80' : '#64748b', cursor: 'pointer', fontSize: 16 }}>👍</button>
+                    style={{ background: liked === true ? 'rgba(99,241,132,.15)' : 'none', border: `1px solid ${liked === true ? '#4ade80' : '#1e2d45'}`, borderRadius: 8, padding: '6px 12px', color: liked === true ? '#4ade80' : '#64748b', cursor: 'pointer', fontSize: 16 }}>ðŸ‘</button>
                   <button onClick={() => setLiked(false)}
-                    style={{ background: liked === false ? 'rgba(241,99,99,.15)' : 'none', border: `1px solid ${liked === false ? '#f87171' : '#1e2d45'}`, borderRadius: 8, padding: '6px 12px', color: liked === false ? '#f87171' : '#64748b', cursor: 'pointer', fontSize: 16 }}>👎</button>
+                    style={{ background: liked === false ? 'rgba(241,99,99,.15)' : 'none', border: `1px solid ${liked === false ? '#f87171' : '#1e2d45'}`, borderRadius: 8, padding: '6px 12px', color: liked === false ? '#f87171' : '#64748b', cursor: 'pointer', fontSize: 16 }}>ðŸ‘Ž</button>
 
                   {/* Regenerate */}
                   <button onClick={() => generateImage()}
-                    style={{ background: 'none', border: '1px solid #1e2d45', borderRadius: 8, padding: '6px 12px', color: '#94a3b8', cursor: 'pointer', fontSize: 14 }}>🔄</button>
+                    style={{ background: 'none', border: '1px solid #1e2d45', borderRadius: 8, padding: '6px 12px', color: '#94a3b8', cursor: 'pointer', fontSize: 14 }}>ðŸ”„</button>
 
                   <div style={{ flex: 1, fontSize: 11, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {imgResult.prompt?.slice(0, 80)}
@@ -261,7 +261,7 @@ export default function Studio() {
 
                   {/* Save */}
                   <button onClick={() => downloadFile(imgResult.image_url, imgResult.filename || 'generated.png')}
-                    style={{ background: 'none', border: '1px solid #1e2d45', borderRadius: 8, padding: '6px 14px', color: '#94a3b8', cursor: 'pointer', fontSize: 13 }}>↓ Save</button>
+                    style={{ background: 'none', border: '1px solid #1e2d45', borderRadius: 8, padding: '6px 14px', color: '#94a3b8', cursor: 'pointer', fontSize: 13 }}>â†“ Save</button>
                 </div>
               </div>
             )}
@@ -269,7 +269,7 @@ export default function Studio() {
             {/* Gallery */}
             {gallery.length > 1 && (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 11, color: '#475569', marginBottom: 8 }}>Session gallery · {gallery.length} images</div>
+                <div style={{ fontSize: 11, color: '#475569', marginBottom: 8 }}>Session gallery Â· {gallery.length} images</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(100px,1fr))', gap: 6 }}>
                   {gallery.map((g, i) => (
                     <img key={i} src={g.image_url} alt="" onClick={() => { setImgResult(g); setLiked(null); }}
@@ -281,12 +281,12 @@ export default function Studio() {
           </>
         )}
 
-        {/* ── VIDEO TAB ── */}
+        {/* â”€â”€ VIDEO TAB â”€â”€ */}
         {tab === 'video' && (
           <>
             {/* Mode toggle */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              {[['text', '📝 Text to Video'], ['images', '🖼️ Image to Video']].map(([m, label]) => (
+              {[['text', 'ðŸ“ Text to Video'], ['images', 'ðŸ–¼ï¸ Image to Video']].map(([m, label]) => (
                 <button key={m} onClick={() => setVideoMode(m)}
                   style={{
                     flex: 1, padding: '9px 0', borderRadius: 9,
@@ -303,7 +303,7 @@ export default function Studio() {
               <>
                 <div onClick={() => fileRef.current.click()}
                   style={{ border: '2px dashed #1e2d45', borderRadius: 10, padding: 20, textAlign: 'center', cursor: 'pointer', marginBottom: 12, background: '#d1d9eb' }}>
-                  <div style={{ fontSize: 28, marginBottom: 6 }}>📤</div>
+                  <div style={{ fontSize: 28, marginBottom: 6 }}>ðŸ“¤</div>
                   <div style={{ fontSize: 13, color: '#64748b' }}>Click to upload images (PNG, JPG, WebP)</div>
                 </div>
                 <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleFiles} />
@@ -328,10 +328,10 @@ export default function Studio() {
 
                 <div style={{ padding: '12px 16px', background: '#d5dae6', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <button onClick={() => generateVideo()}
-                    style={{ background: 'none', border: '1px solid #1e2d45', borderRadius: 8, padding: '6px 12px', color: '#94a3b8', cursor: 'pointer', fontSize: 14 }}>🔄</button>
+                    style={{ background: 'none', border: '1px solid #1e2d45', borderRadius: 8, padding: '6px 12px', color: '#94a3b8', cursor: 'pointer', fontSize: 14 }}>ðŸ”„</button>
                   <div style={{ flex: 1, fontSize: 11, color: '#475569' }}>{vidResult.method || 'AI Generated'}</div>
                   <button onClick={() => downloadFile(vidResult.video_url, vidResult.filename || 'video.mp4')}
-                    style={{ background: 'none', border: '1px solid #1e2d45', borderRadius: 8, padding: '6px 14px', color: '#94a3b8', cursor: 'pointer', fontSize: 13 }}>↓ Save</button>
+                    style={{ background: 'none', border: '1px solid #1e2d45', borderRadius: 8, padding: '6px 14px', color: '#94a3b8', cursor: 'pointer', fontSize: 13 }}>â†“ Save</button>
                 </div>
               </div>
             )}
@@ -341,7 +341,7 @@ export default function Studio() {
         {/* Error */}
         {error && (
           <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#f87171', marginBottom: 14, display: 'flex', gap: 8 }}>
-            <span>⚠️</span><span>{error}</span>
+            <span>âš ï¸</span><span>{error}</span>
           </div>
         )}
 
@@ -364,7 +364,7 @@ export default function Studio() {
         </div>
       </div>
 
-      {/* ── Bottom Input Bar (Gemini style) ── */}
+      {/* â”€â”€ Bottom Input Bar (Gemini style) â”€â”€ */}
       <div style={{ position: 'sticky', bottom: 0, background: '#dde0ea', borderTop: '1px solid #1e2d45', padding: '14px 24px 20px' }}>
         <div style={{ maxWidth: 760, margin: '0 auto' }}>
           <div style={{ background: '#e1e6f1', border: '1px solid #1e2d45', borderRadius: 16, padding: '10px 14px', display: 'flex', alignItems: 'flex-end', gap: 10 }}>
@@ -375,7 +375,7 @@ export default function Studio() {
                 <button onClick={() => refFileRef.current.click()}
                   title="Attach reference image"
                   style={{ background: 'none', border: 'none', color: refPreview ? '#6366f1' : '#475569', cursor: 'pointer', fontSize: 20, padding: '4px', flexShrink: 0, lineHeight: 1 }}>
-                  📎
+                  ðŸ“Ž
                 </button>
                 <input ref={refFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleRefImage} />
               </>
@@ -388,8 +388,8 @@ export default function Studio() {
               onChange={e => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={tab === 'image'
-                ? 'Describe the image… (Enter to generate, Shift+Enter for new line)'
-                : 'Describe the video… (Enter to generate)'}
+                ? 'Describe the imageâ€¦ (Enter to generate, Shift+Enter for new line)'
+                : 'Describe the videoâ€¦ (Enter to generate)'}
               rows={1}
               style={{
                 flex: 1, background: 'transparent', border: 'none', outline: 'none',
@@ -411,13 +411,13 @@ export default function Studio() {
                 transition: '.18s',
               }}>
               {loading
-                ? <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>⏳ <span style={{ fontSize: 12 }}>Generating…</span></span>
-                : tab === 'image' ? '✨ Generate' : '🎬 Generate'}
+                ? <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>â³ <span style={{ fontSize: 12 }}>Generatingâ€¦</span></span>
+                : tab === 'image' ? 'âœ¨ Generate' : 'ðŸŽ¬ Generate'}
             </button>
           </div>
 
           <div style={{ fontSize: 11, color: '#334155', textAlign: 'center', marginTop: 8 }}>
-            {tab === 'image' ? 'Powered by FLUX.1-schnell · 30–60s generation time' : 'Powered by FAL AnimateDiff · 1–3 min generation time'}
+            {tab === 'image' ? 'Powered by FLUX.1-schnell Â· 30â€“60s generation time' : 'Powered by FAL AnimateDiff Â· 1â€“3 min generation time'}
           </div>
         </div>
       </div>
@@ -425,3 +425,4 @@ export default function Studio() {
     </div>
   );
 }
+

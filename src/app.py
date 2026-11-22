@@ -26,6 +26,7 @@ from pathlib import Path
 from datetime import datetime, time, timedelta, timezone
 from typing import Optional, Any, Dict, List
 from dotenv import load_dotenv
+from src import eva_local_guard
 # Ensure this file's own directory (src/) is on sys.path BEFORE the bare
 # `import providers` below. When run as `python app.py` from inside src/,
 # Python adds the script's directory to sys.path automatically and this is
@@ -43,6 +44,8 @@ if _this_dir not in sys.path:
 # service's model_router shape. Pure-stdlib at import time (provider SDKs load
 # lazily inside each adapter), so this import cannot fail for a missing SDK.
 import providers
+
+
 try:
     from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends, Request
     from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
@@ -75,6 +78,8 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
+#from agent_service import router as agent_router
+# app.include_router(agent_router)
 
 try:
     from git import Repo
@@ -94,12 +99,7 @@ for _path in (str(ROOT_DIR), str(BASE_DIR)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-try:
-    from rag.rag_routes_v2 import router as rag_router_v2
-    print("RAG v2 routes loaded")
-except Exception as e:
-    rag_router_v2 = None
-    print(f"RAG v2 routes failed: {e}")
+# RAG is served by the dedicated EVA ML service on port 7860.
 
 try:
     from backend.code_workspace.code_routes import router as code_router
@@ -121,10 +121,9 @@ load_dotenv(override=True)
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
-
-# â€â€ The health safety floor â€â€
-# Every safeguard EVA had â€ "not a clinician", emergency guidance, no invented
-# studies â€ lived only inside the medical persona in modes/registry.py. Nothing
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â The health safety floor ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
+# Every safeguard EVA had ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â "not a clinician", emergency guidance, no invented
+# studies ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â lived only inside the medical persona in modes/registry.py. Nothing
 # selects that persona: there is no classifier, and the mode selector was
 # removed deliberately. So a health question reached the model with none of it.
 #
@@ -135,7 +134,7 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 # clinical depth on top of this; it is not what makes health answers safe.
 #
 # Written to be inert on other topics. The scope line comes first so the model
-# does not begin hedging about databases and bolts â€ a floor that made every
+# does not begin hedging about databases and bolts ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â a floor that made every
 # answer defensive would be removed within a week, and then it would protect
 # nobody.
 HEALTH_SAFETY_FLOOR = """
@@ -159,7 +158,7 @@ HEALTH AND MEDICINE
 # Appended to the system prompt when the client says the answer will be spoken
 # aloud (ChatRequest.voice_response). The field has existed on the request model
 # for a long time and nothing read it, so a dictated question got back an answer
-# written for a screen â€ fenced code, bullet lists, bare URLs â€ which a
+# written for a screen ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â fenced code, bullet lists, bare URLs ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â which a
 # text-to-speech engine then reads character by character.
 #
 # This shapes the answer, it does not restrict it. Anything EVA may say in text
@@ -172,24 +171,25 @@ SPOKEN ANSWER
 - Plain sentences only: no markdown, no headings, no bullet or numbered lists,
   no tables, no emoji.
 - No fenced code blocks. If code is unavoidable, describe it in words.
-- No LaTeX. Say mathematics in words â€ "x squared plus y squared", never
+- No LaTeX. Say mathematics in words "x squared plus y squared", never
   $x^2 + y^2$ or $$...$$.
-- No bare URLs or file paths â€ name the source instead of spelling out the
+- No bare URLs or file paths name the source instead of spelling out the
   address.
 - Prefer short sentences and lead with the answer. A few sentences unless the
   question genuinely needs more.
 - This governs FORMAT only. Keep the response language exactly as instructed
   above, and do not narrow what the question asked for.
-- Where this conflicts with an earlier formatting rule â€ including one marked
-  CRITICAL or MUST â€ this section wins."""
+- Where this conflicts with an earlier formatting rule including one marked
+  CRITICAL or MUST this section wins."""
 
 
 BASE_SYSTEM_PROMPT = """You are EVA AI.
 
 For normal requests:
-Return practical engineering guidance."""
-
-
+For normal requests:
+Return practical engineering guidance.
+When verified evidence is supplied by EVA read-only tools, treat that evidence as authoritative context for the answer. Do not claim that EVA cannot browse, open URLs, or access external information when verified tool evidence is present. Do not invent information beyond the supplied evidence.
+""";
 CHART_SYSTEM_PROMPT = """CHART MODE RULES (STRICT)
 The user has requested chart(s). You MUST output valid ```chart fenced block(s):
 ```chart
@@ -223,7 +223,7 @@ def chart_system_prompt(system_prompt: str, prompt: str) -> str:
     return base
 
 
-# â€â€ passive response review (observational only) â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â passive response review (observational only) ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 try:
     from review_engine.integration_adapter import (
         run_review_pipeline,
@@ -238,10 +238,10 @@ except Exception as _review_imp_err:
     REVIEW_ENGINE_AVAILABLE = False
     print(f"review_engine not available: {_review_imp_err}")
 
-# â€â€ cognitive engine (orchestrates verify/correct/act/learn over the answer) â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â cognitive engine (orchestrates verify/correct/act/learn over the answer) ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # Guarded the same way review_engine is: if it cannot import, /chat behaves
 # exactly as it did before. It performs no retrieval, no model call and no tool
-# execution â€ see cognitive/chat_bridge.py.
+# execution ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â see cognitive/chat_bridge.py.
 try:
     # decide/GateAction are the Phase 1 PRE-answer decision gate, re-exported by
     # chat_bridge so the engine is still reached through one door. It runs BEFORE
@@ -252,22 +252,29 @@ try:
         new_review_cache as cognitive_new_review_cache,
         review_once as cognitive_review_once,
         decide as cognitive_decide,
+        orchestrate_preanswer as cognitive_orchestrate_preanswer,
         GateAction as _GateAction,
+        _execution_backend as cognitive_execution_backend,
+        verify_reasoning_answer,
+        is_reasoning_eligible,
+        build_reasoning_llm,
+        REASONING_VERIFICATION_AVAILABLE,
     )
+    from src.autopilot import _run_tool as cognitive_tool_adapter, _tool_rag_query
     COGNITIVE_ENGINE_AVAILABLE = True
     COGNITIVE_DRIVER_AVAILABLE = cognitive_decide is not None
 except Exception as _cog_imp_err:
     cognitive_refine = cognitive_timeout_seconds = None
     cognitive_new_review_cache = cognitive_review_once = None
     cognitive_decide = _GateAction = None
+    verify_reasoning_answer = None
+    is_reasoning_eligible = None
+    build_reasoning_llm = None
+    REASONING_VERIFICATION_AVAILABLE = False
     COGNITIVE_ENGINE_AVAILABLE = False
     COGNITIVE_DRIVER_AVAILABLE = False
     print(f"cognitive engine not available: {_cog_imp_err}")
 
-# â€â€ spoken reshaping (deterministic, pure) 
-# Guarded like the above: a failed import leaves spoken answers exactly as the
-# prompt shaped them, which is the Update 23 behaviour, not a broken one.
-try:
     from spoken_text import to_spoken
     SPOKEN_TEXT_AVAILABLE = True
 except Exception as _sp_imp_err:
@@ -300,7 +307,7 @@ def _log_raw_model_response(content: str, system: str = "") -> None:
         print(content)
 
 
-# Deterministic chart extraction â€ one spec per '<type> chart' mention, each
+# Deterministic chart extraction ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â one spec per '<type> chart' mention, each
 # using ONLY the label=value pairs in its own text segment. Multiple chart
 # requests in one message produce separate blocks; datasets are never merged.
 # Same logic as eva-ml-service/model_router.py extract_chart_requests.
@@ -351,27 +358,33 @@ def ask_groq(prompt: str, system: str = BASE_SYSTEM_PROMPT, max_tokens: int = 16
 
     sys_final = chart_system_prompt(system, prompt)
 
-    try:
-        messages = [
-            {"role": "system", "content": sys_final},
-            {"role": "user", "content": prompt},
-        ]
+    if not providers.configured("groq"):
+        return "GROQ_API_KEY is not configured"
 
-        result = providers.complete(
+    messages = [
+        {"role": "system", "content": sys_final},
+        {"role": "user", "content": prompt},
+    ]
+
+    try:
+        result = providers.dispatch(
+            "groq",
             messages,
+            model=model or os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
             max_tokens=max_tokens,
             temperature=0.2,
         )
 
-        if result.ok:
-            content = result.text or "No response"
-            _log_raw_model_response(content, sys_final)
-            return content
-        return "No response from EVA provider"
+        content = (result or "").strip()
+        if not content:
+            return "No response"
+
+        _log_raw_model_response(content, sys_final)
+        return content
 
     except Exception as exc:
-        logger.exception("EVA provider completion failed")
-        return f"EVA AI analysis failed: {exc}"
+        logger.exception("Groq analysis failed")
+        return f"Groq analysis failed: {exc}"
 
 
 VISION_SYSTEM_PROMPT = """You are EVA AI.
@@ -395,17 +408,17 @@ When an image is provided:
 VISION_UNAVAILABLE_RESPONSE = """The image was received, but EVA's image analysis service is currently unavailable.
 
 Possible reasons:
-Â¢ Vision model not configured
-Â¢ Image processor offline
-Â¢ Backend image route disabled
+Ãƒâ€šÃ‚Â¢ Vision model not configured
+Ãƒâ€šÃ‚Â¢ Image processor offline
+Ãƒâ€šÃ‚Â¢ Backend image route disabled
 
 Please check the vision service configuration."""
 
 # Update 24. The screen version asks for a five-point inventory, which is the
 # right shape for something you scan and the wrong shape for something read to
 # you: aloud it becomes a checklist recited at someone who cannot see the
-# picture. The spoken version covers the SAME ground â€ that is the point, it
-# must not describe less â€ but asks for it as connected sentences.
+# picture. The spoken version covers the SAME ground ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â that is the point, it
+# must not describe less ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â but asks for it as connected sentences.
 _VISION_SCREEN_TAIL = """
 
 Return a helpful vision analysis with:
@@ -418,10 +431,10 @@ Return a helpful vision analysis with:
 
 _VISION_SPOKEN_TAIL = """
 
-Describe this image to someone who cannot see it. Cover the same ground â€ the
+Describe this image to someone who cannot see it. Cover the same ground ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the
 objects in it, the people and the setting, any text that is visible, what
 cannot be determined from the image, and anything suggesting it was generated
-rather than photographed â€ but say it as connected sentences, not as a
+rather than photographed ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â but say it as connected sentences, not as a
 numbered checklist. Lead with what the image actually shows.
 """
 
@@ -431,12 +444,12 @@ def _vision_prompt(user_prompt: str, spoken: bool = False) -> str:
     return f"{prompt}{_VISION_SPOKEN_TAIL if spoken else _VISION_SCREEN_TAIL}"
 
 
-# â€â€ vision diagnostics (Update 30) â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â vision diagnostics (Update 30) ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # Why this exists: a vision failure is indistinguishable from outside. Every
-# cause â€ retired model, spent quota, missing key, absent library â€ produces the
+# cause ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â retired model, spent quota, missing key, absent library ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â produces the
 # same VISION_UNAVAILABLE_RESPONSE, so diagnosing production meant reading
 # container logs. It cost an hour of inference to establish that
-# gemini-1.5-flash had been retired, and then a second round to find that its
+# gemini-3.5-flash had been retired, and then a second round to find that its
 # replacement resolved but had no quota.
 #
 # The reason code comes from a FIXED ENUM, never from the provider's message.
@@ -480,8 +493,8 @@ def _vision_spoken(base: str, prompt: str, spoken: bool) -> str:
     """Append the spoken directive to a vision system prompt.
 
     Appended rather than substituted, unlike the general-knowledge branch:
-    VISION_SYSTEM_PROMPT has no formatting mandate to conflict with â€ no
-    LaTeX, no bullets, no emoji â€ so there is nothing here to out-argue.
+    VISION_SYSTEM_PROMPT has no formatting mandate to conflict with ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â no
+    LaTeX, no bullets, no emoji ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â so there is nothing here to out-argue.
 
     Each caller passes its OWN base so that the typed prompt stays byte for
     byte what it was. The OpenAI branch never ran chart_system_prompt over it
@@ -579,7 +592,7 @@ def _run_vision_agent(req: "ChatRequest", spoken: bool = False) -> dict:
             import google.generativeai as _genai
 
             _genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            model = _genai.GenerativeModel(os.getenv("GEMINI_VISION_MODEL", "gemini-1.5-flash"))
+            model = _genai.GenerativeModel(os.getenv("GEMINI_VISION_MODEL", "gemini-3.5-flash"))
             image = _Image.open(_io.BytesIO(image_bytes))
             response = model.generate_content([
                 _vision_spoken(chart_system_prompt(_vision_system, prompt), prompt, spoken),
@@ -603,7 +616,7 @@ def _run_vision_agent(req: "ChatRequest", spoken: bool = False) -> dict:
     }
 
 
-# â€â€ Security imports 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Security imports 
 try:
     from src.security_config import SECURITY_CONFIG
     SECURITY_AVAILABLE = True
@@ -648,7 +661,7 @@ except Exception:
 
 
 # ______________________________________________
-# Security gate (Fix 2 â€ single decision point)
+# Security gate (Fix 2 ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â single decision point)
 # ______________________________________________
 # One evaluation per request, one contract, one field to branch on.
 #
@@ -672,7 +685,7 @@ except Exception as e:
     SECURITY_FALLBACK_AVAILABLE = False
     print(f"Security fallback detectors not available: {type(e).__name__}: {e}")
 
-# Update 51 â€ continuous-learning loop (capture â€ â€™ review â€ â€™ dataset).
+# Update 51 ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â continuous-learning loop (capture ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ review ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ dataset).
 # Collects data only; never trains. See src/learning_loop.py.
 try:
     from src.learning_loop import router as train_router, capture_candidate
@@ -690,7 +703,7 @@ def _shadow_user_ref(user_id: str = "") -> str:
     Stable, non-reversible reference for a user in security logs.
 
     user_id in this app is an email address, so logging it verbatim puts PII
-    in the log aggregator â€ the exact leak the type-only finding format is
+    in the log aggregator ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the exact leak the type-only finding format is
     meant to avoid. The hash is stable across requests, so findings can still
     be correlated per user without storing the identity.
     """
@@ -781,7 +794,7 @@ def _outbound_gate(answer: str, client_ip: Optional[str] = None) -> Dict[str, An
     """
     The single security decision for an outbound answer.
 
-    Delegates to AIFirewall.inspect_response â€ no second implementation. Same
+    Delegates to AIFirewall.inspect_response ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â no second implementation. Same
     {allowed, message, types, details} contract as the inbound gate. Never
     raises: a gate that throws fails open silently.
 
@@ -815,7 +828,7 @@ def _outbound_gate(answer: str, client_ip: Optional[str] = None) -> Dict[str, An
     }
 
 
-# â€â€ Outbound reason codes (fixed enum) â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Outbound reason codes (fixed enum) ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # The reason_code in every [SECURITY-OUTBOUND] log line and counter bucket
 # MUST be one of these constants. It is derived from the verdict's structure
 # (allowed / types / details flags), never from text in the prompt or the
@@ -845,7 +858,7 @@ def _outbound_reason_code(v: Dict[str, Any]) -> str:
     return OUTBOUND_REASON_APPROVED
 
 
-# â€â€ Outbound shadow-mode counters â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Outbound shadow-mode counters ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # inspected vs. would-have-blocked, bucketed by reason_code, so the
 # false-positive rate is measurable before ENFORCE_FIREWALL is flipped.
 # In-process only (resets on deploy/restart); exposed on /api/health/full.
@@ -877,14 +890,14 @@ def _outbound_stats_snapshot() -> Dict[str, Any]:
         }
 
 
-# â€â€ Durable shadow statistics 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Durable shadow statistics 
 # The counters above answer "since this process started", and this project
 # deploys often enough that the window is usually minutes. The question they
-# exist to settle â€ is it safe to set ENFORCE_FIREWALL to True â€ needs days.
+# exist to settle ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â is it safe to set ENFORCE_FIREWALL to True ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â needs days.
 #
 # Storage is Supabase over its REST API. Not a local file: Render's free plan
 # has no persistent disk, so a SQLite database would be wiped by the very
-# deploys that make this necessary. Not a new dependency either â€ httpx is
+# deploys that make this necessary. Not a new dependency either ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â httpx is
 # already used for the RAG call.
 #
 # Rows are APPEND-ONLY and summed on read. An upsert would need read-modify-
@@ -1029,9 +1042,9 @@ async def _shadow_post(table: str, rows: List[Dict[str, Any]]) -> str:
         return f"error_{type(exc).__name__}"
 
 
-# â€â€ Routing shadow: the strategy EVA reasons to, against the route that ran â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Routing shadow: the strategy EVA reasons to, against the route that ran ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # Stage 1 of adaptive routing, and deliberately inert. select_strategy already
-# runs for every message and its result is already attached to the response â€
+# runs for every message and its result is already attached to the response ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # it simply decides nothing. This records what it said alongside what actually
 # happened, so the case for acting on it can be made from evidence rather than
 # from the appeal of the idea.
@@ -1107,7 +1120,7 @@ def _routing_flush_due() -> bool:
     return True
 
 
-# â€â€ Mode shadow (Update 37): which persona the classifier WOULD pick â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Mode shadow (Update 37): which persona the classifier WOULD pick ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # Observe only. classify_mode runs on the message and its guess is recorded
 # beside the strategy shadow; it changes NO answer. registry.py holds five
 # personas that nothing selects, and Update 37 will only wire the classifier to
@@ -1136,7 +1149,7 @@ _mode_last = {"code": "never_flushed", "at": None, "rows": 0}
 
 def _mode_record(question: Optional[str]) -> None:
     """Record which persona this message would take. Never raises, never blocks,
-    never changes the answer â€ the string in is a guess out, nothing else."""
+    never changes the answer ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the string in is a guess out, nothing else."""
     if not MODE_SHADOW_AVAILABLE or not question:
         return
     try:
@@ -1181,12 +1194,12 @@ def _mode_flush_due() -> bool:
     return True
 
 
-# â€â€ Provider shadow (JARVIS 2A): durable per-provider health â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Provider shadow (JARVIS 2A): durable per-provider health ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # Observe only. providers.record() (in providers.py) already tracks live health
 # in memory; that view dies on every restart. This persists it to Supabase in
 # the same append-delta daily shape as the mode/routing shadows, so provider
 # failure rates and latency can be read over real traffic. The backend only
-# calls providers on the fallback path (low volume) â€ the ML service will emit
+# calls providers on the fallback path (low volume) ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the ML service will emit
 # to the SAME table in 2B, where the primary traffic is. Enum + counts + latency
 # buckets, never a prompt, an answer, a key, or a provider's raw message.
 try:
@@ -1280,7 +1293,7 @@ def _provider_flush_due() -> bool:
     return True
 
 
-# â€â€ Spreadsheet generation (Update 35a) â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Spreadsheet generation (Update 35a) ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # The gap this closes, from real screenshots: asked for an Excel sheet, EVA
 # explained what CSV and XLSX are; asked again, it produced a PNG that looks
 # like a spreadsheet. The user wanted a file and got a picture of one.
@@ -1305,9 +1318,9 @@ except Exception as _sheet_imp_err:
     SPREADSHEET_AVAILABLE = False
     print(f"spreadsheet generation not available: {_sheet_imp_err}")
 
-# Update 38: the automation lifecycle. The Excel path runs through it â€ the same
-# gate, the same 35b tool, the same success shape â€ but as one observable
-# understandâ€ â€™planâ€ â€™actâ€ â€™verifyâ€ â€™correct/retryâ€ â€™deliver loop with a strict retry
+# Update 38: the automation lifecycle. The Excel path runs through it ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the same
+# gate, the same 35b tool, the same success shape ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â but as one observable
+# understandÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢planÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢actÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢verifyÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢correct/retryÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢deliver loop with a strict retry
 # bound and enum-only telemetry. Guarded so a missing module leaves the feature
 # off rather than breaking import.
 try:
@@ -1318,7 +1331,7 @@ except Exception as _automation_imp_err:
     AUTOMATION_AVAILABLE = False
     print(f"automation lifecycle not available: {_automation_imp_err}")
 
-# Update 39A: the PowerPoint tool. Same shape as the spreadsheet import â€
+# Update 39A: the PowerPoint tool. Same shape as the spreadsheet import ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # aliases the route tests can monkeypatch, guarded so a missing python-pptx
 # leaves the feature off rather than breaking import.
 try:
@@ -1336,11 +1349,11 @@ except Exception as _pptx_imp_err:
     PRESENTATION_AVAILABLE = False
     print(f"presentation generation not available: {_pptx_imp_err}")
 
-# â€â€ Automation records: durable, append-only, PII-free â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Automation records: durable, append-only, PII-free ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # The lifecycle already keeps a process-local ring; a restart or a spin-down
-# clears it, so multi-run history needs Supabase. One row per task run â€ the
+# clears it, so multi-run history needs Supabase. One row per task run ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the
 # volume is low (a spreadsheet request is rare) so there is nothing to aggregate
-# â€ and every field is already an enum, a count or a content digest, so the same
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â and every field is already an enum, a count or a content digest, so the same
 # record that is safe to log is safe to store. Buffer + flush mirrors the
 # routing shadow: batched, fail-open, and re-buffered (bounded) on error so a
 # Supabase outage loses recency, never the request.
@@ -1354,7 +1367,7 @@ _automation_last = {"code": "never_flushed", "at": None, "rows": 0}
 
 def _automation_row(record) -> Dict[str, Any]:
     """One record as a storable row, for either task type. Enum values, counts,
-    a digest, a time â€ never a prompt, an answer, a user, an IP, or a provider
+    a digest, a time ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â never a prompt, an answer, a user, an IP, or a provider
     message. Excel fills row_count/col_count; presentations fill slide_count and
     the structural/visual checks; the other side's fields are simply null."""
     r = record.model_dump(mode="json")
@@ -1406,7 +1419,7 @@ async def _automation_flush() -> None:
     code = await _shadow_post(AUTOMATION_TABLE, rows)
     if code != "ok":
         # Put them back oldest-first, still bounded, so an outage costs recency
-        # rather than the run â€ but the buffer can never grow without end.
+        # rather than the run ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â but the buffer can never grow without end.
         with _automation_lock:
             _automation_buffer[:0] = rows
             if len(_automation_buffer) > AUTOMATION_BUFFER_CAP:
@@ -1439,7 +1452,7 @@ _REQUESTED_CHART_TYPE_RE = re.compile(r"\b(pie|bar|line|scatter)\b", re.IGNORECA
 
 # Last build and upload outcomes, as codes. Every failure in the artifact path
 # falls through to a normal answer by design, which means a missing library and
-# a rejected upload are indistinguishable from outside â€ the same blind spot
+# a rejected upload are indistinguishable from outside ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the same blind spot
 # that made a vision misconfiguration take an hour to find.
 _ARTIFACT_LAST: Dict[str, Optional[str]] = {"build": None, "upload": None}
 
@@ -1450,7 +1463,7 @@ def _chart_from_table(question: str) -> Optional[str]:
     Runs only when extract_chart_requests found nothing, so the existing inline
     "A=40, B=30" path is untouched. That path reads pairs; this one reads the
     tables people actually paste, which previously extracted nothing and fell
-    through to the model â€ and from there to whichever interceptor caught the
+    through to the model ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â and from there to whichever interceptor caught the
     message first, which is how a request for a chart returned a picture.
 
     Every value is verified against the source table before the block is
@@ -1509,7 +1522,7 @@ async def _spreadsheet_response(question: str) -> Optional[Dict[str, Any]]:
         # Delivered-verify ON: re-fetch the uploaded file and confirm it
         # round-trips. The downloader retries a beat to let CDN propagation
         # settle and reads a fetch failure as INCONCLUSIVE, so a slow CDN never
-        # turns a good file into a reported failure â€ only a genuine content
+        # turns a good file into a reported failure ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â only a genuine content
         # mismatch does. It can fetch only the Cloudinary host.
         download=_automation.default_download,
     )
@@ -1518,7 +1531,7 @@ async def _spreadsheet_response(question: str) -> Optional[Dict[str, Any]]:
     O = _automation.Outcome
 
     # Persist this run (every outcome, so failures are visible too). Scheduled,
-    # never awaited â€ storage must not add latency to the reply, and a Supabase
+    # never awaited ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â storage must not add latency to the reply, and a Supabase
     # hiccup must not touch it.
     _automation_persist(result.record)
     if _automation_flush_due():
@@ -1558,7 +1571,7 @@ async def _spreadsheet_response(question: str) -> Optional[Dict[str, Any]]:
 
     if outcome is O.NO_DATA:
         # Asked for a sheet but sent no data. Say so plainly rather than
-        # inventing rows to fill it â€ a spreadsheet of invented numbers looks
+        # inventing rows to fill it ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â a spreadsheet of invented numbers looks
         # authoritative and gets forwarded.
         return {
             "success": True,
@@ -1573,7 +1586,7 @@ async def _spreadsheet_response(question: str) -> Optional[Dict[str, Any]]:
 
     # Any genuine failure (build/verify/delivery, after the bounded retry): fall
     # through to a normal answer rather than link a file that may be broken. The
-    # failure is not fabricated as success â€ it is recorded in the automation
+    # failure is not fabricated as success ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â it is recorded in the automation
     # telemetry, readable at /api/health/automation. A wrong file is worse than
     # no file.
     logger.warning("spreadsheet automation outcome: %s", outcome.value)
@@ -1582,11 +1595,11 @@ async def _spreadsheet_response(question: str) -> Optional[Dict[str, Any]]:
 
 async def _presentation_response(question: str) -> Optional[Dict[str, Any]]:
     """A real .pptx for an explicit presentation request, or None to fall
-    through. Update 39A â€ the second narrow automation task.
+    through. Update 39A ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the second narrow automation task.
 
     Same shape as the spreadsheet path: the existing gate decides entry (so
-    ordinary chat is untouched), the automation lifecycle builds â€ â€™ structurally
-    and visually verifies â€ â€™ corrects/retries â€ â€™ delivers â€ â€™ verifies delivered,
+    ordinary chat is untouched), the automation lifecycle builds ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ structurally
+    and visually verifies ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ corrects/retries ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ delivers ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ verifies delivered,
     and every outcome is recorded. Deps come from THIS module's aliases (the
     ones the route tests monkeypatch), and the tool goes through automation's
     one-tool PowerPoint gate, so the executor can reach nothing but the builder.
@@ -1656,9 +1669,9 @@ async def _presentation_response(question: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-# â€â€ Chat modes (Update 36A) â€â€
-# src/modes/registry.py has held five personas â€ general, medical, coding,
-# mechanical, design â€ since before this update, exposed over /api/modes and
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Chat modes (Update 36A) ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
+# src/modes/registry.py has held five personas ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â general, medical, coding,
+# mechanical, design ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â since before this update, exposed over /api/modes and
 # consumed by nothing. resolve_mode was imported in this file and never called,
 # and ChatRequest had no field to carry a choice, so the registry was a set of
 # prompts no request could reach.
@@ -1671,7 +1684,7 @@ def _mode_id(mode_id: Optional[str]) -> str:
     Anything unrecognised becomes "automatic" rather than being passed
     through. resolve_mode maps an unknown id to "general" and returns it, so
     forwarding a typo unchecked would silently apply a persona the user never
-    asked for â€ and would change the answer for every caller that sends a
+    asked for ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â and would change the answer for every caller that sends a
     malformed value. Validation therefore happens once, here, and both the
     local prompt and the id put on the wire come from it.
     """
@@ -1711,7 +1724,7 @@ def _history_context(history) -> List[str]:
     Without this the engine judged every message as if it were the first in the
     conversation, so a follow-up genuinely "referred to something not present"
     and was classified CLARIFICATION. Replaying 906 real messages, 282 of them
-    â€ 31% â€ flip out of CLARIFICATION once the history they already had is
+    ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â 31% ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â flip out of CLARIFICATION once the history they already had is
     passed in.
 
     Only the text is handed over, and only the last few turns: the engine uses
@@ -1736,7 +1749,7 @@ def _refresh_review(payload: Dict[str, Any], answer: str, review_cache) -> None:
 
     Only called when the cognitive loop changed the answer. The payload's
     existing shape is preserved: the minimal {status, badge} stays minimal, and
-    a full debug object stays full â€ replacing one with the other would change
+    a full debug object stays full ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â replacing one with the other would change
     the response for debug callers.
 
     Never raises: a stale badge is a cosmetic defect, an exception here would
@@ -1750,7 +1763,7 @@ def _refresh_review(payload: Dict[str, Any], answer: str, review_cache) -> None:
     try:
         fresh = cognitive_review_once(answer or "", review_cache)
         if fresh is None:
-            return          # review unavailable â€ leave the badge as it was
+            return          # review unavailable ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â leave the badge as it was
         status = derive_status(fresh)
         if set(existing) <= {"status", "badge"}:
             payload["review"] = {"status": status["status"], "badge": status["badge"]}
@@ -1776,10 +1789,10 @@ async def _finalize_response(
     Run the outbound gate over a chat payload and attach the security summary.
 
     Every /chat return that carries an AI-generated answer goes through here,
-    so the outbound check cannot end up unreachable behind an early return â€
+    so the outbound check cannot end up unreachable behind an early return ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
     which is exactly how the inbound check sat dead for months.
 
-    Honours SECURITY_CONFIG["ENFORCE_FIREWALL"] â€ the same flag as inbound.
+    Honours SECURITY_CONFIG["ENFORCE_FIREWALL"] ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the same flag as inbound.
     No second configuration switch. False logs and returns the answer
     unchanged; True replaces it.
 
@@ -1795,8 +1808,8 @@ async def _finalize_response(
 
         # Update 37 (observe only): record which persona the classifier would
         # pick for this message. Here rather than beside the routing shadow
-        # below, so it fires for EVERY answer â€ it needs only the question, not
-        # the cognitive engine â€ and it never touches the reply. Scheduled.
+        # below, so it fires for EVERY answer ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â it needs only the question, not
+        # the cognitive engine ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â and it never touches the reply. Scheduled.
         _mode_record(question)
         if _mode_flush_due():
             try:
@@ -1805,7 +1818,7 @@ async def _finalize_response(
                 pass
 
         # Provider shadow (JARVIS 2A): the buffer is fed by providers.record()
-        # via the observer, deep in the fallback path â€ here we only drain it on
+        # via the observer, deep in the fallback path ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â here we only drain it on
         # the same schedule as the other shadows. Scheduled, never awaited.
         if _provider_flush_due():
             try:
@@ -1815,7 +1828,7 @@ async def _finalize_response(
 
         # Cognitive engine: verify -> correct -> act -> verify -> learn over the
         # answer the chat path produced. Placed HERE, not beside the review call
-        # below, for the same reason this function exists at all â€ chat() has
+        # below, for the same reason this function exists at all ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â chat() has
         # three answer-bearing returns and the review hook sits after two of
         # them. It runs BEFORE the outbound gate so a corrected answer is still
         # inspected; a correction that skipped the firewall would be a bypass.
@@ -1828,7 +1841,7 @@ async def _finalize_response(
         # gate below does and for the same reason: review_engine shells out to
         # `node --check` for a JavaScript block (~80ms, bounded internally at
         # 10s), and two passes run per corrected answer. Called inline it stalled
-        # the event loop for every concurrent request â€ measured at 274ms
+        # the event loop for every concurrent request ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â measured at 274ms
         # against a 1ms target, and up to 10s if node ever hangs.
         if COGNITIVE_ENGINE_AVAILABLE:
             try:
@@ -1848,15 +1861,15 @@ async def _finalize_response(
                     if payload.get("response"):
                         payload["response"] = answer
                     # The review attached in chat() described the answer BEFORE
-                    # this correction â€ it runs earlier in the request. Left
+                    # this correction ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â it runs earlier in the request. Left
                     # alone it reports FAILED for an answer that is now clean,
                     # which is a badge the user can see. Refreshed from the
                     # cache, so this is a lookup and not another node --check.
                     _refresh_review(payload, answer, review_cache)
                 payload["cognitive"] = _refined.summary()
                 # Stage 1 of adaptive routing: record what the engine reasoned
-                # against what actually answered. No extra work â€ the strategy
-                # was computed above and is already in this summary â€ and no
+                # against what actually answered. No extra work ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the strategy
+                # was computed above and is already in this summary ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â and no
                 # effect on the reply. Scheduled, never awaited.
                 _routing_record(payload, payload["cognitive"].get("strategy"))
                 if _routing_flush_due():
@@ -1873,7 +1886,6 @@ async def _finalize_response(
             except Exception as _cog_err:
                 # refine() is documented never to raise; belt and braces.
                 logger.warning("cognitive engine skipped: %s", type(_cog_err).__name__)
-
         # Update 26: reshape for speech, deterministically.
         #
         # Two prompt-side attempts were half-followed. Update 22 appended "no
@@ -1898,6 +1910,102 @@ async def _finalize_response(
             except Exception as _sp_err:
                 # Formatting is never worth losing an answer over.
                 logger.warning("spoken reshape skipped: %s", type(_sp_err).__name__)
+
+        # Structured reasoning verification:
+        # eligibility -> same-provider extraction -> deterministic validation.
+        # This never modifies the assistant's answer.
+        if REASONING_VERIFICATION_AVAILABLE:
+            try:
+                _reasoning_eligibility = is_reasoning_eligible(
+                    question or ""
+                )
+
+                # Do not spend another provider call on unrelated questions.
+                if _reasoning_eligibility.eligible:
+                    _reasoning_provider = payload.get("provider")
+                    _reasoning_model = payload.get("model")
+
+                    _reasoning_llm = build_reasoning_llm(
+                        _reasoning_provider,
+                        _reasoning_model,
+                    )
+
+                    try:
+                        _reasoning_timeout = float(
+                            os.getenv(
+                                "REASONING_VERIFICATION_TIMEOUT_SECONDS",
+                                "15",
+                            )
+                        )
+                    except (TypeError, ValueError):
+                        _reasoning_timeout = 15.0
+
+                    # Keep the additional provider call bounded.
+                    if not 1.0 <= _reasoning_timeout <= 60.0:
+                        _reasoning_timeout = 15.0
+
+                    _reasoning_result = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            verify_reasoning_answer,
+                            question or "",
+                            answer,
+                            _reasoning_llm,
+                        ),
+                        timeout=_reasoning_timeout,
+                    )
+
+                    _verification = _reasoning_result.verification
+                    _verification_status = getattr(
+                        _verification.status,
+                        "value",
+                        str(_verification.status),
+                    )
+
+                    payload["reasoning_verification"] = {
+                        "eligible": _reasoning_result.eligibility.eligible,
+                        "signals": list(
+                            _reasoning_result.eligibility.signals
+                        ),
+                        "attempted": _reasoning_result.attempted,
+                        "status": _verification_status,
+                        "verification_type": (
+                            _verification.verification_type
+                        ),
+                        "failure_reason": (
+                            _verification.failure_reason
+                        ),
+                        "confidence": _verification.confidence,
+                    }
+
+            except asyncio.TimeoutError:
+                payload["reasoning_verification"] = {
+                    "eligible": True,
+                    "attempted": True,
+                    "status": "INCONCLUSIVE",
+                    "failure_reason": (
+                        "Reasoning verification timed out."
+                    ),
+                    "confidence": 0.0,
+                }
+                logger.warning(
+                    "reasoning verification timed out; answer unchanged"
+                )
+
+            except Exception as _reasoning_err:
+                payload["reasoning_verification"] = {
+                    "eligible": True,
+                    "attempted": False,
+                    "status": "INCONCLUSIVE",
+                    "failure_reason": (
+                        "Reasoning verification failed: "
+                        + type(_reasoning_err).__name__
+                    ),
+                    "confidence": 0.0,
+                }
+                logger.warning(
+                    "reasoning verification skipped: %s",
+                    type(_reasoning_err).__name__,
+                )
 
         timeout_s = float(SECURITY_CONFIG.get("OUTBOUND_INSPECT_TIMEOUT_SECONDS", 2.0))
         try:
@@ -1932,7 +2040,7 @@ async def _finalize_response(
             except Exception:
                 pass
 
-        # Metadata only â€ never the prompt, the answer, generated content,
+        # Metadata only ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â never the prompt, the answer, generated content,
         # or any PII. reason_code is from the fixed enum above.
         _log = (
             logger.warning
@@ -1954,7 +2062,7 @@ async def _finalize_response(
 
         if would_block and enforcing:
             # Blocked responses still populate every field the frontend
-            # reads, with empty/neutral values â€ never null, never missing.
+            # reads, with empty/neutral values ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â never null, never missing.
             security_status = get_agent_status("security")
             return {
                 "success": False,
@@ -1994,12 +2102,12 @@ async def _finalize_response(
 
 def _capture_learning(req, payload: Dict[str, Any], question: Optional[str] = None) -> Dict[str, Any]:
     """Update 51: offer the finished exchange to the learning loop as a
-    PENDING training candidate. Fail-safe by construction â€ returns the
+    PENDING training candidate. Fail-safe by construction ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â returns the
     payload untouched whatever happens, so /chat behavior cannot change.
 
     `question` must be the USER's original text. /chat reassigns
     req.question to the enhanced prompt mid-handler, so call sites pass
-    original_question explicitly â€ capturing the enhanced text would bake
+    original_question explicitly ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â capturing the enhanced text would bake
     internal scaffolding into training data."""
     try:
         if capture_candidate is not None and isinstance(payload, dict):
@@ -2038,7 +2146,7 @@ import sqlite3
 from typing import Optional, Any, Dict, List
 
 # llm_fallback.smart_chat was a proposed /chat integration that was never wired
-# â€ imported here but never called. JARVIS 1B supersedes it: the live provider
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â imported here but never called. JARVIS 1B supersedes it: the live provider
 # cascade is providers.complete (src/providers.py). The dead import is removed
 # so there is one provider path, not a live one and a legacy shadow.
 
@@ -2065,8 +2173,8 @@ except Exception as e:
         return "vision" if has_image else "chat"
 
     def get_agent_status(agent_id):
-        label = "Ã°Å¸â€“Â¼ Vision Agent" if agent_id == "vision" else "Ã°Å¸â€™Â¬ Chat Agent"
-        return {"id": agent_id, "name": label.split(" ", 1)[-1], "label": label, "path": f"Ã°Å¸Â§Â  Router â€ â€™ {label}"}
+        label = "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“Ãƒâ€šÃ‚Â¼ Vision Agent" if agent_id == "vision" else "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢Ãƒâ€šÃ‚Â¬ Chat Agent"
+        return {"id": agent_id, "name": label.split(" ", 1)[-1], "label": label, "path": f"ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚Â§Ãƒâ€šÃ‚Â  Router ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ {label}"}
 
     def get_agent_instruction(agent_id):
         return "You are EVA AI. Answer clearly and route image requests to vision behavior when image data is provided."
@@ -2299,14 +2407,14 @@ def _log_icon_status() -> None:
         elif not _is_valid_png(existing):
             logger.warning(f"React icon is not a valid PNG: {existing}")
 
-# â€â€ Optional modules â€ don't crash if missing â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Optional modules ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â don't crash if missing ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 try:
     from multi_user_rag import get_user_rag as _get_user_rag
     MULTI_USER_RAG_AVAILABLE = True
 except ImportError:
     _get_user_rag = None
     MULTI_USER_RAG_AVAILABLE = False
-    logger.warning("multi_user_rag not found â€ using global RAG only")
+    logger.warning("multi_user_rag not found ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â using global RAG only")
 
 try:
     from rag.hybrid_retriever import answer as rag2_answer
@@ -2341,17 +2449,17 @@ except Exception as exc:
 try:
     from unsloth import FastLanguageModel as _UnslothFLM
     LORA_AVAILABLE = True
-    logger.info("Å“â€¦ unsloth available â€ LoRA models enabled")
+    logger.info("Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ unsloth available ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â LoRA models enabled")
 except ImportError:
     _UnslothFLM = None
     LORA_AVAILABLE = False
-    logger.warning("unsloth not installed â€ LoRA disabled. Run: pip install unsloth")
+    logger.warning("unsloth not installed ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â LoRA disabled. Run: pip install unsloth")
 except Exception as e:
     _UnslothFLM = None
     LORA_AVAILABLE = False
-    logger.warning(f"unsloth unavailable â€ LoRA disabled: {e}")
+    logger.warning(f"unsloth unavailable ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â LoRA disabled: {e}")
 
-# ______Security config ______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________ÃƒÂ¢Ââ€šÂ¬ÃƒÂ¢Ââ€šÂ¬ÃƒÂ¢Ââ€šÂ¬ÃƒÂ¢Ââ€šÂ¬ÃƒÂ¢Ââ€šÂ¬
+# ______Security config ______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬
 def _require_secret(name: str) -> str:
     """A secret that must come from the environment, with no usable default.
 
@@ -2364,7 +2472,7 @@ def _require_secret(name: str) -> str:
 
     So there is no fallback. If the key is absent the process refuses to start,
     which is loud and immediate, rather than coming up and quietly signing with
-    a known value. Set it in the environment â€ .env locally, the host's env
+    a known value. Set it in the environment ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â .env locally, the host's env
     vars in production.
     """
     value = (os.getenv(name) or "").strip()
@@ -2381,19 +2489,26 @@ SECRET_KEY        = _require_secret("SECRET_KEY")
 ALGORITHM         = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
 
-ADMIN_USERNAME    = os.getenv("ADMIN_USERNAME", "admin@eva.ai")
-ADMIN_PASSWORD    = os.getenv("ADMIN_PASSWORD", "")  # MUST be set via environment variable â€ never hardcode
-
-pwd_context  = CryptContext(schemes=["bcrypt"], deprecated="auto")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin@eva.ai").strip().lower()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# Pre-hash the admin password at startup
-ADMIN_PASSWORD_HASH = ADMIN_PASSWORD  # plain compare at startup
+ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
+if ADMIN_PASSWORD_HASH:
+    if pwd_context.identify(ADMIN_PASSWORD_HASH) != "bcrypt":
+        raise RuntimeError("ADMIN_PASSWORD_HASH must contain a valid bcrypt hash")
+elif ADMIN_PASSWORD:
+    if len(ADMIN_PASSWORD.encode("utf-8")) > 72:
+        raise RuntimeError("ADMIN_PASSWORD exceeds bcrypt's 72-byte limit")
+    ADMIN_PASSWORD_HASH = pwd_context.hash(ADMIN_PASSWORD)
 
-# _______ Rate limiter ____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________ÃƒÂ¢Ââ€šÂ¬ÃƒÂ¢Ââ€šÂ¬
+ADMIN_PASSWORD = ""
+
+# _______ Rate limiter ____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬
 from rate_limit import limiter  # shared instance; runtime_engine reuses it
 
-# _________ Lazy singletons ______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________ÃƒÂ¢Ââ€šÂ¬ÃƒÂ¢Ââ€šÂ¬ÃƒÂ¢Ââ€šÂ¬ÃƒÂ¢Ââ€šÂ¬ÃƒÂ¢Ââ€šÂ¬
+# _________ Lazy singletons ______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬
 _memory = None
 _memory_v2 = None
 
@@ -2438,15 +2553,23 @@ def _save_memory_v2(user_id: str, question: str, answer: str, agent_name: str = 
         title = agent_name or "Chat"
         manager.save_chat(user_id, question or "", answer or "", title=title)
         if _should_save_long_memory(question):
-            manager.save_memory(user_id, question, importance=3)
+            manager.save_memory(
+                user_id,
+                question,
+                importance=3,
+                memory_tier="episodic",
+                confidence=0.5,
+                provenance="chat_auto",
+                validation_status="unvalidated",
+            )
     except Exception as exc:
         logger.warning(f"Memory V2 save skipped: {exc}")
 
 
-# â€â€ "save this memory" chat command 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â "save this memory" chat command 
 # "save this memory" / "remember this" means: persist what we were just talking
 # about into Memory V2 so it survives into future conversations. Before this the
-# phrase fell through to the LLM and produced only a summary â€ no memory record
+# phrase fell through to the LLM and produced only a summary ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â no memory record
 # was created (the auto-save hooks do not run on the primary RAG path, and would
 # have saved the literal command string anyway, because _should_save_long_memory
 # matches the word "memory"). This recognises the command and writes the
@@ -2470,7 +2593,7 @@ _SAVE_MEMORY_QUESTION = re.compile(
 # Inline content the user typed after the command: a colon, a spaced dash, or
 # "remember/save/... that <content>".
 _SAVE_MEMORY_INLINE = re.compile(
-    r"(?::\s*|\s[â€œâ€-]\s+|\b(?:remember|save|store|note|keep)\s+that\s+)(.+)$",
+    r"(?::\s*|\s[ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã‚Â-]\s+|\b(?:remember|save|store|note|keep)\s+that\s+)(.+)$",
     re.IGNORECASE | re.DOTALL)
 
 
@@ -2478,7 +2601,7 @@ def _detect_save_memory_command(text: str) -> Optional[str]:
     """None if this is NOT an explicit save-to-memory command. Otherwise the
     inline content to save, or "" meaning "save the referenced previous answer".
 
-    Short commands only, and questions about memory are excluded â€ so "how does
+    Short commands only, and questions about memory are excluded ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â so "how does
     memory work" is answered normally while "save this memory" is stored."""
     s = (text or "").strip()
     if not s or len(s.split()) > 40:
@@ -2518,20 +2641,28 @@ def _save_memory_from_chat(user_id: str, inline_content: str, history) -> str:
             manager.upsert_user(user_id, name=user_id, email=user_id, role="user")
         except Exception:
             pass
-        mem_id = manager.save_memory(user_id, content, importance=4)
+        mem_id = manager.save_memory(
+            user_id,
+            content,
+            importance=4,
+            memory_tier="episodic",
+            confidence=1.0,
+            provenance="user_explicit",
+            validation_status="user_confirmed",
+        )
     except Exception as exc:
         logger.warning("save-this-memory failed: %s", type(exc).__name__)
         return "I hit an error saving that to memory. Please try again."
     if not mem_id:
         return "I couldn't save that to memory (it was empty or looked like a secret)."
     preview = " ".join(content.split())
-    preview = (preview[:160] + "Â¦") if len(preview) > 160 else preview
-    return "Saved to memory â€ I'll remember this in future conversations:\n\n> " + preview
+    preview = (preview[:160] + "Ãƒâ€šÃ‚Â¦") if len(preview) > 160 else preview
+    return "Saved to memory ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â I'll remember this in future conversations:\n\n> " + preview
 
 
-# â€â€ Phase 1 cognitive decision gate: flag, telemetry, messages 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Phase 1 cognitive decision gate: flag, telemetry, messages 
 # Shadow-first. Default OFF: the gate is computed and recorded, but nothing about
-# the answer changes. Telemetry is enums and counts only â€ never a prompt, an
+# the answer changes. Telemetry is enums and counts only ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â never a prompt, an
 # answer, facts, assumptions or the clarification text.
 from collections import deque as _gate_deque
 _GATE_LOG = _gate_deque(maxlen=200)
@@ -2569,7 +2700,7 @@ def _gate_record(decision) -> None:
 
 
 _SAFETY_STOP_MESSAGE = (
-    "I can't help with that â€ it reads as operational assistance toward serious "
+    "I can't help with that ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â it reads as operational assistance toward serious "
     "or irreversible harm. If you're asking for a defensive, educational, or "
     "safety-oriented reason, say so and I'll gladly help with the safe version."
 )
@@ -2843,10 +2974,10 @@ def _workflow_run(
 try:
     from gtts import gTTS
     TTS_AVAILABLE = True
-    logger.info("ÃƒÂ¢Ã…â€œÂ¦ gTTS available")
+    logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â¦ gTTS available")
 except ImportError:
     TTS_AVAILABLE = False
-    logger.warning("ÃƒÂ¢Ã…Â¡Â ÃƒÂ¯Â¸Â  gTTS not installed")
+    logger.warning("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â  gTTS not installed")
 
 # ______________________________________________
 # FastAPI app
@@ -2895,7 +3026,7 @@ app.add_middleware(
 
 # 1. SECURITY ROUTES FIRST
 if security_router: app.include_router(security_router)
-if rag_router_v2:   app.include_router(rag_router_v2, prefix="/api/rag", tags=["RAG v2"])
+# RAG routes are owned by eva-ml-service (port 7860).
 
 # 2. AI ROUTES SECOND
 if ai_router:       app.include_router(ai_router)
@@ -2906,7 +3037,7 @@ if code_router:     app.include_router(code_router, prefix="/code", tags=["Code 
 if learning_router: app.include_router(learning_router, prefix="/learning", tags=["Learning Hub"])
 if train_router:    app.include_router(train_router, prefix="/train", tags=["Continuous Learning"])
 
-# Update 53 â€ AI Training Center (admin-only workspace).
+# Update 53 ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â AI Training Center (admin-only workspace).
 # APIs under /admin-api/training/*; dashboard shell at /admin/training.
 try:
     from src.admin_training import router as admin_training_router
@@ -2926,7 +3057,7 @@ try:
 except Exception as e:
     print(f"AI Training Center not available: {type(e).__name__}: {e}")
 
-# Update 64 â€ Autopilot: bounded autonomous multi-step tasks (read-only tools).
+# Update 64 ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Autopilot: bounded autonomous multi-step tasks (read-only tools).
 try:
     from src.autopilot import router as autopilot_router
     app.include_router(autopilot_router, prefix="/autopilot", tags=["Autopilot"])
@@ -2936,7 +3067,7 @@ except Exception as e:
 for phase_router in PHASE_ROUTERS:
     app.include_router(phase_router)
 
-# Runtime execution (Piston) â€ routes owned by runtime_engine.router.
+# Runtime execution (Piston) ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â routes owned by runtime_engine.router.
 # LOG on failure instead of swallowing, so a mount error can't hide as a
 # misleading "no attribute 'router'" again.
 if runtime_router is not None:
@@ -2946,9 +3077,9 @@ if runtime_router is not None:
         import traceback as _rt_mount_tb
         print(f"runtime_router mount failed: {_rt_mount_err}\n{_rt_mount_tb.format_exc()}")
 else:
-    print("runtime_router unavailable â€ /runtime routes NOT registered (see import error above)")
+    print("runtime_router unavailable ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â /runtime routes NOT registered (see import error above)")
 
-# ML proxy â€ registered here because app must exist first
+# ML proxy ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â registered here because app must exist first
 try:
     from ml_proxy import router as ml_proxy_router
     app.include_router(ml_proxy_router, prefix="/ml", tags=["ML"])
@@ -2979,17 +3110,29 @@ if FRONTEND_DIR.exists():
         logger.info(f"React static assets mounted: {REACT_STATIC_DIR}")
     else:
         logger.warning(f"React build found but static assets missing: {REACT_STATIC_DIR}")
-    logger.info(f"ÃƒÂ¢Ã…â€œÂ¦ React build found: {FRONTEND_DIR}")
+    logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â¦ React build found: {FRONTEND_DIR}")
 else:
-    logger.warning(f"ÃƒÂ¢Ã…Â¡Â ÃƒÂ¯Â¸Â  React build missing at {FRONTEND_DIR}")
+    logger.warning(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â  React build missing at {FRONTEND_DIR}")
 
 
 # ______________________________________________
 # Auth helpers
 # ______________________________________________
 
+def hash_password(plain: str) -> str:
+    if len(plain.encode("utf-8")) > 72:
+        raise ValueError("Password must not exceed 72 UTF-8 bytes")
+    return pwd_context.hash(plain)
+
+
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    if not plain or not hashed or len(plain.encode("utf-8")) > 72:
+        return False
+    try:
+        return pwd_context.verify(plain, hashed)
+    except (ValueError, TypeError):
+        return False
+
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
@@ -2997,63 +3140,55 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+def _demo_auth_enabled() -> bool:
+    environment = os.getenv("EVA_ENV", "").strip().lower()
+    explicitly_enabled = os.getenv("EVA_ALLOW_DEMO_AUTH", "").strip().lower() == "true"
+    return explicitly_enabled and environment in {"development", "dev", "local"}
+
+
+def _is_demo_token(token: str) -> bool:
+    return token.startswith(("offline_", "apple_demo_", "google_", "demo_"))
+
+
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
-    """Validates Bearer JWT token â€ accepts EVA JWT and Firebase/Google ID tokens."""
+    """Authenticate a signed EVA JWT or explicitly permitted local demo token."""
     if credentials is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
     token = credentials.credentials
-    # Allow demo/offline tokens
-    if token.startswith("offline_") or token.startswith("apple_demo_"):
-        return "demo_user"
-    # Try EVA JWT first
+
+    if _is_demo_token(token):
+        if _demo_auth_enabled():
+            return "demo_user"
+        raise HTTPException(status_code=401, detail="Demo authentication disabled")
+
     try:
-        payload  = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("sub")
-        if username:
-            return username
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
-        pass
-    # Try Firebase/Google ID token (unverified decode for user identity)
-    # Full verification requires firebase-admin; we do best-effort here
-    try:
-        import base64, json as _json
-        parts = token.split(".")
-        if len(parts) == 3:
-            padded = parts[1] + "==" * (4 - len(parts[1]) % 4)
-            decoded = _json.loads(base64.urlsafe_b64decode(padded))
-            email = decoded.get("email") or decoded.get("sub")
-            if email:
-                return email
-    except Exception:
-        pass
-    raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    username = payload.get("sub")
+    if not username:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    return username
 
 def get_optional_user(credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))) -> str:
-    """Optional auth - never blocks chat."""
-    if not credentials:
-        return "anonymous"
-    token = credentials.credentials
-    if any(token.startswith(p) for p in ("offline_", "apple_demo_", "google_", "demo_")):
-        return "demo_user"
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload.get("sub", "anonymous")
-    except JWTError:
-        return "anonymous"
-
-
-def get_optional_user(credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))):
-    """Optional auth."""
+    """Optional authentication; invalid credentials remain anonymous."""
     if credentials is None:
         return "anonymous"
+
     token = credentials.credentials
-    if token.startswith("offline_") or token.startswith("apple_demo_") or token.startswith("google_"):
-        return "demo_user"
+
+    if _is_demo_token(token):
+        return "demo_user" if _demo_auth_enabled() else "anonymous"
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload.get("sub", "anonymous")
+        return payload.get("sub") or "anonymous"
     except JWTError:
         return "anonymous"
+
+
 
 
 ADMIN_ROLE_NAMES = {"admin", "administrator", "superadmin", "super_admin"}
@@ -3067,32 +3202,25 @@ def _decode_auth_payload(credentials: HTTPAuthorizationCredentials = Depends(bea
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     token = credentials.credentials
-    if token.startswith("offline_") or token.startswith("apple_demo_"):
-        return {"sub": "demo_user", "role": "user", "email": "demo@eva.local"}
+
+    if _is_demo_token(token):
+        if _demo_auth_enabled():
+            return {"sub": "demo_user", "role": "user", "email": "demo@eva.local"}
+        raise HTTPException(status_code=401, detail="Demo authentication disabled")
 
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
-        pass
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    try:
-        parts = token.split(".")
-        if len(parts) == 3:
-            padded = parts[1] + ("=" * (-len(parts[1]) % 4))
-            decoded = json.loads(base64.urlsafe_b64decode(padded))
-            if decoded.get("email") or decoded.get("sub"):
-                return decoded
-    except Exception:
-        pass
-
-    raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    return payload
 
 
 def require_admin(payload: Dict[str, Any] = Depends(_decode_auth_payload)) -> Dict[str, Any]:
     role = str(payload.get("role") or "").lower()
-    subject = str(payload.get("sub") or payload.get("email") or "").lower()
-    admin_subjects = {str(ADMIN_USERNAME).lower(), "admin", "admin@eva.ai"}
-    if role not in ADMIN_ROLE_NAMES and subject not in admin_subjects:
+    if role not in ADMIN_ROLE_NAMES:
         raise HTTPException(status_code=403, detail="Admin access required")
     return payload
 
@@ -3269,7 +3397,7 @@ async def admin_intelligence_project(admin: Dict[str, Any] = Depends(require_adm
         "package_json_exists": package_json.exists(),
         "app_py_exists": app_py.exists(),
         "current_routes_count": len(routes),
-        "rag_status_available": _api_route_available("/api/rag/status"),
+        "rag_status_available": "External ML service (7860)",
         "docs_available": _api_route_available("/api/docs") or app.docs_url == "/api/docs",
     }
 
@@ -3279,7 +3407,7 @@ async def admin_intelligence_health(admin: Dict[str, Any] = Depends(require_admi
     return {
         "backend": "online",
         "docs": "/api/docs",
-        "rag_status": "/api/rag/status",
+        "rag_status": "ML service: /rag/status (port 7860)",
         "timestamp": _now_iso(),
     }
 
@@ -3442,9 +3570,10 @@ class ChatRequest(BaseModel):
     image_data: Optional[str] = None
     image_mime: Optional[str] = None
     image_filename: Optional[str] = None
+    attachment_filename: Optional[str] = None
     # Response language (ISO code). Defaults to English, so any caller that
     # does not send it behaves exactly as before.
-    language: str = "en"
+    language: str = os.getenv("EVA_DEFAULT_LANGUAGE", "en")
     # Update 36A. "automatic" is the default and means today's behaviour
     # exactly: no mode prompt is applied and nothing changes for any caller
     # that does not send this field. An explicit id from /api/modes selects
@@ -3473,7 +3602,7 @@ def _detect_prompt_intent(prompt: str) -> str:
 
 
 def enhancement_guidance(prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
-    """The internal steer for this turn, as SYSTEM text â€ never as user text.
+    """The internal steer for this turn, as SYSTEM text ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â never as user text.
 
     This used to be appended to the user's own message. Strong cloud models read
     that as framing and ignored it; a small local model reads it as content and
@@ -3534,7 +3663,7 @@ class RAGAnswerRequest(RAGSearchRequest):
 # answer path that no client ever called: the frontend speaks through /chat and
 # the ElevenLabs proxy at /api/voice/*, and a prefix regex over a transcript
 # could not route what /chat already understands. Speech now differs from typing
-# in exactly one respect â€ ChatRequest.voice_response, which shapes the answer
+# in exactly one respect ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ChatRequest.voice_response, which shapes the answer
 # for listening rather than choosing a different pipeline to answer it.
 
 
@@ -3571,6 +3700,11 @@ class MemoryV2UpdateRequest(BaseModel):
     content: Optional[str] = None
     memory_type: Optional[str] = None
     importance: Optional[int] = None
+    memory_tier: Optional[str] = None
+    confidence: Optional[float] = None
+    provenance: Optional[str] = None
+    validation_status: Optional[str] = None
+    superseded_by: Optional[int] = None
 
 class MemoryV2SearchRequest(BaseModel):
     user_id: str = "user_001"
@@ -3579,6 +3713,17 @@ class MemoryV2SearchRequest(BaseModel):
 
 class MemoryV2UserRequest(BaseModel):
     user_id: str = "user_001"
+
+
+class MemoryV2ValidateRequest(BaseModel):
+    user_id: str = "user_001"
+    validation_status: str = "user_confirmed"
+    confidence: float = 1.0
+
+
+class MemoryV2SupersedeRequest(BaseModel):
+    user_id: str = "user_001"
+    replacement_memory_id: int
 
 class AgentOSTaskRequest(BaseModel):
     user_id: str = "user_001"
@@ -3646,7 +3791,7 @@ class AIStudioAgentRequest(BaseModel):
     name: str
     description: str = ""
     system_prompt: str
-    model: str = "llama-3.3-70b-versatile"
+    model: str = "openai/gpt-oss-120b"
     knowledge_base: List[str] = Field(default_factory=list)
     tools: List[str] = Field(default_factory=list)
     avatar: str = "AI"
@@ -3796,9 +3941,9 @@ class CADGenerationRequest(CADAutomationPlanRequest):
 # Auth endpoints
 # ______________________________________________
 
-# â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # REAL AUTH: Google Login + Phone OTP + Email Auth
-# â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 
 from fastapi import HTTPException
 from pydantic import BaseModel, EmailStr
@@ -3828,24 +3973,23 @@ if TWILIO_AVAILABLE and TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
 # Later replace with database
 OTP_STORE = {}
 
-USERS = {
-    "admin@eva.ai": {
+ADMIN_USER_EMAIL = (
+    ADMIN_USERNAME if "@" in ADMIN_USERNAME else "admin@eva.ai"
+)
+
+USERS = {}
+if ADMIN_PASSWORD_HASH:
+    _admin_user = {
         "name": "Admin",
-        "email": "admin@eva.ai",
-        "username": "admin@eva.ai",
-        "password": "admin123",
-        "role": "administrator",
-        "provider": "email",
-    },
-    "admin": {
-        "name": "Admin",
-        "email": "admin@eva.ai",
-        "username": "admin",
-        "password": "admin123",
+        "email": ADMIN_USER_EMAIL,
+        "username": ADMIN_USERNAME,
+        "password_hash": ADMIN_PASSWORD_HASH,
         "role": "administrator",
         "provider": "email",
     }
-}
+    USERS[ADMIN_USERNAME] = _admin_user
+    if ADMIN_USERNAME == "admin":
+        USERS["admin@eva.ai"] = _admin_user
 
 
 class RegisterRequest(BaseModel):
@@ -3901,23 +4045,25 @@ def public_user(user: dict[str, Any]) -> dict[str, Any]:
 
 @app.post("/auth/register")
 def register_user(data: RegisterRequest):
-    email = data.email.lower()
+    email = data.email.lower().strip()
     name = data.name or data.full_name or email.split("@")[0]
 
-    if email in USERS:
+    if len(data.password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=422, detail="Password exceeds 72 UTF-8 bytes")
+
+    if email == ADMIN_USER_EMAIL or email in USERS:
         raise HTTPException(status_code=400, detail="User already exists")
 
     USERS[email] = {
         "name": name,
         "email": email,
-        "username": data.username or email,
-        "password": data.password,
+        "username": (data.username or email).strip(),
+        "password_hash": hash_password(data.password),
         "role": "user",
         "provider": "email",
     }
 
     token = create_token(USERS[email])
-
     return {
         "access_token": token,
         "token": token,
@@ -3927,24 +4073,18 @@ def register_user(data: RegisterRequest):
 
 @app.post("/auth/login")
 def login_user(data: LoginRequest):
-    print("LOGIN DATA:", data)
-    print("USERS:", USERS)
-
     username = (data.email or data.username or "").lower().strip()
 
-    if username == "admin":
-        username = "admin@eva.ai"
+    if ADMIN_USERNAME == "admin" and username == "admin@eva.ai":
+        username = ADMIN_USERNAME
 
     user = USERS.get(username)
-
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-
-    if user.get("password") != data.password:
+    if not user or not verify_password(
+        data.password, user.get("password_hash", "")
+    ):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     token = create_token(user)
-
     return {
         "access_token": token,
         "token": token,
@@ -3952,6 +4092,7 @@ def login_user(data: LoginRequest):
         "name": user.get("name"),
         "role": user.get("role"),
     }
+
 
 @app.post("/auth/google")
 def google_login(data: GoogleLoginRequest):
@@ -3970,32 +4111,52 @@ def google_login(data: GoogleLoginRequest):
         picture = info.get("picture")
 
         if not email:
-            raise HTTPException(status_code=400, detail="Google email not found")
+            raise HTTPException(status_code=401, detail="Google account email is missing.")
 
-        email = email.lower()
+        if info.get("email_verified") is not True:
+            raise HTTPException(status_code=401, detail="Google email is not verified.")
 
-        role = "user"
+        email = email.strip().lower()
 
-        USERS[email] = {
-            "name": name,
-            "email": email,
-            "username": email,
-            "password": None,
-            "role": "user",
-            "provider": "google",
-            "picture": picture,
-        }
+        existing_user = USERS.get(email)
+        if existing_user:
+            if existing_user.get("provider") != "google":
+                raise HTTPException(
+                    status_code=409,
+                    detail="An account with this email already exists. Sign in using its original method."
+                )
+            if str(existing_user.get("role", "user")).lower() in {
+                "admin", "administrator", "superadmin", "super_admin"
+            }:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Administrator accounts cannot sign in through Google."
+                )
+            user = existing_user
+        else:
+            user = {
+                "name": name,
+                "email": email,
+                "username": email,
+                "password": None,
+                "role": "user",
+                "provider": "google",
+                "picture": picture,
+            }
+            USERS[email] = user
 
-        token = create_token(USERS[email])
+        token = create_token(user)
 
         return {
             "access_token": token,
             "token": token,
-            "user": public_user(USERS[email]),
+            "user": public_user(user),
         }
 
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Google login failed: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Google login failed. Please try again.")
 
 
 @app.post("/auth/phone/send")
@@ -4023,14 +4184,10 @@ def send_phone_otp(data: PhoneSendRequest):
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"OTP send failed: {str(e)}")
 
-    # Demo fallback if Twilio not configured
-    OTP_STORE[phone] = "123456"
-
-    return {
-        "message": "Demo OTP sent",
-        "demo_otp": "123456",
-        "status": "demo",
-    }
+    raise HTTPException(
+        status_code=503,
+        detail="Phone OTP service is unavailable. Configure Twilio Verify."
+    )
 
 
 @app.post("/auth/phone/verify")
@@ -4057,9 +4214,10 @@ def verify_phone_otp(data: PhoneVerifyRequest):
             raise HTTPException(status_code=400, detail=f"OTP verify failed: {str(e)}")
 
     else:
-        # Demo fallback
-        if OTP_STORE.get(phone) != code and code != "123456":
-            raise HTTPException(status_code=401, detail="Invalid OTP")
+        raise HTTPException(
+            status_code=503,
+            detail="Phone OTP service is unavailable. Configure Twilio Verify."
+        )
 
     email = f"{phone.replace('+', '')}@phone.local"
 
@@ -4084,11 +4242,10 @@ def verify_phone_otp(data: PhoneVerifyRequest):
 
 @app.post("/auth/forgot-password")
 def forgot_password(data: dict):
-    email = data.get("email", "")
-
-    return {
-        "message": f"Reset link sent to {email}. Demo mode only."
-    }
+    raise HTTPException(
+        status_code=503,
+        detail="Password reset is currently unavailable. Please contact the administrator."
+    )
 
 # ______________________________________________
 # Health (public)
@@ -4132,15 +4289,15 @@ async def health():
     }
 
 
-# â€â€ AI answer-path status â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â AI answer-path status ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 # The status indicator used to poll a liveness endpoint that returns {"ok": true}
 # whenever the process is up, so it read "AI Online" while every answer came back
-# "The AI service is temporarily unavailable" â€ which is exactly what happened
+# "The AI service is temporarily unavailable" ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â which is exactly what happened
 # on 2026-07-31 when the free-tier provider quota ran out.
 #
 # Status is derived from what real requests actually did, not from a synthetic
 # probe. A probe would have to spend a real LLM call on every poll, from every
-# open tab, against the same quota that ran out â€ the check would help cause the
+# open tab, against the same quota that ran out ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the check would help cause the
 # outage it reports. The trade-off is that it takes one real request to notice a
 # change, which is acceptable: with no traffic there is nothing to degrade.
 # Imported here rather than at the top of this 8000-line module: `time` exists
@@ -4154,7 +4311,7 @@ _AI_OUTCOME_LOCK = threading.Lock()
 
 
 def _record_ai_outcome(ok: bool, reason: str = "", provider: str = "") -> None:
-    """Record one answer-path result. Never raises â€ status must not break chat."""
+    """Record one answer-path result. Never raises ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â status must not break chat."""
     try:
         with _AI_OUTCOME_LOCK:
             _AI_OUTCOMES.append({
@@ -4178,7 +4335,7 @@ def _ai_path_status() -> Dict[str, Any]:
         recent = list(_AI_OUTCOMES)
 
     if not recent:
-        # No traffic yet â€ report unknown rather than claiming health we have
+        # No traffic yet ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â report unknown rather than claiming health we have
         # not observed. The UI treats this as online so a fresh deploy does not
         # look broken.
         return {"status": "unknown", "reason": "no requests observed yet",
@@ -4189,7 +4346,7 @@ def _ai_path_status() -> Dict[str, Any]:
     last_reason = failed[-1]["reason"] if failed else ""
 
     # Recency wins. Judging the whole window equally left the indicator stuck on
-    # Degraded after an outage had visibly recovered â€ the failures were still
+    # Degraded after an outage had visibly recovered ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the failures were still
     # inside the window even though every request since had succeeded. A run of
     # consecutive recent successes clears the state.
     tail = window[-3:]
@@ -4215,7 +4372,7 @@ def _ai_path_status() -> Dict[str, Any]:
 
 @app.get("/api/health")
 async def api_health():
-    # ok/status kept exactly as before â€ existing callers must not break.
+    # ok/status kept exactly as before ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â existing callers must not break.
     ai = _ai_path_status()
     return {
         "ok": True,
@@ -4241,7 +4398,7 @@ async def get_modes():
 
 
 # ______________________________________________
-# Runtime execution (Phase 19 slice 6 â€ Run button target)
+# Runtime execution (Phase 19 slice 6 ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Run button target)
 # ______________________________________________
 
 # /runtime/execute and /runtime/health are owned by runtime_engine.router,
@@ -4265,7 +4422,7 @@ async def api_health_artifacts():
     """Whether EVA can actually produce a file, and if not, which half is down.
 
     Every failure in the artifact path falls through to a normal answer on
-    purpose â€ a wrong file is worse than no file. The cost is that a missing
+    purpose ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â a wrong file is worse than no file. The cost is that a missing
     library and a rejected upload look identical to a user and to anyone
     reading the response. This says which.
 
@@ -4311,11 +4468,11 @@ async def api_health_automation(limit: int = 20):
     """The Update 38 automation lifecycle, seen from outside.
 
     One narrow task type (build an Excel file from supplied data) runs the whole
-    understandâ€ â€™planâ€ â€™actâ€ â€™verifyâ€ â€™correct/retryâ€ â€™deliver loop. This reports the
+    understandÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢planÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢actÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢verifyÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢correct/retryÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢deliver loop. This reports the
     recent runs so a failure is visible as a structured record rather than only
     as a fallen-through answer.
 
-    Enums, counts and a content digest only â€ never a prompt, an answer, a user,
+    Enums, counts and a content digest only ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â never a prompt, an answer, a user,
     an IP, a provider message, or any file contents.
     """
     limit = max(1, min(int(limit), 200))
@@ -4383,7 +4540,7 @@ async def api_health_routing(days: int = 30):
     """What EVA reasoned it should do, against what actually happened.
 
     The cognitive engine picks a strategy for every message and that choice
-    currently decides nothing â€ routing is done by a regex cascade, thirteen
+    currently decides nothing ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â routing is done by a regex cascade, thirteen
     document phrases, and a RAG call that runs unconditionally. This reports
     the two side by side so the case for connecting them can rest on evidence.
 
@@ -4400,13 +4557,13 @@ async def api_health_routing(days: int = 30):
     step up in retrieved_without_need across the cutover is the label being
     fixed, not retrieval growing. Grounding is still a same-language lexical
     measure (citation_scorer.answer_grounding), so an answer in a language other
-    than the corpus reads as ungrounded regardless of whether retrieval helped â€
+    than the corpus reads as ungrounded regardless of whether retrieval helped ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
     a known blind spot that inflates the "unnecessary" reading.
 
     No verdict is reported. Which pairing is correct is the question, not the
     answer, and encoding an opinion here would bias the data toward it.
 
-    Counts and enum labels only â€ no question, no answer, no user.
+    Counts and enum labels only ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â no question, no answer, no user.
     """
     days = 30 if days is None else int(days)
     days = max(1, min(days, 365))
@@ -4460,15 +4617,15 @@ async def api_health_routing(days: int = 30):
 
 @app.get("/api/health/mode_shadow")
 async def api_health_mode_shadow(days: int = 30):
-    """Which persona EVA WOULD adopt, measured over real traffic â€ Update 37.
+    """Which persona EVA WOULD adopt, measured over real traffic ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Update 37.
 
     The classifier picks one of five modes for every message and that pick
     currently decides nothing: no selector, and the answer is unchanged. This
     reports the distribution so the case for wiring it to route can rest on
-    evidence â€ how often each persona fires, and how much of that is at STRONG
+    evidence ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â how often each persona fires, and how much of that is at STRONG
     strength (the population a routing change would actually act on).
 
-    No verdict, and no manual selector â€ the Cognitive Engine is meant to pick
+    No verdict, and no manual selector ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the Cognitive Engine is meant to pick
     the mode, never the user. Counts and enum labels only: no message, no
     answer, no user.
     """
@@ -4524,10 +4681,10 @@ async def api_health_mode_shadow(days: int = 30):
 
 @app.get("/api/health/providers")
 async def api_health_providers(days: int = 30):
-    """Per-provider health â€ JARVIS 2A. Observe only, nothing routes on it.
+    """Per-provider health ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â JARVIS 2A. Observe only, nothing routes on it.
 
     Two views. `live` is the current in-memory status (providers.status()):
-    which providers are configured and whether the last call to each succeeded â€
+    which providers are configured and whether the last call to each succeeded ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
     accurate but wiped on every restart. `observed` is the durable summary from
     provider_shadow_daily: requests, failure rate and latency distribution per
     provider over real traffic, summed across the append-delta rows. The backend
@@ -4550,7 +4707,7 @@ async def api_health_providers(days: int = 30):
     # Phase 2 Step 10: read-only EVA Server Local A/B visibility. Reuses the
     # same config resolution the serving path uses (providers.eva_local_status
     # -> eva_local_resolve/validate_base_url). No probe, no network call, no
-    # routing effect. Safe metadata only â€ never a key, bearer or secret.
+    # routing effect. Safe metadata only ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â never a key, bearer or secret.
     try:
         eva_local_health = providers.eva_local_status()
     except Exception:
@@ -4612,7 +4769,7 @@ async def api_health_firewall(days: int = 30):
     The number that matters is block_rate: the share of answers that enforcing
     would have refused. ENFORCE_FIREWALL should not be flipped until that is
     known over enough days, and until the breakdown shows the blocks are
-    hallucination findings rather than gate errors and timeouts â€ those two
+    hallucination findings rather than gate errors and timeouts ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â those two
     would mean enforcing punishes users for the filter's own failures.
 
     Unauthenticated and therefore strictly counts: reason codes from a fixed
@@ -4621,7 +4778,7 @@ async def api_health_firewall(days: int = 30):
     "no traffic yet" and "writes are failing" produce identical numbers and
     only one of them means the data can be trusted.
     """
-    # `days or 30` would turn an explicit 0 into 30, because 0 is falsy â€ the
+    # `days or 30` would turn an explicit 0 into 30, because 0 is falsy ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the
     # caller asking for the narrowest window would silently get the widest.
     days = 30 if days is None else int(days)
     days = max(1, min(days, 365))
@@ -4679,7 +4836,7 @@ async def api_health_vision():
     """Why an image request is or is not being answered.
 
     Deliberately unauthenticated, because its whole value is being answerable
-    with one request when production is misbehaving â€ an admin-token gate would
+    with one request when production is misbehaving ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â an admin-token gate would
     put it behind the login wall that made this hard to diagnose in the first
     place. That constrains what it may say:
 
@@ -4721,7 +4878,7 @@ async def api_health_vision():
         "gemini": {
             "key_set": gemini_key,
             "library": libs["google_generativeai"] and libs["pillow"],
-            "model": os.getenv("GEMINI_VISION_MODEL", "gemini-1.5-flash"),
+            "model": os.getenv("GEMINI_VISION_MODEL", "gemini-3.5-flash"),
             "last": _VISION_LAST["gemini"],
         },
         "timestamp": _utc_now_iso(),
@@ -4758,8 +4915,8 @@ def _require_analytics():
 def _global_rag_ready() -> bool:
     """Best-effort RAG readiness signal for analytics endpoints.
 
-    There is no global RAG singleton in this architecture â€ RAG is served
-    per-user via multi_user_rag and via the external ML service â€ so the old
+    There is no global RAG singleton in this architecture ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â RAG is served
+    per-user via multi_user_rag and via the external ML service ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â so the old
     module-level ``_rag`` name never existed and caused a NameError crash.
     Report readiness based on whether the multi-user RAG subsystem is available.
     """
@@ -5036,7 +5193,7 @@ async def ai_studio_agent_chat(agent_id: str, req: AIStudioChatRequest, current_
             "name": "EVA AI",
             "description": "Default EVA assistant",
             "system_prompt": "You are EVA AI, a helpful AI assistant inside the EVA platform. Be practical, clear, and friendly.",
-            "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
             "tools": ["rag", "memory", "code_assistant", "vision"],
             "knowledge_base": ["EVA platform"],
             "avatar": "E",
@@ -5451,8 +5608,8 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
             req.question = req.message
         original_question = req.question
 
-        # â€ Security gate (Fix 2) â€
-        # THE single decision point, above every early return â€ the chart
+        # ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Security gate (Fix 2) ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
+        # THE single decision point, above every early return ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the chart
         # shortcut and the HF RAG call both return before the old firewall
         # block was reached, which is why it never ran.
         #
@@ -5503,7 +5660,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                     "agent_path": security_status["path"],
                 }
 
-        # Explicit "save this memory" / "remember this" command â€ persist the
+        # Explicit "save this memory" / "remember this" command ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â persist the
         # referenced content into Memory V2 instead of letting it fall through to
         # the LLM as an ordinary message (which only summarised it and saved
         # nothing). Deterministic, like the spreadsheet/chart shortcuts below.
@@ -5522,7 +5679,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                 None, req.history, bool(req.voice_response)), original_question)
 
         # Update 35a: an explicit request for a spreadsheet FILE, with the data
-        # in the message, produces a real .xlsx â€ not a description of one, and
+        # in the message, produces a real .xlsx ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â not a description of one, and
         # not a picture of one. Placed beside the chart shortcut because it has
         # the same shape: deterministic, built only from what the user typed,
         # and returned before any model is asked to invent something.
@@ -5553,7 +5710,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
             # This one returned a raw dict, so it skipped the outbound gate,
             # the cognitive engine, learning capture and the spoken reshape.
             # The comment above records that the INBOUND check had to be moved
-            # up because this same shortcut returned before it â€ the outbound
+            # up because this same shortcut returned before it ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the outbound
             # half had the identical hole, one direction later, and it was
             # found because a chart asked for by voice came back as raw JSON
             # with nothing for a speech engine to say.
@@ -5568,19 +5725,25 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                 "fallback": False,
             }, _inbound_types, req.user_id, _client_ip, original_question,
                 None, req.history, bool(req.voice_response)), original_question)
-        # â€â€ Phase 1 cognitive decision gate (shadow-first) 
+        # ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Phase 1 cognitive decision gate (shadow-first) 
         # Build the Problem State up-front and record a structured decision
-        # BEFORE any model runs, reusing understand/assess/strategy â€ no parallel
+        # BEFORE any model runs, reusing understand/assess/strategy ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â no parallel
         # engine. Runs here, after the deterministic shortcuts, before retrieval
         # and the LLM. Shadow by default (COGNITIVE_DRIVER_ENABLED=false): it
         # records only and changes NOTHING. When enabled, a serious-harm
         # safety_stop or a genuine clarify short-circuits here. Text only in
-        # Phase 1 â€ the image path is left exactly as it was.
+        # Phase 1 ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the image path is left exactly as it was.
         if COGNITIVE_DRIVER_AVAILABLE and not req.image:
             try:
-                _gate = cognitive_decide(original_question or "", req.history, False)
+                _cognitive_prep = cognitive_orchestrate_preanswer(
+                    original_question or "", req.history
+                )
+                _gate = _cognitive_prep.get("gate")
+                if _gate is None:
+                    print("[COGNITIVE_GATE_ERROR] preparation returned no decision")
             except Exception as _gate_exc:
                 print(f"[COGNITIVE_GATE_ERROR] {type(_gate_exc).__name__}: {_gate_exc}")
+                _cognitive_prep = None
                 _gate = None
             if _gate is not None:
                 _gate_record(_gate)
@@ -5613,13 +5776,19 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
         #
         # enhance_prompt() appends ~40 tokens of fixed boilerplate beginning
         # "Preserve the user's meaning...". route_query matches by unbounded
-        # substring, and "pr" is a substring of "preserve" â€ so every
+        # substring, and "pr" is a substring of "preserve" ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â so every
         # enhanced prompt matched CODE_TERMS and every message, including
         # "hello", was routed to the Code Agent.
         _t3 = _time.perf_counter()
         agent_id = route_query(original_question, has_image=req.image)
         print(f"[TIMING] route_query: {_time.perf_counter()-_t3:.2f}s")
         agent_status = get_agent_status(agent_id)
+        print(
+            f"[AGENT ROUTE DEBUG] "
+            f"agent_id={agent_id!r} "
+            f"agent_status_id={agent_status.get('id')!r} "
+            f"workspace_root={req.workspace_root!r}"
+        )
         relevant_memory = _retrieve_memory_v2(req.user_id, original_question) if req.memory_enabled else ""
         print(f"[MEMORY DEBUG] user_id: {req.user_id}, question: {original_question}, relevant_memory: {relevant_memory}")
 
@@ -5627,7 +5796,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
         # RAG call below.
         #
         # That call is unconditional and returns as soon as the ML service
-        # answers, and the image is never sent to it â€ so a text-only model
+        # answers, and the image is never sent to it ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â so a text-only model
         # was answering image questions. In production that meant a user
         # uploading a picture was told "I'm not able to view the image you're
         # referring to." This branch sat below that return and was reached
@@ -5690,28 +5859,161 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                     "agent_path": agent_status["path"],
                 }, _inbound_types, req.user_id, _client_ip, original_question,
                     None, req.history, bool(req.voice_response)), original_question)
+        # Cognitive tool-assisted execution: gather verified read-only evidence
+        # before EVA Local answers. Never auto-run the reasoning ("think") tool.
+        _cognitive_evidence = ""
+        _cognitive_tool_failed = False
+        if (
+            isinstance(_cognitive_prep, dict)
+            and _cognitive_prep.get("allowed") is True
+            and _cognitive_prep.get("strategy") == "TOOL_ASSISTED"
+            and _cognitive_prep.get("plan") is not None
+            and _cognitive_prep.get("selection") is not None
+            and _cognitive_prep.get("state") is not None
+        ):
+            try:
+                def _cognitive_request_tool_adapter(tool, arg, context):
+                    if tool == "rag_query":
+                        return _tool_rag_query(
+                            arg,
+                            workspace_id=req.workspace_id or DEFAULT_ORG_ID,
+                            source_filter=req.attachment_filename,
+                        )
+                    return cognitive_tool_adapter(tool, arg, context)
+
+                _read_only_tools = {"web_search", "read_url", "rag_query"}
+                _tasks = list(_cognitive_prep["plan"].tasks)
+                if all((getattr(_task, "required_tool", None) in _read_only_tools) for _task in _tasks):
+                    _execution = cognitive_execution_backend.run_plan(
+                        _cognitive_prep["state"],
+                        _cognitive_prep["plan"],
+                        _cognitive_prep["selection"],
+                        tool_adapter=_cognitive_request_tool_adapter,
+                    )
+                    if _execution.success and _execution.observations:
+                        _evidence_parts = []
+                        for _obs in _execution.observations:
+                            _refs = ", ".join(getattr(_obs, "evidence_refs", []) or [])
+                            _label = f"[{_refs}] " if _refs else ""
+                            _content = getattr(_obs, "evidence", "") or getattr(_obs, "summary", "")
+                            if _content.strip():
+                                _evidence_parts.append(f"{_label}{_content}")
+                        _cognitive_evidence = "\n\n".join(
+                            part for part in _evidence_parts if part.strip()
+                        )[:12000]
+                    else:
+                        _cognitive_tool_failed = True
+                        print("[COGNITIVE TOOLS] execution did not complete successfully")
+                else:
+                    _cognitive_tool_failed = True
+                    print("[COGNITIVE TOOLS] non-read-only tool rejected")
+            except Exception as _cog_exec_exc:
+                _cognitive_tool_failed = True
+                print(f"[COGNITIVE TOOLS] {type(_cog_exec_exc).__name__}: {_cog_exec_exc}")
+
+        print(f"[COGNITIVE EVIDENCE] strategy={(_cognitive_prep or {}).get('strategy') if isinstance(_cognitive_prep, dict) else None} chars={len(_cognitive_evidence)} failed={_cognitive_tool_failed}")
+
         # Decide whether this request should use document RAG before local-model primary.
         doc_keywords = ["my document", "my file", "uploaded file", "the pdf",
                         "the report", "the contract", "summarize the",
                         "according to the", "in the file", "from the doc",
                         "what does it say", "from my", "in my document"]
         use_rag = agent_id == "rag" or any(kw in original_question.lower() for kw in doc_keywords) or ".py" in original_question.lower() or ".js" in original_question.lower() or ".jsx" in original_question.lower() or ".ts" in original_question.lower() or ".tsx" in original_question.lower()
+        # Local Code Agent fallback:
+        # the browser sends workspace_id, but the local filesystem root is
+        # already known by this backend through ROOT_DIR. Reuse the existing
+        # read-only workspace resolver instead of creating another file path.
+        _effective_workspace_root = req.workspace_root
 
-        # EVA Local PRIMARY        # Tried first, before the slow HF RAG call below. Builds its own
+        if (
+            agent_status["id"] == "code"
+            and not _effective_workspace_root
+            and ROOT_DIR.exists()
+        ):
+            _effective_workspace_root = str(ROOT_DIR)
+
+        # Resolve the local Code Agent workspace BEFORE the local
+        # provider runs. This is read-only and reuses the existing
+        # authoritative workspace resolver.
+        _workspace_context = ""
+        _workspace_files = []
+        _workspace_result = None
+        _workspace_git = None
+
+        if agent_status["id"] == "code" and _effective_workspace_root:
+            try:
+                from src.agents.code_workspace_agent import build_code_workspace_context
+
+                _workspace_result = build_code_workspace_context(
+                    question=original_question,
+                    workspace_root=_effective_workspace_root,
+                )
+
+                if _workspace_result.get("enabled"):
+                    _workspace_context = _workspace_result.get("context", "")
+                    _workspace_files = _workspace_result.get("files", [])
+                    _workspace_git = _workspace_result.get("git_status")
+
+                    print(
+                        f"[CODE WORKSPACE] resolved "
+                        f"root={_effective_workspace_root!r} "
+                        f"files={_workspace_files} "
+                        f"context_chars={len(_workspace_context)}"
+                    )
+                elif _workspace_result.get("error"):
+                    print(
+                        f"[CODE WORKSPACE] unavailable: "
+                        f"{_workspace_result['error']}"
+                    )
+
+            except Exception as _workspace_err:
+                logger.exception("[CODE WORKSPACE] early resolver failed")
+                print(
+                    f"[CODE WORKSPACE] early resolver failed: "
+                    f"{_workspace_err}"
+                )
+        # EVA Local PRIMARY        
+        # Tried first, before the slow HF RAG call below. Builds its own
         # minimal message list (module-level BASE_SYSTEM_PROMPT + history +
         # question) so it does not depend on `messages`/`system_msg`, which
         # are only built later inside the "general knowledge" fallback
         # branch. On success this returns immediately and the RAG call
         # below never runs. On failure or when eva_local is not configured,
         # execution falls through to the existing RAG/cloud path unchanged.
-        if providers.configured("eva_local") and not use_rag and not (
-            agent_status["id"] == "code" and req.workspace_root
+        if providers.configured("eva_local") and (
+            not use_rag
+            or bool(_cognitive_evidence)
+            or (
+                agent_status["id"] == "code"
+                and _effective_workspace_root
+                and bool(locals().get("_workspace_context", ""))
+            )
         ):
             print("[EVA LOCAL PRIMARY] ENTERED - configured=True")
             try:
                 _eva_primary_messages = [
                     {"role": "system", "content": BASE_SYSTEM_PROMPT},
                 ]
+                # Local Code Workspace evidence is authoritative for Code Agent
+                # requests. Reuse the existing read-only workspace resolver;
+                # do not create a second file-reading path here.
+                if agent_status["id"] == "code" and _effective_workspace_root:
+                    _local_workspace_evidence = locals().get("_workspace_context", "")
+                    if _local_workspace_evidence:
+                        _eva_primary_messages.append({
+                            "role": "system",
+                            "content": (
+                                "[AUTHORITATIVE LOCAL CODE WORKSPACE]\n"
+                                "The following code was read from the user's "
+                                "local workspace by EVA's read-only workspace "
+                                "resolver. Use it as the source of truth.\n"
+                                "Do not invent files, APIs, functions, provider "
+                                "calls, URLs, or implementation details that "
+                                "are not present in this evidence. "
+                                "Do not claim that files were modified.\n\n"
+                                + _local_workspace_evidence
+                            ),
+                        })
 
                 if req.memory_enabled and relevant_memory:
                     _eva_primary_messages.append({"role": "system", "content": f"Relevant long-term memory:\n{relevant_memory}"})
@@ -5723,6 +6025,8 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                             _role = "user"
                         if _content:
                             _eva_primary_messages.append({"role": _role, "content": _content})
+                if _cognitive_evidence:
+                    _eva_primary_messages.append({"role": "system", "content": "EVA has already retrieved the requested external sources. The text below is verified retrieved content, not a request to browse. Answer the user using this evidence. Do NOT say you cannot browse, open URLs, or access external websites. Do NOT ask the user to provide the page content. Consider ALL retrieved sources, not just the first one. Synthesize the distinct relevant updates across the sources, avoid duplicating the same event, and attribute claims to the named publisher when useful. Prefer concrete dates, headlines, publisher names, and facts explicitly present in the evidence. STRICT EVIDENCE-ONLY RULE: do not infer causes, motivations, forecasts, performance claims, implications, technical details, or other facts that are not explicitly supported by the retrieved source text. Do not expand or reinterpret a headline into a stronger factual claim. However, when a headline explicitly states an outcome such as a team winning a match, that explicit outcome is source-supported and may be stated. Do not invent a score, margin, player statistic, or other detail not present in the evidence. When a source only gives a headline or short summary, report only what it explicitly states. For match-result questions, if the headline explicitly says one team won, defeated, or recorded a victory over the other, state that outcome as source-supported; do not invent a score, margin, player statistic, or other detail not present in the evidence. When the evidence does not establish a detail, say that the detail is not provided rather than guessing. Never fill gaps from general model knowledge. If sources disagree, report the disagreement and attribute each claim.\n\nRETRIEVED SOURCE CONTENT:\n" + _cognitive_evidence})
                 _eva_primary_messages.append({"role": "user", "content": original_question or ""})
 
                 _t4 = _time.perf_counter()
@@ -5730,16 +6034,46 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                     "eva_local",
                     _eva_primary_messages,
                     max_tokens=1024,
-                    temperature=0.7,
+                    temperature=0.2,
                 )
                 print(f"[TIMING] eva_local dispatch: {_time.perf_counter()-_t4:.2f}s")
                 print(f"[EVA LOCAL PRIMARY] DISPATCH RETURNED: {bool(answer)}")
                 if answer:
+                    answer_provider = "eva_local"
+                    answer_model = providers.PROVIDER_SPECS["eva_local"]["model"]
                     _log_raw_model_response(answer, BASE_SYSTEM_PROMPT)
                     _record_ai_outcome(
                         ok=True,
                         provider="eva_local",
                     )
+
+                    # Preserve the actual research sources that grounded this
+                    # local answer so the chat provenance panel can expose them.
+                    _cognitive_sources = []
+                    if _cognitive_evidence:
+                        for _m in re.finditer(
+                            r"RESEARCH SOURCE\s+\d+\s*[\r\n]+Title:\s*(.+?)\s*[\r\n]+URL:\s*(https?://[^\s]+)(.*?)(?=\r?\n\r?\nRESEARCH SOURCE|\Z)",
+                            _cognitive_evidence,
+                            flags=re.I | re.S,
+                        ):
+                            _title = re.sub(r"\s+", " ", _m.group(1)).strip()
+                            _retrieval_url = _m.group(2).strip().rstrip(").,;]")
+                            _block = _m.group(3) or ""
+                            _publisher_url_match = re.search(
+                                r"Publisher URL:\s*(https?://[^\s]+)",
+                                _block,
+                                flags=re.I,
+                            )
+                            _display_url = (
+                                _publisher_url_match.group(1).strip().rstrip(").,;]")
+                                if _publisher_url_match
+                                else _retrieval_url
+                            )
+                            if _title and _display_url:
+                                _cognitive_sources.append(
+                                    f"{_title} | {_display_url}"
+                                )
+                    _cognitive_sources = list(dict.fromkeys(_cognitive_sources))
 
                     return _capture_learning(
                         req,
@@ -5748,8 +6082,15 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                             "response": answer,
                             "answer": answer,
                             "provider": "eva_local",
-                            "model": None,
-                            "sources": [],
+                            "model": answer_model,
+                            "sources": _cognitive_sources,
+                            "source_ids": _cognitive_sources,
+                            "retrieved_sources": _cognitive_sources,
+                            "retrievers_used": list(dict.fromkeys(
+                                getattr(_task, "required_tool", None)
+                                for _task in locals().get("_tasks", [])
+                                if getattr(_task, "required_tool", None)
+                            )),
                             "confidence": 1.0,
                             "healed": False,
                             "fallback": False,
@@ -5783,7 +6124,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                 # IDENTICAL for every general-intent query. Embedding that
                 # meant "hi" was ~1 signal token against ~39 constant ones,
                 # so every query landed in nearly the same place in vector
-                # space â€ which is why confidence sat at 36-40% whether the
+                # space ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â which is why confidence sat at 36-40% whether the
                 # question matched the corpus or not, and why "hi" retrieved
                 # a JavaScript textbook.
                 #
@@ -5805,7 +6146,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                         # system prompt, so the fact that this answer will be
                         # heard rather than read is forwarded, not acted on
                         # here. Unknown to older service builds, which ignore
-                        # extra keys â€ ChatRequest there does not forbid them.
+                        # extra keys ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ChatRequest there does not forbid them.
                         "spoken": bool(req.voice_response),
                         # The ID, never the prompt text. registry.py says
                         # system_prompt is server-side only and never goes
@@ -5825,8 +6166,9 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                         # change how documents are found.
                         #
                         # "automatic" for the default, which the service
-                        # treats as no persona â€ unchanged behaviour for every
+                        # treats as no persona ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â unchanged behaviour for every
                         # request that does not choose a mode.
+                        "source_filter": req.attachment_filename,
                         "chat_mode": _mode_id(req.mode),
                     },
                 )
@@ -5863,7 +6205,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
             print(f"[RAG v2] fallback to original chat: {rag_err}")
 
         # Security check moved to the top of this handler (Fix 2). It ran
-        # here previously, below the chart shortcut and the HF RAG call â€
+        # here previously, below the chart shortcut and the HF RAG call ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
         # both of which return early, so it was unreachable on every normal
         # request. There is now exactly one security decision point and it
         # is above all early returns.
@@ -5876,10 +6218,11 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                         "according to the", "in the file", "from the doc",
                         "what does it say", "from my", "in my document"]
         use_rag = agent_id == "rag" or any(kw in req.question.lower() for kw in doc_keywords)
+        answer_provider = None
+        answer_model = None
         if use_rag:
             agent_status = get_agent_status("rag")
-
-        # SelfHealingRAG/FAISS removed â€ RAG is served by HF (primary) and RAG 2.0.
+        # SelfHealingRAG/FAISS removed ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â RAG is served by HF (primary) and RAG 2.0.
         rag = None
 
         memory = None
@@ -5897,7 +6240,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
 
         if use_rag:
             try:
-                # No local-store RAG fallback â€ retrieval is the HF service (primary); otherwise the LLM fallback below.
+                # No local-store RAG fallback ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â retrieval is the HF service (primary); otherwise the LLM fallback below.
                 result = {"answer": "", "sources": [], "confidence": 0.0, "fallback_mode": True}
             except Exception as rag_exc:
                 logger.warning(f"RAG retrieval failed: {rag_exc}")
@@ -5917,11 +6260,11 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                     result["answer"] = fb
                     result["fallback_mode"] = True
         else:
-            # General knowledge â€ use LLM directly without RAG context
+            # General knowledge ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â use LLM directly without RAG context
             # NOTE: do NOT add `os` here. A function-local `import os` makes
             # `os` local to the whole of chat(), which made the earlier
             # `os.getenv("HF_ML_URL", ...)` in the RAG v2 block raise
-            # UnboundLocalError on every request â€ silently disabling the HF
+            # UnboundLocalError on every request ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â silently disabling the HF
             # retrieval call. `os` is already imported at module level.
             import httpx, re as _re
             try:
@@ -5929,7 +6272,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
             except:
                 chat_history = req.history or []
 
-            # â€â€ Auto web search for recent/current events â€
+            # ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Auto web search for recent/current events ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
             recent_triggers = [
                 '2024', '2025', '2026', 'latest', 'recent', 'current',
                 'today', 'now', 'this year', 'this month', 'last month',
@@ -5956,13 +6299,13 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                     web_context = ""
 
             agent_instruction = get_agent_instruction(agent_status["id"])
-            # Update 23 â€ the answer-SHAPE half of this prompt is chosen, not
+            # Update 23 ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the answer-SHAPE half of this prompt is chosen, not
             # appended to.
             #
             # Update 22 appended a "no markdown, no LaTeX" directive after the
             # CRITICAL block below, and live testing showed it lose. Asked by
-            # voice, the model emitted $...$ â€ exactly the form the CRITICAL
-            # rule demands â€ while obeying the SAME directive's brevity clause,
+            # voice, the model emitted $...$ ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â exactly the form the CRITICAL
+            # rule demands ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â while obeying the SAME directive's brevity clause,
             # so the answer came back 42% shorter and still full of LaTeX. A
             # contradiction inside one prompt is settled by emphasis, and
             # CRITICAL/MUST outranks a rebuttal no matter how explicitly that
@@ -5970,7 +6313,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
             # rather than argued with.
             #
             # The split is deliberate: everything above it is identity,
-            # capability and scope â€ including "give rich, detailed answers",
+            # capability and scope ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â including "give rich, detailed answers",
             # which stays in both branches so shaping for speech cannot become
             # answering less. Only the shape below it differs.
             _identity = agent_instruction + """
@@ -5988,10 +6331,34 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
             5. Never claim you cannot see images if an image is attached.
             6. If image analysis is unavailable, explain that the image processor is not configured rather than saying you cannot analyze images.
 
-            You are a helpful AI assistant powered by RAG + Groq LLaMA.
+            You are a helpful AI assistant powered by EVA's local/provider inference, RAG, web search, and document intelligence.
             You DO have conversation memory - the full chat history is provided to you in this conversation.
             You DO retain context within a session - refer back to earlier messages when relevant.
-            You are NOT just a "general knowledge" bot - you are a full AI assistant with RAG, web search, and document intelligence.""" + HEALTH_SAFETY_FLOOR
+            You are NOT just a "general knowledge" bot - you are a full AI assistant with RAG, web search, and document intelligence.
+
+            LANGUAGE RULES:
+            - If the user writes in Marathi or Marathi transliteration, reply in natural Marathi.
+            - Prefer clear, natural Devanagari Marathi for Marathi replies.
+            - Use simple conversational Marathi rather than formal or artificial wording.
+            - Do not translate Marathi word-by-word from Hindi or English.
+            - Do not unnecessarily mix Hindi vocabulary into Marathi.
+            - Preserve the user's intended meaning and conversational tone.
+            - If the user uses Marathi transliteration such as "tujhi marathi sudhar", understand it as Marathi and reply naturally in Marathi.
+            - Never generate malformed Marathi words or Hindi-derived forms such as "मुझ्ही", "मलाई", "वाक्यांशावर वाढवण्यासाठी".
+            - For a short conversational Marathi question, answer directly and naturally instead of giving an unnecessarily long explanation.
+            - If unsure about a Marathi word, prefer a simple commonly used Marathi expression over an invented or translated form.
+            
+             MARATHI EXAMPLES:
+            User: "mla sanki ki tu kon ahes?"
+            Assistant: "मी EVA आहे. मी तुझा AI assistant आहे. प्रश्नांची उत्तरं देणे, माहिती समजावून सांगणे आणि वेगवेगळ्या कामांमध्ये मदत करणे हे माझं काम आहे."
+
+            User: "tula marathi yet nahi ka"
+            Assistant: "हो, मला मराठी येते. माझी आधीची उत्तरं नैसर्गिक मराठीत आली नाहीत, पण आता मी तुझ्याशी मराठीतच आणि अधिक नैसर्गिक पद्धतीने बोलेन."
+
+            User: "tujhi marathi sudhar"
+            Assistant: "हो. माझी मराठी अधिक नैसर्गिक, सोपी आणि स्पष्ट ठेवते. पुढे तू Roman Marathi मध्ये लिहिलंस तरी मी त्याचा अर्थ समजून मराठीत उत्तर देईन."
+            
+            """ + HEALTH_SAFETY_FLOOR
 
             # Scope, split out from identity in Update 27 and chosen per branch.
             #
@@ -5999,18 +6366,49 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
             # was kept in the shared half by Update 23, to stop shaping for
             # speech from becoming answering less. Live, it did the opposite of
             # what was needed: spoken replies came back LONGER than typed ones
-            # â€ 1200 characters against 548 on the same question â€ because a
+            # ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â 1200 characters against 548 on the same question ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â because a
             # standing demand for detail outweighs "a few sentences unless the
             # question genuinely needs more".
             #
             # The guard was right, the wording was not. Both branches still
             # forbid narrowing; only the screen branch asks for volume.
             _screen_scope = """
-            Give rich, detailed, helpful answers. Never give one-line lazy responses like "General knowledge".
-            Answer what the user asked directly and thoroughly."""
+            Give helpful answers, but match the user's question length and intent.
+            For short conversational questions, answer briefly and naturally.
+            Do not turn a simple conversation into a dictionary, language lesson, or essay.
+
+                        LANGUAGE OUTPUT — STRICT:
+            - The user's latest message determines the response language.
+            - If the user writes Marathi, the entire answer MUST be Marathi.
+            - If the user writes Roman Marathi, treat it as Marathi and answer in natural Marathi Devanagari.
+            - NEVER answer Marathi in Hindi.
+            - NEVER mix Hindi grammar with Marathi grammar.
+            - Do not use Hindi forms such as "मै", "तुमच्यावर", "करू शकता" when they are grammatically wrong for the sentence.
+            - Use natural Marathi pronouns and grammar: "मी", "तू", "तुला", "तुझं", "तुम्ही", "तुम्हाला", "माझं".
+            - Do not explain or translate Marathi words unless the user explicitly asks for word meaning or translation.
+            - Do not analyze the spelling of a casual Marathi question.
+            - For casual conversation, answer the actual conversation naturally and briefly.
+
+            MARATHI RESPONSE EXAMPLES:
+            User: "hi eva, tula marathi yet nahi ka?"
+            Assistant: "हो, मला मराठी येते. माझी आधीची उत्तरं नैसर्गिक मराठीत आली नाहीत. आता मी तुझ्याशी मराठीतच आणि अधिक नैसर्गिकपणे बोलेन."
+
+            User: "tula marathi yet nahi ka?"
+            Assistant: "हो, मला मराठी येते. माझी मराठी अजून सुधारण्याची गरज आहे, पण मी तुझ्याशी नैसर्गिक मराठीत बोलण्याचा प्रयत्न करेन."
+
+            User: "tu kon ahes?"
+            Assistant: "मी EVA आहे. मी तुझा AI assistant आहे आणि प्रश्नांची उत्तरं देणे, माहिती समजावून सांगणे आणि वेगवेगळ्या कामांमध्ये मदत करणे हे माझं काम आहे."
+
+            Give rich, detailed, helpful answers when the question genuinely needs detail.
+            Answer what the user asked directly and thoroughly, while matching the user's intent and question length.."""
 
             _spoken_scope = """
-            Answer what the user asked directly and completely, without padding."""
+            Answer what the user asked directly and completely, without padding.
+            Reply in the same language as the user's latest message.
+            If the user writes Marathi or Roman Marathi, reply in natural Marathi.
+            For Roman Marathi, normally reply in Devanagari Marathi.
+            For short conversational Marathi, answer naturally and briefly.
+            Do not turn casual Marathi conversation into word definitions or language analysis."""
 
             # Screen shape. Concatenated after _screen_scope it reproduces the
             # original prompt byte for byte, which is what keeps every typed
@@ -6020,7 +6418,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
             CRITICAL: For ALL math, equations, and formulas you MUST use LaTeX syntax:
             - Inline math: wrap in single dollar signs like $x^2 + y^2 = z^2$
             - Block math: wrap in double dollar signs like $$x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$
-            - NEVER write math in plain text like x = (-b Â± Ë†Å¡(bÂ² - 4ac)) / 2a
+            - NEVER write math in plain text like x = (-b Ãƒâ€šÃ‚Â± Ãƒâ€¹Ã¢â‚¬Â Ãƒâ€¦Ã‚Â¡(bÃƒâ€šÃ‚Â² - 4ac)) / 2a
             - ALWAYS write math as $$x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$
             - Examples: $E=mc^2$, $\\pi \\approx 3.14159$, $$\\int_0^\\infty e^{-x} dx = 1$$"""
 
@@ -6042,48 +6440,31 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                 system_msg = f"{system_msg}\n\n[For this turn]\n{_guidance}"
             system_msg = chart_system_prompt(system_msg, req.question)
 
-        # Read-only local Code Agent workspace context.
-        # Only active when this request is routed to Code Agent and a
-        # local workspace_root was explicitly supplied.
-        if agent_status["id"] == "code" and req.workspace_root:
-            try:
-                from src.agents.code_workspace_agent import build_code_workspace_context
-
-                _workspace_result = build_code_workspace_context(
-                    question=original_question,
-                    workspace_root=req.workspace_root,
+        # The workspace resolver already ran before EVA Local Primary.
+        # Inject its authoritative read-only evidence into the system prompt.
+        if agent_status["id"] == "code" and _effective_workspace_root:
+            if _workspace_context:
+                system_msg += (
+                    "\n\n[LOCAL CODE WORKSPACE ? READ ONLY]\n"
+                    "The following context was retrieved from the user's "
+                    "local project. Use it as evidence when answering. "
+                    "Do not claim to have modified files.\n"
+                    f"Relevant files: {_workspace_files}\n\n"
+                    f"{_workspace_context}"
                 )
 
-                if _workspace_result.get("enabled"):
-                    _workspace_context = _workspace_result.get("context", "")
-                    _workspace_files = _workspace_result.get("files", [])
+            if _workspace_git and _workspace_git.get("stdout"):
+                system_msg += (
+                    "\n\n[LOCAL GIT STATUS ? READ ONLY]\n"
+                    f"{_workspace_git['stdout']}"
+                )
+            elif _workspace_result and _workspace_result.get("error"):
+                system_msg += (
+                    "\n\n[LOCAL CODE WORKSPACE]\n"
+                    f"Workspace access was unavailable: "
+                    f"{_workspace_result['error']}"
+                )
 
-                    if _workspace_context:
-                        system_msg += (
-                            "\n\n[LOCAL CODE WORKSPACE â€” READ ONLY]\n"
-                            "The following context was retrieved from the user's "
-                            "local project. Use it as evidence when answering. "
-                            "Do not claim to have modified files.\n"
-                            f"Relevant files: {_workspace_files}\n\n"
-                            f"{_workspace_context}"
-                        )
-
-                    _workspace_git = _workspace_result.get("git_status")
-                    if _workspace_git and _workspace_git.get("stdout"):
-                        system_msg += (
-                            "\n\n[LOCAL GIT STATUS â€” READ ONLY]\n"
-                            f"{_workspace_git['stdout']}"
-                        )
-                elif _workspace_result.get("error"):
-                    system_msg += (
-                        "\n\n[LOCAL CODE WORKSPACE]\n"
-                        f"Workspace access was unavailable: "
-                        f"{_workspace_result['error']}"
-                    )
-
-            except Exception as _workspace_err:
-                logger.exception("[CODE WORKSPACE] resolver failed")
-                print(f"[CODE WORKSPACE] resolver failed: {_workspace_err}")
             messages = [{"role": "system", "content": system_msg}]
             if req.memory_enabled and relevant_memory:
                 messages.append({"role": "system", "content": f"Relevant memories:\n{relevant_memory}"})
@@ -6105,8 +6486,8 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                         role = "user"
                     if content:
                         messages.append({"role": role, "content": content})
-            if agent_status["id"] == "code" and req.workspace_root:
-                _workspace_evidence = locals().get("_workspace_context", "")
+            if agent_status["id"] == "code" and _effective_workspace_root:
+                _workspace_evidence = _workspace_context
                 if _workspace_evidence:
                     messages[0]["content"] += (
                         "\n\n[AUTHORITATIVE LOCAL CODE EVIDENCE]\n"
@@ -6124,8 +6505,8 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
             try:
                 # EVA Server Local answers first when it is explicitly enabled
                 # and a machine resolves (providers.configured checks both).
-                # Everything it needs â€ A/B selection, the circuit breaker,
-                # health recording â€ already lives inside the provider layer.
+                # Everything it needs ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â A/B selection, the circuit breaker,
+                # health recording ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â already lives inside the provider layer.
                 # Any failure falls through to the cloud cascade below, which is
                 # unchanged and remains the floor; with EVA_LOCAL_ENABLED unset
                 # this block never runs.
@@ -6148,7 +6529,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                         logger.exception("[CHAT LLM] eva_local failed")
                         print(f"[CHAT LLM] eva_local failed: {_local_err}")
 
-                # Same provider, model, max_tokens and temperature as before â€
+                # Same provider, model, max_tokens and temperature as before ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
                 # only the SDK call moved into providers.dispatch.
                 if not answer:
                     _provider_result = providers.complete(
@@ -6170,7 +6551,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                     # Wrap lines containing math-like patterns in $$
                     lines = text.split('\n')
                     result = []
-                    math_chars = set('Ë†Å¡Â±Â²Â³Ë†â€˜Ë†Â«Ë†ÂË†Å¾ÃÃƒâ€”ÃƒÂ·â€°Â¤â€°Â¥â€°Â â€°Ë†')
+                    math_chars = set('Ãƒâ€¹Ã¢â‚¬Â Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â±Ãƒâ€šÃ‚Â²Ãƒâ€šÃ‚Â³Ãƒâ€¹Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“Ãƒâ€¹Ã¢â‚¬Â Ãƒâ€šÃ‚Â«Ãƒâ€¹Ã¢â‚¬Â Ãƒâ€šÃ‚ÂÃƒâ€¹Ã¢â‚¬Â Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã‚ÂÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â·ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€šÃ‚Â¤ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€šÃ‚Â¥ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€šÃ‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€¹Ã¢â‚¬Â ')
                     for line in lines:
                         stripped = line.strip()
                         has_math = any(c in stripped for c in math_chars)
@@ -6178,14 +6559,14 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                         has_frac = '/' in stripped and '=' in stripped
                         if has_math and (has_eq or has_frac) and not stripped.startswith('$$') and not stripped.startswith('```'):
                             # Convert Unicode to LaTeX
-                            stripped = stripped.replace('Ë†Å¡(', '\\sqrt{').replace('Ë†Å¡', '\\sqrt{')
-                            stripped = stripped.replace('Â²', '^2').replace('Â³', '^3')
-                            stripped = stripped.replace('Â±', '\\pm').replace('Ãƒâ€”', '\\times')
-                            stripped = stripped.replace('ÃƒÂ·', '\\div').replace('â€°Â¤', '\\leq')
-                            stripped = stripped.replace('â€°Â¥', '\\geq').replace('â€°Â ', '\\neq')
-                            stripped = stripped.replace('â€°Ë†', '\\approx').replace('Ë†Å¾', '\\infty')
-                            stripped = stripped.replace('Ã', '\\pi').replace('Ë†â€˜', '\\sum')
-                            stripped = stripped.replace('Ë†Â«', '\\int').replace('Ë†Â', '\\prod')
+                            stripped = stripped.replace('Ãƒâ€¹Ã¢â‚¬Â Ãƒâ€¦Ã‚Â¡(', '\\sqrt{').replace('Ãƒâ€¹Ã¢â‚¬Â Ãƒâ€¦Ã‚Â¡', '\\sqrt{')
+                            stripped = stripped.replace('Ãƒâ€šÃ‚Â²', '^2').replace('Ãƒâ€šÃ‚Â³', '^3')
+                            stripped = stripped.replace('Ãƒâ€šÃ‚Â±', '\\pm').replace('ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â', '\\times')
+                            stripped = stripped.replace('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â·', '\\div').replace('ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€šÃ‚Â¤', '\\leq')
+                            stripped = stripped.replace('ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€šÃ‚Â¥', '\\geq').replace('ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€šÃ‚Â ', '\\neq')
+                            stripped = stripped.replace('ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€¹Ã¢â‚¬Â ', '\\approx').replace('Ãƒâ€¹Ã¢â‚¬Â Ãƒâ€¦Ã‚Â¾', '\\infty')
+                            stripped = stripped.replace('ÃƒÆ’Ã‚Â', '\\pi').replace('Ãƒâ€¹Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“', '\\sum')
+                            stripped = stripped.replace('Ãƒâ€¹Ã¢â‚¬Â Ãƒâ€šÃ‚Â«', '\\int').replace('Ãƒâ€¹Ã¢â‚¬Â Ãƒâ€šÃ‚Â', '\\prod')
                             # Close any open \sqrt{ braces
                             if '\\sqrt{' in stripped and ')' in stripped:
                                 stripped = stripped.replace(')', '}', 1)
@@ -6203,10 +6584,17 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                 _openai_key = os.getenv("OPENAI_API_KEY", "")
                 if _openai_key:
                     try:
-                        answer = providers.dispatch("openai", messages,
-                                                    model="gpt-4o-mini", max_tokens=1024)
+                        answer = providers.dispatch(
+                            "openai",
+                            messages,
+                            model="gpt-4o-mini",
+                            max_tokens=1024,
+                        )
+                        if answer:
+                            answer_provider = "openai"
+                            answer_model = "gpt-4o-mini"
                         _log_raw_model_response(answer or "", system_msg)
-                        print("Å“â€¦ OpenAI fallback used")
+                        print("Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ OpenAI fallback used")
                     except Exception as _oa_err:
                         print(f"OpenAI failed: {_oa_err}")
 
@@ -6218,8 +6606,11 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                         # retired-model fix lands on this path too instead of
                         # being overridden by a literal pinned at the call site.
                         answer = providers.dispatch("gemini", messages)
+                        if answer:
+                            answer_provider = "gemini"
+                            answer_model = providers.PROVIDER_SPECS["gemini"]["model"]
                         _log_raw_model_response(answer or "", system_msg)
-                        print("Å“â€¦ Gemini fallback used")
+                        print("Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Gemini fallback used")
                     except Exception as _gm_err:
                         print(f"Gemini failed: {_gm_err}")
 
@@ -6275,7 +6666,10 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
             user_id=req.user_id,
             feature="chat",
             action="message",
-            model="llama-3.3-70b-versatile" if not result.get("fallback_mode") else "fallback",
+            model=(
+                answer_model
+                or ("fallback" if result.get("fallback_mode") else "unknown")
+            ),
             tokens=_estimate_tokens(original_question, result.get("answer", "")),
             status="success",
             duration_ms=int((datetime.utcnow() - started_at).total_seconds() * 1000),
@@ -6283,6 +6677,8 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                 "agent": agent_status["id"],
                 "rag": bool(use_rag),
                 "fallback": bool(result.get("fallback_mode", False)),
+                "provider":answer_provider,
+                "model":answer_model,
                 "source_ids": result.get("source_ids", result.get("sources", [])),
                 "audit_id": result.get("audit_id"),
             },
@@ -6310,7 +6706,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
         # module-level: a process-wide cache would hold response text for the
         # life of the worker and key a verdict across unrelated users.
         _review_cache = cognitive_new_review_cache() if COGNITIVE_ENGINE_AVAILABLE else None
-        # Phase 19 slice 2: passive review â€ observational only, never mutates
+        # Phase 19 slice 2: passive review ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â observational only, never mutates
         # the answer, never blocks the reply. Always logged; attached to the
         # body only when DEBUG_REVIEW=true or the request set debug_review.
         if REVIEW_ENGINE_AVAILABLE:
@@ -6319,7 +6715,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
                 # _finalize_response reuses this payload for the same bytes
                 # rather than running node --check a second time. Reuse is keyed
                 # on the exact text, so a corrected answer never inherits this
-                # verdict â€ it is reviewed again on its own.
+                # verdict ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â it is reviewed again on its own.
                 if COGNITIVE_ENGINE_AVAILABLE:
                     review = cognitive_review_once(
                         result.get("answer") or "", _review_cache)
@@ -6342,7 +6738,7 @@ async def chat(request: Request, req: ChatRequest, current_user: str = Depends(g
             except Exception as _review_err:
                 # run_review_pipeline is fail-open by design; this is belt and braces.
                 print(f"review pipeline skipped: {_review_err}")
-        # Phase 19 slice 6: DECISION â€ code is NOT auto-executed. The chat
+        # Phase 19 slice 6: DECISION ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â code is NOT auto-executed. The chat
         # response NEVER calls Piston (supersedes the slice-4.5 auto-exec
         # block). It only MARKS runnability for the frontend Run button:
         # classification is pure regex, adds no provider latency, and
@@ -6383,7 +6779,7 @@ async def _llm_fallback(question: str, history: list, spoken: bool = False,
         {"role": "system", "content": _system},
         {"role": "user", "content": question},
     ]
-    # Update 54: Groq is tried FIRST â€ it is the one provider actually
+    # Update 54: Groq is tried FIRST ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â it is the one provider actually
     # configured on this deployment. Previously an inline cascade lived here;
     # the order (Groq -> OpenAI -> Gemini over configured providers) and the
     # models are unchanged, but the cascade now lives in providers.complete so
@@ -6393,7 +6789,7 @@ async def _llm_fallback(question: str, history: list, spoken: bool = False,
     # JARVIS 1B normalization (flagged): empty-response handling is now UNIFORM.
     # An empty answer from ANY provider falls through to the next. Before, only
     # Groq did that; an empty OpenAI answer was returned as-is. This matches the
-    # ML service and is strictly more resilient â€ the only observable change in
+    # ML service and is strictly more resilient ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the only observable change in
     # this function, and only when a provider returns an empty string.
     result = providers.complete(msgs, max_tokens=1024, temperature=None)
     if result.ok:
@@ -6436,7 +6832,7 @@ async def tts(request: Request, req: TTSRequest, current_user: str = Depends(get
 
 
 # ______________________________________________
-# Neural TTS â€ ElevenLabs  (protected)
+# Neural TTS ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ElevenLabs  (protected)
 # ______________________________________________
 #
 # This exists as a BACKEND PROXY for one reason: an ElevenLabs key is a secret
@@ -6488,7 +6884,7 @@ def _el_cache_put(key: str, audio: bytes) -> None:
 
 class ElevenLabsSpeakRequest(BaseModel):
     text: str
-    voice_id: str = "21m00Tcm4TlvDq8ikWAM"   # Rachel â€ a premade voice on every account
+    voice_id: str = "21m00Tcm4TlvDq8ikWAM"   # Rachel ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â a premade voice on every account
     model_id: str = "eleven_multilingual_v2"
     stability: float = 0.5
     similarity_boost: float = 0.75
@@ -6499,7 +6895,7 @@ class ElevenLabsSpeakRequest(BaseModel):
 
 @app.get("/api/voice/providers")
 async def voice_providers():
-    """Which neural providers are usable. Reports configured/not â€ never the key.
+    """Which neural providers are usable. Reports configured/not ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â never the key.
 
     The frontend uses this to decide whether to offer ElevenLabs at all, so an
     unconfigured deployment silently keeps using browser speech instead of
@@ -6580,7 +6976,7 @@ async def elevenlabs_speak(
     cache_key = _el_cache_key(text, req.voice_id, {**voice_settings, "m": req.model_id})
     cached = _el_cache_get(cache_key)
     if cached is not None:
-        # Repeated phrases â€ previews, greetings, "Opening the camera" â€ are a
+        # Repeated phrases ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â previews, greetings, "Opening the camera" ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â are a
         # meaningful share of traffic, and ElevenLabs bills per character.
         return StreamingResponse(io.BytesIO(cached), media_type="audio/mpeg",
                                  headers={"X-EVA-TTS-Cache": "hit"})
@@ -6740,7 +7136,7 @@ async def upload_pdf(
             run.event("File saved to data directory", 35, data={"size_bytes": len(content), "already_indexed": already})
             if already:
                 run.complete({"filename": file.filename, "already_indexed": True}, "Document already indexed")
-                return {"message": f"{file.filename} already indexed â€ ready!", "workspace_id": workspace_id, "file": workspace_file}
+                return {"message": f"{file.filename} already indexed ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ready!", "workspace_id": workspace_id, "file": workspace_file}
             # RAG indexing is handled by the HF/Supabase service (POST /rag/upload).
             # Render no longer FAISS-indexes uploads; this endpoint only persists the file.
             run.event("File saved (RAG indexing handled by the HF service)", 80)
@@ -6769,7 +7165,7 @@ async def upload_pdf(
         )
         raise HTTPException(status_code=500, detail=str(e))
 
-# â€â€ Multi-User Knowledge Base Routes â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Multi-User Knowledge Base Routes ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 
 @app.get("/user/US/stats")
 @limiter.limit("30/minute")
@@ -6832,7 +7228,7 @@ async def admin_all_users(request: Request, current_user: str = Depends(get_curr
     except Exception as e:
         raise HTTPException(500, str(e))
 
-# â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 
 @app.get("/documents")
 async def list_documents(workspace_id: Optional[str] = None, current_user: str = Depends(get_current_user)):
@@ -6897,7 +7293,7 @@ async def create_memory(req: MemoryV2CreateRequest, current_user: str = Depends(
         req.content,
         importance=req.importance,
         memory_type=req.memory_type,
-    )
+    provenance="api_explicit",)
     if not memory_id:
         raise HTTPException(status_code=400, detail="Memory was empty or looked like a secret")
     _log_analytics(
@@ -6925,6 +7321,85 @@ async def update_memory_endpoint(memory_id: int, req: MemoryV2UpdateRequest, cur
     if not updated:
         raise HTTPException(status_code=404, detail="Memory not found or rejected")
     return {"ok": True, "updated": memory_id}
+
+@app.post("/memory/{memory_id}/validate")
+async def validate_memory_endpoint(
+    memory_id: int,
+    req: MemoryV2ValidateRequest,
+    current_user: str = Depends(get_optional_user),
+):
+    manager = get_memory_v2()
+    if not manager:
+        raise HTTPException(status_code=503, detail="Memory unavailable")
+
+    validated = manager.validate_memory(
+        req.user_id,
+        memory_id,
+        validation_status=req.validation_status,
+        confidence=req.confidence,
+    )
+
+    if not validated:
+        raise HTTPException(
+            status_code=400,
+            detail="Memory could not be validated with the supplied status",
+        )
+
+    _log_analytics(
+        user_id=req.user_id,
+        feature="memory",
+        action="memory_validated",
+        metadata={
+            "memory_id": memory_id,
+            "validation_status": req.validation_status,
+        },
+    )
+
+    return {
+        "ok": True,
+        "validated": memory_id,
+        "validation_status": req.validation_status,
+        "confidence": req.confidence,
+    }
+
+
+@app.post("/memory/{memory_id}/supersede")
+async def supersede_memory_endpoint(
+    memory_id: int,
+    req: MemoryV2SupersedeRequest,
+    current_user: str = Depends(get_optional_user),
+):
+    manager = get_memory_v2()
+    if not manager:
+        raise HTTPException(status_code=503, detail="Memory unavailable")
+
+    superseded = manager.supersede_memory(
+        req.user_id,
+        memory_id,
+        req.replacement_memory_id,
+    )
+
+    if not superseded:
+        raise HTTPException(
+            status_code=400,
+            detail="Memory could not be superseded",
+        )
+
+    _log_analytics(
+        user_id=req.user_id,
+        feature="memory",
+        action="memory_superseded",
+        metadata={
+            "memory_id": memory_id,
+            "replacement_memory_id": req.replacement_memory_id,
+        },
+    )
+
+    return {
+        "ok": True,
+        "superseded": memory_id,
+        "replacement_memory_id": req.replacement_memory_id,
+    }
 
 @app.delete("/memory/{memory_id}")
 async def delete_memory_endpoint(memory_id: int, user_id: str = "user_001", current_user: str = Depends(get_optional_user)):
@@ -7018,7 +7493,7 @@ async def create_memory_v2(req: MemoryV2CreateRequest, current_user: str = Depen
         req.content,
         importance=req.importance,
         memory_type=req.memory_type,
-    )
+    provenance="api_explicit",)
     if not memory_id:
         raise HTTPException(status_code=400, detail="Memory was empty or looked like a secret")
     _log_analytics(
@@ -7289,7 +7764,7 @@ async def team_get_member_usage(
     )
     return {"ok": True, **usage}
 
-# â€â€ Document Classifier â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Document Classifier ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 
 @app.post("/ml/classify")
 async def classify_document(req: ClassifyRequest):
@@ -7320,12 +7795,12 @@ async def retrain_classifier(samples: list):
         clf = get_classifier()
         pairs = [(s["text"], s["label"]) for s in samples]
         clf.retrain(pairs)
-        return {"message": f"Å“â€¦ Retrained on {len(pairs)} new samples"}
+        return {"message": f"Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Retrained on {len(pairs)} new samples"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# â€â€ Sentiment Analysis â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Sentiment Analysis ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 
 @app.post("/ml/sentiment")
 async def analyze_sentiment(req: SentimentRequest):
@@ -7357,7 +7832,7 @@ async def sentiment_mode():
     return {"mode": sa.mode}
 
 
-# â€â€ Embedding Trainer 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Embedding Trainer 
 
 @app.get("/ml/embeddings/status")
 async def embedding_status():
@@ -7376,7 +7851,7 @@ async def train_embeddings(req: TrainRequest):
         trainer = get_trainer()
         result  = trainer.train(req.pairs, epochs=req.epochs, batch_size=req.batch_size)
         if result["success"]:
-            return {"message": f"Å“â€¦ Trained on {result['samples']} pairs in {result['elapsed_sec']}s", "workspace_id": req.workspace_id or "default"}
+            return {"message": f"Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Trained on {result['samples']} pairs in {result['elapsed_sec']}s", "workspace_id": req.workspace_id or "default"}
         raise HTTPException(status_code=500, detail=result["error"])
     except HTTPException:
         raise
@@ -7405,17 +7880,17 @@ async def encode_texts(texts: list):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# â€â€ ML Health / Stats 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ML Health / Stats 
 
 @app.get("/ml/health")
 async def ml_health():
-    """Overview of all ML components â€ ALWAYS 200 with an honest per-service shape.
+    """Overview of all ML components ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ALWAYS 200 with an honest per-service shape.
 
     NOTE: normally shadowed by ml_proxy's GET /ml/health (registered earlier).
     This is the local-ML fallback. Each service is probed independently and, if it
     can't load (e.g. ml_engine deps not installed on this deployment), it reports
     loaded:false ("offline") rather than being omitted. It must NEVER 500 and NEVER
-    return fake loaded:true â€ the frontend renders these keys as per-service status,
+    return fake loaded:true ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the frontend renders these keys as per-service status,
     so a missing key silently hides the whole block.
     """
     def _classifier_status():
@@ -8203,11 +8678,11 @@ class ImageGenV2Request(BaseModel):
 
 
 
-# â€â€ 1. DATA CLEANING â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â 1. DATA CLEANING ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 
 @app.post("/data/clean")
 async def clean_data(req: DataCleanRequest, current_user: str = Depends(get_current_user)):
-    """Clean CSV data using AI â€ remove duplicates, fix types, handle nulls."""
+    """Clean CSV data using AI ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â remove duplicates, fix types, handle nulls."""
     try:
         import pandas as pd
         import io as _io
@@ -8300,7 +8775,7 @@ async def clean_data(req: DataCleanRequest, current_user: str = Depends(get_curr
         raise HTTPException(500, str(e))
 
 
-# â€â€ 2. DASHBOARD GENERATION â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â 2. DASHBOARD GENERATION ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 
 @app.post("/data/dashboard")
 async def generate_dashboard(req: DashboardRequest, current_user: str = Depends(get_current_user)):
@@ -8380,7 +8855,7 @@ async def generate_dashboard(req: DashboardRequest, current_user: str = Depends(
         raise HTTPException(500, str(e))
 
 
-# â€â€ 3. WEB SEARCH 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â 3. WEB SEARCH 
 
 @app.post("/web/search")
 async def web_search(req: WebSearchRequest, current_user: str = Depends(get_current_user)):
@@ -8443,7 +8918,7 @@ async def web_search(req: WebSearchRequest, current_user: str = Depends(get_curr
         raise HTTPException(500, str(e))
 
 
-# â€â€ 4. URL READER 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â 4. URL READER 
 
 @app.post("/web/read-url")
 async def read_url(req: URLReadRequest, current_user: str = Depends(get_current_user)):
@@ -8487,7 +8962,7 @@ async def read_url(req: URLReadRequest, current_user: str = Depends(get_current_
         raise HTTPException(500, str(e))
 
 
-# â€â€ 5. CODE EXECUTION â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â 5. CODE EXECUTION ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 
 @app.post("/code/run")
 async def run_code(req: CodeRunRequest, current_user: str = Depends(get_current_user)):
@@ -8526,7 +9001,7 @@ async def run_code(req: CodeRunRequest, current_user: str = Depends(get_current_
         raise HTTPException(500, str(e))
 
 
-# â€â€ 6. IMAGE GENERATION V2 (Pollinations â€ FREE, no API key) â€
+# 6. IMAGE GENERATION V2 (Pollinations FREE, no API key)
 
 @app.post("/image/generate-v2")
 async def generate_image_v2(req: ImageGenV2Request, current_user: str = Depends(get_current_user)):
@@ -8534,7 +9009,7 @@ async def generate_image_v2(req: ImageGenV2Request, current_user: str = Depends(
     import random
     import urllib.parse
 
-    # Pollinations caches by prompt text alone â€ without a unique seed the same
+    # Pollinations caches by prompt text alone, without a unique seed the same
     # prompt returns the SAME cached image regardless of width/height or repeated
     # clicks (the dimension-caching bug). A per-request random seed busts that
     # cache; an explicit seed in the body (optional) lets callers reproduce a
@@ -8548,19 +9023,41 @@ async def generate_image_v2(req: ImageGenV2Request, current_user: str = Depends(
         f"?width={req.width}&height={req.height}&nologo=true&seed={seed}"
     )
 
-    # Verify the (seeded) URL renders, and convert any upstream failure/timeout
-    # into a clean, specific error instead of a raw 500.
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            r = await client.get(image_url)
-    except httpx.TimeoutException:
-        raise HTTPException(504, "The image service (Pollinations) timed out â€ it may be busy. Please try again.")
-    except httpx.RequestError as e:
-        raise HTTPException(502, f"Could not reach the image service (Pollinations). Please try again. ({e.__class__.__name__})")
+    # Verify the seeded URL renders.
+    # Pollinations free can intermittently return 5xx responses, so retry
+    # the SAME seeded URL instead of changing the seed and producing a
+    # different composition.
+    last_error = None
 
-    if r.status_code != 200:
-        raise HTTPException(502, f"The image service (Pollinations) returned status {r.status_code}. Please try again.")
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.get(image_url)
 
+            if r.status_code == 200:
+                break
+
+            last_error = f"upstream status {r.status_code}"
+
+        except httpx.TimeoutException:
+            last_error = "timeout"
+
+        except httpx.RequestError as e:
+            last_error = f"{e.__class__.__name__}"
+
+        if attempt < 2:
+            await asyncio.sleep(1.5 * (attempt + 1))
+    else:
+        if last_error == "timeout":
+            raise HTTPException(
+                504,
+                "The image service (Pollinations) timed out after 3 attempts. Please try again."
+            )
+
+        raise HTTPException(
+            502,
+            f"The image service (Pollinations) failed after 3 attempts ({last_error}). Please try again."
+        )
     return {
         "image_url": image_url,
         "prompt": full_prompt,
@@ -8573,7 +9070,7 @@ async def generate_image_v2(req: ImageGenV2Request, current_user: str = Depends(
 
 DB_PATH = Path(__file__).parent.parent / "memory.db"
 
-# â€â€ Models 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Models 
 class ChatHistoryMessage(BaseModel):
     id: Optional[str] = None
     role: str
@@ -8633,7 +9130,7 @@ class FeedbackReq(BaseModel):
     rating: str               # "good", "ok", "bad"
     thumb: Optional[str] = None   # "up" or "down"
     note: Optional[str] = None    # optional text comment
-    model: str = "llama-3.3-70b-versatile"
+    model: str = "openai/gpt-oss-120b"
     confidence: Optional[float] = None
 
 class FeedbackResponse(BaseModel):
@@ -8641,7 +9138,7 @@ class FeedbackResponse(BaseModel):
     feedback_id: int
     message: str
 
-# â€â€ DB Setup â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â DB Setup ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 def init_feedback_db():
     """Create feedback table if it doesn't exist"""
     conn = sqlite3.connect(DB_PATH)
@@ -8696,7 +9193,7 @@ def init_feedback_db():
 # Call this once at startup
 init_feedback_db()
 
-# â€â€ User Workspace DB API â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â User Workspace DB API ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 def _ensure_workspace_db(conn) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS workspaces (
@@ -9584,7 +10081,7 @@ CAD_JOB_TASK_RULES = [
 def _extract_cad_dimensions(text: str) -> List[str]:
     patterns = [
         r"\b\d+(?:\.\d+)?\s?(?:mm|cm|m|in|inch|inches)\b",
-        r"\b\d+(?:\.\d+)?\s?[xÃƒâ€”]\s?\d+(?:\.\d+)?(?:\s?[xÃƒâ€”]\s?\d+(?:\.\d+)?)?\s?(?:mm|cm|m|in|inch|inches)?\b",
+        r"\b\d+(?:\.\d+)?\s?[xÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â]\s?\d+(?:\.\d+)?(?:\s?[xÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â]\s?\d+(?:\.\d+)?)?\s?(?:mm|cm|m|in|inch|inches)?\b",
         r"\b(?:radius|diameter|hole|thickness|width|height|depth|length)\s*[:=-]?\s*\d+(?:\.\d+)?\s?(?:mm|cm|m|in|inch|inches)?",
     ]
     matches: List[str] = []
@@ -10036,7 +10533,7 @@ async def update_workspace(workspace_id: str, req: WorkspaceUpdateRequest, curre
     conn.close()
     return {"workspace": _workspace_row(updated)}
 
-# â€â€ Chat History DB API 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Chat History DB API 
 def _chat_message_content(message: ChatHistoryMessage) -> str:
     return message.content if message.content is not None else message.text
 
@@ -10165,7 +10662,7 @@ async def delete_chat_history(session_id: str, user_id: str = "user_001", curren
         raise HTTPException(status_code=404, detail="Chat session not found")
     return {"success": True, "session_id": session_id}
 
-# â€â€ Code Assistant Mode 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Code Assistant Mode 
 CODE_ASSISTANT_DIR = Path(__file__).parent.parent / "generated" / "code_assistant"
 
 CODE_TEXT_EXTENSIONS = {
@@ -10178,15 +10675,15 @@ CODE_EXCLUDED_DIRS = {
     "dist", "build", ".next", ".cache", "coverage", "target", ".idea", ".vscode",
 }
 MOJIBAKE_FIXES = {
-    "ÃƒÂ¢Â â„¢": "->",
-    "ÃƒÂ¢â€šÂ¬Â": "-",
-    "ÃƒÂ¢â€šÂ¬Å“": "-",
-    "ÃƒÂ¢â€šÂ¬Â¦": "...",
-    "ÃƒÂ¢Ã…â€œÂ¦": "[ok]",
-    "ÃƒÂ¢Ã…Â¡Â ÃƒÂ¯Â¸Â": "[warning]",
-    "ÃƒÂ¢ÂÃ…â€™": "[error]",
-    "ÃƒÂ°Ã…Â¸Å“Â±": "[phone]",
-    "ÃƒÂ°Ã…Â¸â„¢Â¬": "[chat]",
+    "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚Â ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢": "->",
+    "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬Ãƒâ€šÃ‚Â": "-",
+    "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬Ãƒâ€¦Ã¢â‚¬Å“": "-",
+    "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬Ãƒâ€šÃ‚Â¦": "...",
+    "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â¦": "[ok]",
+    "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â": "[warning]",
+    "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢": "[error]",
+    "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚Â±": "[phone]",
+    "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢Ãƒâ€šÃ‚Â¬": "[chat]",
 }
 
 def _safe_extract_zip(zip_path: Path, dest_dir: Path) -> None:
@@ -10994,7 +11491,7 @@ Human approval is required before merge.
     run_tracker.complete(report, "Code Assistant GitHub PR completed")
     return report
 
-# â€â€ Save Feedback â€â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Save Feedback ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 def save_feedback(req: FeedbackReq) -> int:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.execute("""
@@ -11009,7 +11506,7 @@ def save_feedback(req: FeedbackReq) -> int:
     feedback_id = cursor.lastrowid
 
     # Build RLHF preference pairs automatically
-    # If rating is "good" or thumb "up" â€ â€™ this is a preferred response
+    # If rating is "good" or thumb "up" ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ this is a preferred response
     if req.rating == "good" or req.thumb == "up":
         # Check if a bad response exists for same question
         bad = conn.execute("""
@@ -11163,7 +11660,7 @@ if __name__ == "__main__":
 from fastapi.responses import StreamingResponse
 import json, asyncio
 
-# â€â€ Streaming chat endpoint â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Streaming chat endpoint ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 
 class ChatReq(BaseModel):
     question: str
@@ -11173,7 +11670,7 @@ class ChatReq(BaseModel):
 @app.post("/chat/stream")
 async def chat_stream(req: ChatReq):
     """
-    Streaming version of /chat â€ sends tokens word by word.
+    Streaming version of /chat ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â sends tokens word by word.
     Frontend receives Server-Sent Events (SSE).
     """
     chart_response = deterministic_chart_response(req.question)
@@ -11187,7 +11684,7 @@ async def chat_stream(req: ChatReq):
     # eva_local is explicitly enabled AND configured (providers.configured checks
     # EVA_LOCAL_ENABLED + a resolvable machine); otherwise the existing cloud
     # (Groq) streaming below runs EXACTLY as before. Same SSE contract. NO A->B
-    # failover and NO Groq fallback from this path â€ a local failure is reported
+    # failover and NO Groq fallback from this path ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â a local failure is reported
     # through the existing streaming error event.
     if providers.configured("eva_local"):
         async def generate_eva_local():
@@ -11222,9 +11719,9 @@ async def chat_stream(req: ChatReq):
 
                 yield "data: [DONE]\n\n"
             except Exception as e:
-                # Machine A failure (before or during streaming) â€ â€™ existing
+                # Machine A failure (before or during streaming) ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ existing
                 # streaming error event. No Groq fallback, no A->B retry.
-                error_data = json.dumps({"token": f"\n\nÂÅ’ Error: {str(e)}"})
+                error_data = json.dumps({"token": f"\n\nÃƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ Error: {str(e)}"})
                 yield f"data: {error_data}\n\n"
                 yield "data: [DONE]\n\n"
 
@@ -11254,10 +11751,21 @@ async def chat_stream(req: ChatReq):
                 + [{"role": "user", "content": stream_question}]
             )
 
-            # EVA provider abstraction:
-            # eva_local -> local -> gemini (according to configured chain).
+            # Preserve the existing cloud path when Groq is not configured.
+            if not os.getenv("GROQ_API_KEY", "").strip():
+                error_message = "GROQ_API_KEY not set in .env"
+                data = json.dumps({
+                    "token": error_message,
+                    "choices": [{"delta": {"content": error_message}}]
+                })
+                yield f"data: {data}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            # EVA provider abstraction
             result = providers.complete(
                 messages,
+                
                 max_tokens=getattr(req, "max_tokens", None) or 1024,
                 temperature=getattr(req, "temperature", None) or 0.7,
             )
@@ -11281,14 +11789,14 @@ async def chat_stream(req: ChatReq):
 
             if not full_reply:
                 error_data = json.dumps({
-                    "token": "\\n\\nÅ¡Â Ã¯Â¸Â AI service unavailable."
+                    "token": "\\n\\nÃƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â AI service unavailable."
                 })
                 yield f"data: {error_data}\\n\\n"
 
             yield "data: [DONE]\\n\\n"
 
         except Exception as e:
-            error_data = json.dumps({"token": f"\\n\\nÂÅ’ Error: {str(e)}"})
+            error_data = json.dumps({"token": f"\\n\\nÃƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ Error: {str(e)}"})
             yield f"data: {error_data}\\n\\n"
             yield "data: [DONE]\\n\\n"
 
@@ -11306,28 +11814,28 @@ async def chat_stream(req: ChatReq):
 NEW ENDPOINTS AVAILABLE AFTER ADDING:
  
 IMAGE:
-  POST /image/generate           â€ text â€ â€™ image (Stable Diffusion)
-  POST /image/enhance            â€ upscale image (Real-ESRGAN)
-  POST /image/classify           â€ classify image (CLIP / ViT)
-  POST /image/detect             â€ detect objects (DETR)
-  POST /image/upload-training-images â€ upload for fine-tune
-  POST /image/fine-tune          â€ start DreamBooth/LoRA training
-  GET  /image/fine-tune-status/{name} â€ check training progress
-  GET  /image/gallery            â€ all generated images
+  POST /image/generate           ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â text ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ image (Stable Diffusion)
+  POST /image/enhance            ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â upscale image (Real-ESRGAN)
+  POST /image/classify           ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â classify image (CLIP / ViT)
+  POST /image/detect             ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â detect objects (DETR)
+  POST /image/upload-training-images ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â upload for fine-tune
+  POST /image/fine-tune          ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â start DreamBooth/LoRA training
+  GET  /image/fine-tune-status/{name} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â check training progress
+  GET  /image/gallery            ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â all generated images
  
 VIDEO:
-  POST /video/generate           â€ text â€ â€™ video (Zeroscope/ModelScope)
-  POST /video/from-images        â€ images â€ â€™ video/GIF
-  POST /video/analyze            â€ summarize/transcribe video
-  POST /video/upload-training-videos â€ upload for fine-tune
-  POST /video/fine-tune          â€ start video model training
-  GET  /video/fine-tune-status/{name} â€ check training progress
-  GET  /video/gallery            â€ all generated videos
+  POST /video/generate           ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â text ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ video (Zeroscope/ModelScope)
+  POST /video/from-images        ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â images ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ video/GIF
+  POST /video/analyze            ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â summarize/transcribe video
+  POST /video/upload-training-videos ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â upload for fine-tune
+  POST /video/fine-tune          ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â start video model training
+  GET  /video/fine-tune-status/{name} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â check training progress
+  GET  /video/gallery            ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â all generated videos
 """
 
-# â€
-# AGENTIC AI  â€ Email Â· Job Search Â· Automation
-# â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
+# AGENTIC AI  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Email Ãƒâ€šÃ‚Â· Job Search Ãƒâ€šÃ‚Â· Automation
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 
 class AgentTask(BaseModel):
     task_type: str          # "email" | "job_search" | "automate"
@@ -11344,21 +11852,21 @@ async def agent_run(
     """
     Agentic AI endpoint.
     task_type:
-      email      â€ draft / summarise / reply to email
-      job_search â€ search jobs by role + location keywords
-      automate   â€ run a custom text automation prompt
+      email      ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â draft / summarise / reply to email
+      job_search ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â search jobs by role + location keywords
+      automate   ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â run a custom text automation prompt
     """
     import httpx, json as _json
 
     groq_key = os.getenv("GROQ_API_KEY", "")
 
-    # â€â€ helper: call Groq LLM 
+    # ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â helper: call Groq LLM 
     async def llm(system: str, user: str) -> str:
         if not groq_key:
-            return "Å¡Â Ã¯Â¸Â GROQ_API_KEY not set in .env"
+            return "Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â GROQ_API_KEY not set in .env"
         # Phase 2 Step 8: route through the backend provider abstraction instead
         # of a raw Groq HTTP call. Same provider (groq) and model (from
-        # PROVIDER_SPECS, unchanged) and max_tokens â€ behaviour preserved;
+        # PROVIDER_SPECS, unchanged) and max_tokens ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â behaviour preserved;
         # blocking like the other providers.dispatch call sites in this module.
         return providers.dispatch(
             "groq",
@@ -11367,7 +11875,7 @@ async def agent_run(
             max_tokens=1024,
         )
 
-    # â€â€ EMAIL agent â€
+    # ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â EMAIL agent ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
     if task.task_type == "email":
         action  = task.payload.get("action", "draft")   # draft|summarise|reply
         context = task.payload.get("context", "")
@@ -11389,7 +11897,7 @@ async def agent_run(
         result = await llm(system, prompt)
         return {"task": "email", "action": action, "result": result}
 
-    # â€â€ JOB SEARCH agent â€â€
+    # ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â JOB SEARCH agent ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
     elif task.task_type == "job_search":
         role     = task.payload.get("role", "")
         location = task.payload.get("location", "Remote")
@@ -11416,7 +11924,7 @@ async def agent_run(
         }
         return {"task": "job_search", "ai_advice": result, "job_links": links}
 
-    # â€â€ AUTOMATION agent â€â€
+    # ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â AUTOMATION agent ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
     elif task.task_type == "automate":
         automation = task.payload.get("automation", "")
         data_input = task.payload.get("data", "")
@@ -11448,7 +11956,7 @@ async def agent_tasks():
         {"type": "automate",   "description": "Automate any task with AI + code",
          "fields": ["automation", "data"]},
     ]}
-# â€â€ API Keys Update Endpoint 
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â API Keys Update Endpoint 
 class KeysRequest(BaseModel):
     groq_api_key: Optional[str] = ""
     hf_api_token: Optional[str] = ""
@@ -11510,6 +12018,66 @@ async def update_keys(req: KeysRequest):
         "saved_to_env": str(env_path)
     }
 
+
+
+class DocIntelSummaryRequest(BaseModel):
+    question: str
+    max_tokens: int = 2500
+
+
+@app.post("/doc-intelligence/summarize")
+async def doc_intelligence_summarize(
+    req: DocIntelSummaryRequest,
+    current_user: str = Depends(get_current_user),
+):
+    """Summarize document sections using free APIs first, then local Ollama."""
+    try:
+        question = req.question.strip()
+        if not question:
+            raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+        # Deliberately exclude paid OpenAI from this provider chain.
+        result = providers.complete(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are EVA Doc Intelligence. Summarize only the supplied "
+                        "document content. Preserve important facts, headings, "
+                        "definitions, formulas, names, dates, numbers and action "
+                        "items. Do not invent details. If information is missing, "
+                        "say so clearly."
+                    ),
+                },
+                {"role": "user", "content": question},
+            ],
+            max_tokens=max(256, min(req.max_tokens, 7000)),
+            temperature=0.1,
+            order=["gemini", "groq", "local"],
+        )
+
+        output = (getattr(result, "text", "") or "").strip()
+        if not output:
+            raise HTTPException(
+                status_code=503,
+                detail="All configured free/local providers failed or returned an empty response.",
+            )
+
+        return {
+            "text": output,
+            "provider": getattr(result, "provider", "unknown"),
+            "model": getattr(result, "model", "unknown"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Doc Intelligence summarization failed")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Doc Intelligence provider error: {str(e)[:400]}",
+        )
+
+
 @app.post("/extract-text")
 async def extract_text(file: UploadFile = File(...), current_user: str = Depends(get_current_user)):
     """Extract text from PDF/DOCX for Doc Intelligence tool"""
@@ -11518,18 +12086,55 @@ async def extract_text(file: UploadFile = File(...), current_user: str = Depends
         suffix = Path(file.filename).suffix.lower()
         text = ""
         if suffix == ".pdf":
+            import io
+            import subprocess
+            import pymupdf
+            import pypdf
+
+            reader = pypdf.PdfReader(io.BytesIO(contents))
+            pdf_doc = pymupdf.open(stream=contents, filetype="pdf")
+            pages_text = []
+
             try:
-                import pypdf
-                import io
-                reader = pypdf.PdfReader(io.BytesIO(contents))
-                text = "\n".join(page.extract_text() or "" for page in reader.pages)
-            except ImportError:
-                try:
-                    import pdfplumber, io
-                    with pdfplumber.open(io.BytesIO(contents)) as pdf:
-                        text = "\n".join(p.extract_text() or "" for p in pdf.pages)
-                except ImportError:
-                    text = f"PDF extraction requires: pip install pypdf"
+                for i, page in enumerate(reader.pages):
+                    page_text = (page.extract_text() or "").strip()
+
+                    # OCR scanned pages that have no selectable text
+                    if not page_text and i < len(pdf_doc):
+                        try:
+                            pix = pdf_doc[i].get_pixmap(
+                                dpi=200, alpha=False
+                            )
+                            result = subprocess.run(
+                                [
+                                    r"D:\Tesseract\tesseract.exe",
+                                    "stdin", "stdout",
+                                    "-l", "eng+hin+mar",
+                                    "--psm", "6",
+                                ],
+                                input=pix.tobytes("png"),
+                                capture_output=True,
+                                timeout=90,
+                                check=False,
+                            )
+                            if result.returncode == 0:
+                                page_text = result.stdout.decode(
+                                    "utf-8", errors="replace"
+                                ).strip()
+                            else:
+                                logger.warning(
+                                    f"OCR failed on PDF page {i + 1}"
+                                )
+                        except Exception as ocr_error:
+                            logger.warning(
+                                f"OCR error on PDF page {i + 1}: {ocr_error}"
+                            )
+
+                    pages_text.append(page_text)
+            finally:
+                pdf_doc.close()
+
+            text = "\n\n".join(pages_text)
         elif suffix in [".docx", ".doc"]:
             try:
                 import docx, io
@@ -11539,13 +12144,13 @@ async def extract_text(file: UploadFile = File(...), current_user: str = Depends
                 text = f"DOCX extraction requires: pip install python-docx"
         else:
             text = contents.decode("utf-8", errors="replace")
-        return {"text": text[:5000], "filename": file.filename, "chars": len(text)}
+        return {"text": text, "filename": file.filename, "chars": len(text)}
     except Exception as e:
         raise HTTPException(500, str(e))
 
 
-# LORA DOMAIN MODELS â€ HuggingFace Inference API
-# Works on Render/Railway/any server â€ NO GPU needed
+# LORA DOMAIN MODELS ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â HuggingFace Inference API
+# Works on Render/Railway/any server ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â NO GPU needed
 
 
 LORA_REPOS = {
@@ -11564,7 +12169,7 @@ class LoRARequest(BaseModel):
     user_id:  str = "user_001"
 
 def _call_hf_lora(repo: str, question: str, domain: str) -> str:
-    """Call HuggingFace Inference API for LoRA model â€ no GPU needed"""
+    """Call HuggingFace Inference API for LoRA model ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â no GPU needed"""
     import requests as req_lib
     import time
 
@@ -11610,7 +12215,7 @@ def _call_hf_lora(repo: str, question: str, domain: str) -> str:
                     return answer if answer else text.strip()
                 return str(data)
             elif r.status_code == 503:
-                # Model loading â€ wait and retry
+                # Model loading ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â wait and retry
                 wait = r.json().get("estimated_time", 20)
                 logger.info(f"HF model loading, waiting {min(wait,30)}s...")
                 time.sleep(min(wait, 30))
@@ -11727,7 +12332,7 @@ async def debug_frontend():
 async def options_handler(full_path: str):
     return {}
 
-# â€â€ Public static files (no auth needed) â€
+# ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Public static files (no auth needed) ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
 @app.get("/manifest.json")
 async def serve_manifest():
     for base in [FRONTEND_DIR, STATIC_DIR]:
@@ -11755,23 +12360,7 @@ async def serve_sw():
 @app.get("/robots.txt")
 async def serve_robots():
     return HTMLResponse(content="User-agent: *\nAllow: /", media_type="text/plain")
-
-@app.get("/{full_path:path}")
-async def serve_react(full_path: str):
-    # Serve React SPA for all non-API routes (catch-all; must be the LAST route)
-    index_file = FRONTEND_DIR / "index.html"
-    if index_file.exists():
-        return FileResponse(str(index_file))
-    return JSONResponse(
-        {
-            "detail": "EVA backend API only â€ React build not found",
-            "docs": "/api/docs",
-            "rag_status": "/api/rag/status",
-            "login": "/auth/login",
-            "path": f"/{full_path}",
-        },
-        status_code=404,
-    )
+#app.include_router(agent_router)
 
 from pydantic import BaseModel
 
@@ -11793,13 +12382,21 @@ async def code_run_test(req: CodeRunTestRequest):
 
     return run_python_code(req.code)
 
-
-
-
-
-
-
-
-
+@app.get("/{full_path:path}")
+async def serve_react(full_path: str):
+    # Serve React SPA for all non-API routes (catch-all; must be the LAST route)
+    index_file = FRONTEND_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file))
+    return JSONResponse(
+        {
+            "detail": "EVA backend API only ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â React build not found",
+            "docs": "/api/docs",
+            "rag_status": "ML service: /rag/status (port 7860)",
+            "login": "/auth/login",
+            "path": f"/{full_path}",
+        },
+        status_code=404,
+    )
 
 

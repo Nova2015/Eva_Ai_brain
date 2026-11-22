@@ -1,4 +1,4 @@
-﻿"""Verification â€” Step 9 of the Cognitive Engine.
+"""Verification â€” Step 9 of the Cognitive Engine.
 
 Answers: **did execution actually produce a correct result?**
 
@@ -32,12 +32,12 @@ implementation:
 
     EXECUTION_TEST      -> runtime_engine, injected (async + network)
     CITATION_CHECK      -> grounded_sources, lives on the ML service
-    ARITHMETIC_RECHECK  -> no implementation exists
-    CONSISTENCY_CHECK   -> no deterministic implementation exists
-
-The unbacked ones are reported INCONCLUSIVE with a stated reason, never
-VERIFIED. Silently treating "we have no checker" as "it passed" is the failure
-mode this stage exists to prevent.
+        ARITHMETIC_RECHECK  -> no implementation exists
+    CONSISTENCY_CHECK   -> structured task-order validator,
+                           requires explicit tasks and proposed order
+Requirements without an available checker are reported INCONCLUSIVE,
+never VERIFIED. CONSISTENCY_CHECK is verified only when the structured
+adapter actually validates the supplied task graph and proposed order.
 
 A DIGEST IS NOT AN ARTEFACT
 ===========================
@@ -90,7 +90,11 @@ from .state import (
     redact_secrets,
 )
 from .strategy import StrategyDecision, VerificationRequirement
-
+# Structured task-order consistency verification.
+try:
+    from .consistency_adapter import verify_task_order_consistency
+except Exception:
+    verify_task_order_consistency = None
 # review_engine is the verifier. Its absence yields INCONCLUSIVE â€” never a pass.
 #
 # Two import forms, because the package and one of its modules share the name
@@ -168,7 +172,7 @@ _UNBACKED: Dict[VerificationRequirement, str] = {
     VerificationRequirement.CITATION_CHECK:
         "grounded_sources runs on the ML service, not in this process",
     VerificationRequirement.CONSISTENCY_CHECK:
-        "no deterministic consistency checker exists",
+        "structured consistency adapter is unavailable",
 }
 
 
@@ -378,9 +382,9 @@ def available_requirements(
     loop was inert for most traffic.
 
     What is NOT here is as important as what is. CITATION_CHECK lives on the ML
-    service, ARITHMETIC_RECHECK and CONSISTENCY_CHECK have no implementation at
-    all â€” so they are never claimed, and Step 5 records them as unavailable
-    rather than pretending they ran.
+    service, and ARITHMETIC_RECHECK has no implementation. CONSISTENCY_CHECK
+    has a deterministic structured adapter, but it is not advertised as
+    generally available because it requires explicit task-order inputs.
     """
     runnable = set(_REQUIREMENT_TO_CHECK)          # code / chart / diagram
     if not REVIEW_ENGINE_AVAILABLE:
@@ -565,6 +569,8 @@ def verify(
     artifacts: Optional[Dict[str, str]] = None,
     code_runner: Optional[Callable[[str], dict]] = None,
     review_cache: Optional[Dict[str, dict]] = None,
+    proposed_order: Optional[Sequence[str]] = None,
+    proposed_order_count: Optional[int] = None,
 ) -> VerificationReport:
     """Check what execution produced against what Step 5 said would prove it.
 
@@ -616,6 +622,31 @@ def verify(
             unverifiable.append(entry)
 
     for requirement in requirements:
+        if requirement is VerificationRequirement.CONSISTENCY_CHECK:
+            if verify_task_order_consistency is None:
+                cannot(
+                    requirement,
+                    "structured consistency adapter is unavailable",
+                )
+                continue
+
+            consistency_result = verify_task_order_consistency(
+                tasks=plan.tasks,
+                proposed_order=proposed_order,
+                proposed_order_count=proposed_order_count
+            )
+
+            results.append(consistency_result)
+
+            if consistency_result.status is VerificationStatus.INCONCLUSIVE:
+                entry = (
+                    f"{requirement.value}: "
+                    f"{consistency_result.failure_reason or 'verification inconclusive'}"
+                )
+                if entry not in unverifiable:
+                    unverifiable.append(entry)
+
+            continue
         if requirement is VerificationRequirement.EXECUTION_TEST:
             if code_runner is None:
                 cannot(requirement, _UNBACKED[requirement])

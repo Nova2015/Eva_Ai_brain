@@ -25,7 +25,7 @@ router = APIRouter()
 
 # Same default the rest of app.py uses for the HF service (see HF_RAG_URL),
 # so /ml/health reports real HF status even without the env var set.
-HF_ML_URL = os.getenv("HF_ML_URL", "https://keshav1212-eva-ml-service.hf.space").rstrip("/")
+HF_ML_URL = os.getenv("HF_ML_URL", "http://127.0.0.1:7860").rstrip("/")
 
 
 async def _proxy(path: str, body: dict) -> dict:
