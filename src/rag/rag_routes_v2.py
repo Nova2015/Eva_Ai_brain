@@ -409,14 +409,21 @@ async def rag_graph_proposals(req: GraphProposalRequest, user_id: str = Depends(
         raise HTTPException(status_code=400, detail="At least one entity or relationship candidate is required")
     record, source_text = _load_current_governed_text(req.data_id, user_id, workspace_id)
     normalized_source = _normalized_evidence_text(source_text)
+    # Validate the entire batch before writing any graph rows; malformed later
+    # candidates must not leave a partially accepted proposal batch.
+    for candidate in req.entities:
+        evidence = _normalized_evidence_text(candidate.evidence_text)
+        if not evidence or evidence not in normalized_source:
+            raise HTTPException(status_code=422, detail="Entity evidence must be an exact excerpt from the governed source")
+    for candidate in req.relationships:
+        evidence = _normalized_evidence_text(candidate.evidence_text)
+        if not evidence or evidence not in normalized_source:
+            raise HTTPException(status_code=422, detail="Relationship evidence must be an exact excerpt from the governed source")
     entity_ids = {}
     entity_results = []
     relationship_results = []
     try:
         for candidate in req.entities:
-            evidence = _normalized_evidence_text(candidate.evidence_text)
-            if not evidence or evidence not in normalized_source:
-                raise HTTPException(status_code=422, detail="Entity evidence must be an exact excerpt from the governed source")
             item = graph_store.upsert_entity(
                 candidate.name, candidate.entity_type,
                 data_id=req.data_id, owner_id=user_id, workspace_id=workspace_id,
@@ -427,9 +434,6 @@ async def rag_graph_proposals(req: GraphProposalRequest, user_id: str = Depends(
             entity_results.append(item)
 
         for candidate in req.relationships:
-            evidence = _normalized_evidence_text(candidate.evidence_text)
-            if not evidence or evidence not in normalized_source:
-                raise HTTPException(status_code=422, detail="Relationship evidence must be an exact excerpt from the governed source")
             source_key = (candidate.source_name.strip().casefold(), candidate.source_type.strip().casefold())
             target_key = (candidate.target_name.strip().casefold(), candidate.target_type.strip().casefold())
             source_id = entity_ids.get(source_key)
@@ -465,7 +469,8 @@ async def rag_graph_proposals(req: GraphProposalRequest, user_id: str = Depends(
     except (ValueError, PermissionError) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     record_governance_event(
-        req.data_id, action="graph_proposals_created", actor_id=user_id,
+        req.data_id, action="graph_proposals_created", owner_id=user_id,
+        workspace_id=workspace_id, actor_id=user_id,
         details={"entity_candidates": len(entity_results), "relationship_candidates": len(relationship_results)},
     )
     return {
