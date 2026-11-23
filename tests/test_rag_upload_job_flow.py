@@ -110,3 +110,35 @@ def test_finished_job_cleanup_does_not_delete_governed_source_file(tmp_path):
 
     assert removed == 1
     assert source.exists()
+
+
+
+def test_retry_job_links_to_original_and_preserves_private_source_reference():
+    jm.create_job(
+        "original-failed",
+        filename="assembly.pdf",
+        owner_id="user-a",
+        workspace_id="cad",
+    )
+    jm.update_job(
+        "original-failed",
+        status=jm.FAILED,
+        data_id="EVA-DATA-789",
+        document_path="/private/governed/assembly.pdf",
+    )
+
+    jm.create_job(
+        "retry-created",
+        filename="assembly.pdf",
+        owner_id="user-a",
+        workspace_id="cad",
+        retry_of="original-failed",
+    )
+    internal = jm.get_job_internal("original-failed", owner_id="user-a")
+    public_retry = jm.get_job("retry-created", owner_id="user-a")
+
+    assert internal["data_id"] == "EVA-DATA-789"
+    assert internal["document_path"] == "/private/governed/assembly.pdf"
+    assert public_retry["retry_of"] == "original-failed"
+    assert "document_path" not in public_retry
+    assert jm.get_job_internal("original-failed", owner_id="user-b") is None
