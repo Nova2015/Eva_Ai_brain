@@ -181,6 +181,46 @@ class DeepLearningRegistry:
             updated = conn.execute("SELECT * FROM dl_datasets WHERE dataset_id=?", (dataset_id,)).fetchone()
         return self._public_dataset(dict(updated))
 
+    def update_job(self, job_id: str, *, owner_id: str, workspace_id: str,
+                   status: str, stage: str, progress: float,
+                   error_code: str | None = None, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM dl_training_jobs WHERE job_id=? AND owner_id=? AND workspace_id=?",
+                               (job_id, owner_id, workspace_id)).fetchone()
+            if row is None:
+                raise KeyError("Training job not found")
+            current = json.loads(row["metadata_json"] or "{}")
+            current.update(metadata or {})
+            conn.execute("""UPDATE dl_training_jobs SET status=?,stage=?,progress=?,error_code=?,
+                updated_at=?,metadata_json=? WHERE job_id=? AND owner_id=? AND workspace_id=?""",
+                (status, stage, max(0.0, min(100.0, float(progress))), error_code, _now(),
+                 json.dumps(current, sort_keys=True), job_id, owner_id, workspace_id))
+            updated = conn.execute("SELECT * FROM dl_training_jobs WHERE job_id=?", (job_id,)).fetchone()
+        item = dict(updated)
+        item.pop("metadata_json", None)
+        return item
+
+    def create_model(self, *, model_id: str, version: int, dataset_id: str, data_id: str,
+                     owner_id: str, workspace_id: str, model_family: str, task_type: str,
+                     artifact_path: str, metrics: dict[str, Any],
+                     preprocessing: dict[str, Any], status: str = "candidate") -> dict[str, Any]:
+        item = {"model_id": model_id, "version": int(version), "dataset_id": dataset_id,
+                "data_id": data_id, "owner_id": owner_id, "workspace_id": workspace_id,
+                "model_family": model_family, "task_type": task_type,
+                "artifact_path": artifact_path, "metrics_json": json.dumps(metrics, sort_keys=True),
+                "preprocessing_json": json.dumps(preprocessing, sort_keys=True),
+                "status": status, "created_at": _now()}
+        with self.connect() as conn:
+            conn.execute("""INSERT INTO dl_models
+                (model_id,version,dataset_id,data_id,owner_id,workspace_id,model_family,task_type,
+                 artifact_path,metrics_json,preprocessing_json,status,created_at)
+                VALUES (:model_id,:version,:dataset_id,:data_id,:owner_id,:workspace_id,:model_family,
+                 :task_type,:artifact_path,:metrics_json,:preprocessing_json,:status,:created_at)""", item)
+        item["metrics"] = json.loads(item.pop("metrics_json"))
+        item["preprocessing"] = json.loads(item.pop("preprocessing_json"))
+        item.pop("artifact_path", None)
+        return item
+
     def list_models(self, *, owner_id: str, workspace_id: str) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute("""SELECT * FROM dl_models
