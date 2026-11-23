@@ -136,7 +136,6 @@ def build_router(auth_dependency) -> APIRouter:
             dataset_id, owner_id=user_id, workspace_id=workspace_id,
             updates={
                 "preparation_status": "completed",
-                "preparation_artifact": str(artifact_path),
                 "profile": summary,
                 "label_status": "not_reviewed",
                 "prepared_source_sha256": prepared["source_sha256"],
