@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from src.data_governance import register_import
+from src.data_governance import approve_content_revision, register_import
 from src.rag import graph_store
 
 
@@ -124,3 +124,23 @@ def test_graph_entity_search_returns_only_approved_evidence(tmp_path):
         owner_id="user-a", workspace_id="cad", actor_id="user-a",
     )
     assert len(graph_store.search_entities("instrument", owner_id="user-a", workspace_id="cad")) == 1
+
+def test_graph_evidence_from_old_source_revision_cannot_be_approved(tmp_path):
+    record = _governed_source(tmp_path)
+    source = graph_store.upsert_entity(
+        "Steering Column", "component",
+        data_id=record["data_id"], owner_id="user-a", workspace_id="cad",
+        actor_id="user-a", chunk_id="chunk-1",
+        evidence_text="The steering column is mounted to the instrument panel.",
+    )
+    source_file = tmp_path / "user-a-cad.txt"
+    source_file.write_text("Updated engineering source revision.", encoding="utf-8")
+    approve_content_revision(
+        record["data_id"], owner_id="user-a", workspace_id="cad",
+        actor_id="user-a", expected_sha256=record["sha256"],
+    )
+    with pytest.raises(ValueError, match="newer revision"):
+        graph_store.review_evidence(
+            source["evidence_id"], "approved",
+            owner_id="user-a", workspace_id="cad", actor_id="user-a",
+        )
