@@ -58,9 +58,9 @@ except ImportError:
     )
 
 try:
-    from ..data_governance import get_record, register_import, sha256_file
+    from ..data_governance import get_record, register_import, recover_location, sha256_file
 except ImportError:
-    from data_governance import get_record, register_import, sha256_file
+    from data_governance import get_record, register_import, recover_location, sha256_file
 
 try:
     import upload_policy
@@ -211,6 +211,13 @@ def effective_workspace_id(workspace_id: Optional[str], user_id: Optional[str]) 
         return requested
     user_namespace = (user_id or "").strip()
     return user_namespace if user_namespace and user_namespace != "anonymous" else "default"
+
+
+class DataLocationRecoveryRequest(BaseModel):
+    data_id: str
+    new_file_path: str
+    approved: bool = False
+    workspace_id: Optional[str] = None
 
 
 class ReconciliationRepairRequest(BaseModel):
@@ -509,6 +516,46 @@ async def rag_retry_upload_job(job_id: str, user_id: str = Depends(get_user_id))
         "workspace_id": workspace_id,
         "async_jobs": True,
         "message": "Retry accepted. The existing governed source and Data ID will be reused.",
+    }
+
+
+@router.post("/reconciliation/recover-location")
+async def rag_reconciliation_recover_location(
+    req: DataLocationRecoveryRequest,
+    user_id: str = Depends(get_user_id),
+):
+    """Restore a missing file reference after explicit approval and hash validation."""
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required for location recovery")
+    if req.approved is not True:
+        raise HTTPException(status_code=400, detail="Explicit approval is required before location recovery")
+
+    workspace_id = effective_workspace_id(req.workspace_id, user_id)
+    try:
+        record = recover_location(
+            req.data_id,
+            req.new_file_path,
+            owner_id=user_id,
+            workspace_id=workspace_id,
+            actor_id=user_id,
+            allowed_root=PERSISTENT_DOCUMENT_DIR,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Governed data item not found")
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    return {
+        "ok": True,
+        "action": "recover_location",
+        "approved": True,
+        "data_id": record["data_id"],
+        "file_name": record["file_name"],
+        "workspace_id": record["workspace_id"],
+        "sha256_verified": True,
+        "governance_record_changed": True,
+        "content_revision_changed": False,
+        "source_file_deleted": False,
     }
 
 
