@@ -407,8 +407,10 @@ async def rag_ingest_url(req: IngestURLRequest, user_id: str = Depends(get_user_
 
 
 @router.get("/jobs/{job_id}")
-async def rag_job_status(job_id: str):
-    job = jm.get_job(job_id)
+async def rag_job_status(job_id: str, user_id: str = Depends(get_user_id)):
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to view upload job status")
+    job = jm.get_job(job_id, owner_id=user_id)
     if job.get("status") == "NOT_FOUND":
         raise HTTPException(status_code=404, detail=job["error"])
     return job
