@@ -7,12 +7,14 @@ from src.data_governance import (
     get_record,
     approve_content_revision,
     list_records,
+    list_reconciliation_events,
     list_audit_events,
     list_versions,
     record_revision,
     register_import,
     recover_location,
     record_governance_event,
+    record_reconciliation_event,
     set_training_approval,
     update_location,
 )
@@ -263,3 +265,30 @@ def test_governance_events_are_owner_scoped_and_append_only(tmp_path, monkeypatc
     events = list_audit_events(record["data_id"])
     assert events[-1]["action"] == "approved_repair"
     assert events[-1]["actor_id"] == "user-1"
+
+
+
+def test_reconciliation_audit_supports_orphan_without_governance_record(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+
+    record_reconciliation_event(
+        "ORPHAN-DATA-ID",
+        owner_id="user-1",
+        workspace_id="workspace-1",
+        action="orphan_rag_index_cleaned",
+        actor_id="user-1",
+        details={"deleted_chunks": 4, "source_files_deleted": False},
+    )
+
+    events = list_reconciliation_events(
+        owner_id="user-1",
+        workspace_id="workspace-1",
+        data_id="ORPHAN-DATA-ID",
+    )
+    assert len(events) == 1
+    assert events[0]["action"] == "orphan_rag_index_cleaned"
+    assert events[0]["details"]["source_files_deleted"] is False
+    assert list_reconciliation_events(
+        owner_id="other-user", workspace_id="workspace-1",
+        data_id="ORPHAN-DATA-ID",
+    ) == []
