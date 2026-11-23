@@ -20,6 +20,7 @@ import os
 import uuid
 import logging
 import threading
+import shutil
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -55,6 +56,11 @@ except ImportError:
     )
 
 try:
+    from ..data_governance import register_import
+except ImportError:
+    from data_governance import register_import
+
+try:
     import upload_policy
     import job_manager as jm
 except ImportError:
@@ -67,6 +73,10 @@ security = HTTPBearer(auto_error=False)
 
 UPLOAD_DIR = Path(os.getenv("EVA_UPLOAD_DIR", "/tmp/eva_uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+PERSISTENT_DOCUMENT_DIR = Path(
+    os.getenv("EVA_RAG_DOCUMENTS_DIR", str(_REPO_ROOT / "data" / "rag_documents"))
+).expanduser()
 
 SUPPORTED_EXTS = {".pdf", ".txt", ".md", ".docx", ".csv", ".json", ".py", ".js", ".ts", ".html"}
 
@@ -99,14 +109,41 @@ def _run_upload_job(job_id: str, filename: str, tmp_file: str, size_bytes: int, 
             raise ValueError(chunk_error["detail"])
 
         jm.update_job(job_id, status=jm.EMBEDDING, progress=55, current_step="Creating embeddings", chunk_count=len(chunks))
+
+        # Keep a durable local copy before indexing; the request staging file is
+        # deleted in finally and must never be the governance record's location.
+        PERSISTENT_DOCUMENT_DIR.mkdir(parents=True, exist_ok=True)
+        stored_path = PERSISTENT_DOCUMENT_DIR / f"{uuid.uuid4().hex}{ext}"
+        shutil.copy2(tmp_path, stored_path)
+        try:
+            data_record = register_import(
+                stored_path,
+                source="rag_upload",
+                owner_id=user_id or "anonymous",
+                workspace_id=effective_workspace_id(workspace_id, user_id),
+                actor_id=user_id or "anonymous",
+                classification=os.getenv("EVA_RAG_DEFAULT_CLASSIFICATION", "restricted"),
+            )
+        except Exception:
+            stored_path.unlink(missing_ok=True)
+            raise
+
         jm.update_job(job_id, status=jm.INDEXING, progress=70, current_step="Indexing document", chunk_count=len(chunks))
         result = index_document(
             text=text,
             source=filename,
             user_id=user_id,
             workspace_id=effective_workspace_id(workspace_id, user_id),
-            metadata={"filename": filename, "ext": ext, "size": size_bytes},
+            metadata={
+                "filename": filename,
+                "ext": ext,
+                "size": size_bytes,
+                "data_id": data_record["data_id"],
+                "classification": data_record["classification"],
+            },
         )
+        result["data_id"] = data_record["data_id"]
+        result["stored_file"] = str(stored_path)
         if not result.get("ok"):
             raise RuntimeError(result.get("error", "Indexing failed"))
 
