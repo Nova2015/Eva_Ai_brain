@@ -59,6 +59,7 @@ def build_router(auth_dependency) -> APIRouter:
         stored_name = f"{uuid.uuid4().hex}{suffix}"
         target = DATASET_ROOT / stored_name
         target.write_bytes(payload)
+        governed = None
         try:
             governed = register_import(
                 target, source="deep_learning_dataset_upload", owner_id=user_id,
@@ -75,10 +76,13 @@ def build_router(auth_dependency) -> APIRouter:
                 metadata={"label_status": "not_reviewed", "ingestion_status": "stored"},
             )
         except Exception:
-            try:
-                target.unlink(missing_ok=True)
-            except Exception:
-                pass
+            # Never delete bytes after Governance has registered them: that
+            # would leave a persistent Data ID pointing to a missing source.
+            if governed is None:
+                try:
+                    target.unlink(missing_ok=True)
+                except Exception:
+                    pass
             raise
         return {
             "ok": True, "dataset": dataset,
