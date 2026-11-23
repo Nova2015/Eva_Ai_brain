@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 
 from .config import get_runtime_policy
 from .registry import registry
@@ -166,9 +166,73 @@ def build_router(auth_dependency) -> APIRouter:
                 "preparation_status": metadata.get("preparation_status"),
                 "profile": metadata["profile"], "label_status": metadata.get("label_status", "not_reviewed")}
 
+    @router.post("/training/datasets/{dataset_id}/review")
+    async def review_dataset(
+        dataset_id: str,
+        modality: str = Form(...),
+        task_type: str = Form(...),
+        target_column: str = Form(...),
+        feature_columns: str = Form(""),
+        confirm_labels: bool = Form(False),
+        workspace_id: str = Form("default"),
+        user_id: str = Depends(auth_dependency),
+    ):
+        dataset = registry.get_dataset(dataset_id, owner_id=user_id, workspace_id=workspace_id)
+        if dataset is None:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+        metadata = json.loads(dataset.get("metadata_json") or "{}")
+        if metadata.get("preparation_status") != "completed":
+            raise HTTPException(status_code=409, detail="Prepare the dataset before reviewing labels")
+        if not confirm_labels:
+            raise HTTPException(status_code=400, detail="Explicit confirmation that labels and target values were reviewed is required")
+        artifact_dir = DATASET_ROOT / "processed" / dataset_id
+        prepared_path = artifact_dir / "prepared.json"
+        if not prepared_path.is_file():
+            raise HTTPException(status_code=409, detail="Prepared dataset artifact is missing")
+        prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
+        tables = prepared.get("tables") or []
+        table = tables[0] if tables else []
+        if len(table) == 1 and isinstance(table[0], dict) and "rows" in table[0]:
+            table = table[0]["rows"]
+        if not isinstance(table, list) or not table:
+            raise HTTPException(status_code=422, detail="No tabular data is available for supervised training")
+        headers = [str(value).strip() for value in table[0]]
+        if target_column not in headers:
+            raise HTTPException(status_code=422, detail="Target column is not present in the dataset")
+        features = [item.strip() for item in feature_columns.split(",") if item.strip()]
+        if not features:
+            features = [name for name in headers if name != target_column]
+        if target_column in features or not features or any(name not in headers for name in features):
+            raise HTTPException(status_code=422, detail="Feature columns are invalid")
+        target_index = headers.index(target_column)
+        labelled_rows = sum(1 for row in table[1:] if target_index < len(row) and row[target_index] not in (None, ""))
+        if labelled_rows < 10:
+            raise HTTPException(status_code=422, detail="At least 10 non-empty target rows are required")
+        try:
+            from .model_selector import select_model
+            selection = select_model(modality, task_type, sample_count=labelled_rows, has_labels=True)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        if selection["status"] != "candidate_selected" or modality != "tabular" or task_type not in {"classification", "regression"}:
+            raise HTTPException(status_code=422, detail="This worker release accepts reviewed tabular classification or regression datasets only")
+        review_data = {
+            "status": "verified", "modality": modality, "task_type": task_type,
+            "target_column": target_column, "feature_columns": features,
+            "labelled_rows": labelled_rows, "reviewed_by": user_id,
+            "model_selection": selection,
+        }
+        registry.update_dataset_metadata(
+            dataset_id, owner_id=user_id, workspace_id=workspace_id,
+            updates={"label_status": "verified", "label_review": review_data},
+            status="reviewed",
+        )
+        return {"ok": True, "dataset_id": dataset_id, "label_review": review_data,
+                "note": "Label review recorded. Training still requires separate Data Governance approval."}
+
     @router.post("/training/datasets/{dataset_id}/approve")
     async def approve_dataset(
         dataset_id: str,
+        background_tasks: BackgroundTasks,
         workspace_id: str = Query("default"),
         user_id: str = Depends(auth_dependency),
     ):
@@ -178,6 +242,9 @@ def build_router(auth_dependency) -> APIRouter:
         governed = get_record(dataset["data_id"])
         if not governed or governed.get("owner_id") != user_id or governed.get("workspace_id") != workspace_id:
             raise HTTPException(status_code=404, detail="Governed dataset not found")
+        metadata = json.loads(dataset.get("metadata_json") or "{}")
+        if metadata.get("label_review", {}).get("status") != "verified":
+            raise HTTPException(status_code=409, detail="Review and verify dataset labels before training approval")
         if governed.get("sha256") != dataset["sha256"] or int(governed.get("version", 0)) != int(dataset["source_version"]):
             raise HTTPException(status_code=409, detail="Dataset source revision changed; revalidate before training")
         if not Path(dataset["file_path"]).is_file():
@@ -191,6 +258,8 @@ def build_router(auth_dependency) -> APIRouter:
             )
         except (KeyError, ValueError, RuntimeError) as exc:
             raise HTTPException(status_code=409, detail=str(exc))
+        from .worker import run_training_job_safely
+        background_tasks.add_task(run_training_job_safely, job["job_id"], owner_id=user_id, workspace_id=workspace_id)
         return {
             "ok": True, "dataset_id": dataset_id, "data_id": dataset["data_id"],
             "training_approval": approval.get("training_approval", "approved"),
@@ -200,6 +269,7 @@ def build_router(auth_dependency) -> APIRouter:
 
     @router.post("/training/start")
     async def start_training(
+        background_tasks: BackgroundTasks,
         dataset_id: str = Form(...),
         workspace_id: str = Form("default"),
         user_id: str = Depends(auth_dependency),
@@ -212,6 +282,9 @@ def build_router(auth_dependency) -> APIRouter:
             raise HTTPException(status_code=404, detail="Governed dataset not found")
         if governed.get("training_approval") != "approved" or dataset.get("status") != "approved":
             raise HTTPException(status_code=403, detail="Explicit Data Governance training approval is required")
+        metadata = json.loads(dataset.get("metadata_json") or "{}")
+        if metadata.get("label_review", {}).get("status") != "verified":
+            raise HTTPException(status_code=409, detail="Dataset labels must be reviewed before training")
         if governed.get("sha256") != dataset["sha256"] or int(governed.get("version", 0)) != int(dataset["source_version"]):
             raise HTTPException(status_code=409, detail="Dataset source revision changed; revalidate before training")
         if not Path(dataset["file_path"]).is_file():
@@ -224,6 +297,8 @@ def build_router(auth_dependency) -> APIRouter:
             )
         except (KeyError, ValueError, RuntimeError) as exc:
             raise HTTPException(status_code=409, detail=str(exc))
+        from .worker import run_training_job_safely
+        background_tasks.add_task(run_training_job_safely, job["job_id"], owner_id=user_id, workspace_id=workspace_id)
         return {"ok": True, "job": job, "policy": policy}
 
     @router.get("/training/status/{job_id}")
