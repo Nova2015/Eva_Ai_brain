@@ -24,6 +24,8 @@ def create_job(job_id: str, filename: str = "", *, owner_id: str = "anonymous", 
     job = {
         "job_id": job_id,
         "filename": filename,
+        "owner_id": owner_id,
+        "workspace_id": workspace_id,
         "status": QUEUED,
         "stage": QUEUED,
         "progress": 0,
@@ -76,9 +78,11 @@ def update_job(
         return _public(job)
 
 
-def get_job(job_id: str) -> Dict[str, Any]:
+def get_job(job_id: str, *, owner_id: Optional[str] = None) -> Dict[str, Any]:
     with _LOCK:
         job = _JOBS.get(job_id)
+        if job and owner_id is not None and job.get("owner_id", "anonymous") != owner_id:
+            job = None
         if not job:
             return {
                 "job_id": job_id,
