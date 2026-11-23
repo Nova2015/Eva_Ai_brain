@@ -216,6 +216,7 @@ def test_approved_reconciliation_repair_reindexes_same_governed_data_id(tmp_path
     captured = {}
 
     monkeypatch.setattr(routes, "get_record", lambda data_id: record)
+    monkeypatch.setattr(routes, "record_governance_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         routes,
         "reconcile_data_sources",
