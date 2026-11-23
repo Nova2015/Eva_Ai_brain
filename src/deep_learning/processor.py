@@ -35,6 +35,20 @@ def _clean_text(value: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", value).strip()
 
 
+def _safe_cell(value: Any) -> Any:
+    """Normalize spreadsheet cell values into strict JSON-compatible scalars."""
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    return str(value)
+
+
 def _table_profile(rows: list[list[Any]]) -> dict[str, Any]:
     if not rows:
         return {"rows": 0, "columns": 0, "headers": [], "column_profiles": []}
@@ -196,7 +210,7 @@ def process_dataset(path: str | Path, *, assets_dir: str | Path | None = None) -
                         if len(rows) >= MAX_TABLE_ROWS + 1:
                             warnings.append(f"Sheet {sheet.title}: row limit reached.")
                             break
-                        rows.append(list(row[:MAX_COLUMNS]))
+                        rows.append([_safe_cell(value) for value in row[:MAX_COLUMNS]])
                     tables.append([{"sheet": sheet.title, "rows": rows}])
             except Exception as exc:
                 warnings.append(f"Workbook extraction failed: {type(exc).__name__}")
