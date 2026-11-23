@@ -363,19 +363,25 @@ def list_indexed_documents(user_id: str = "default", workspace_id: Optional[str]
     for chunk in chunks:
         meta = chunk.get("metadata") or {}
         source = chunk.get("source") or meta.get("source") or meta.get("filename") or "unknown"
-        if source not in by_source:
-            by_source[source] = {
-                "id": source,
+        # New governed uploads group by immutable Data ID; legacy documents
+        # continue grouping by their historical source string.
+        data_id = meta.get("data_id")
+        document_key = data_id or source
+        if document_key not in by_source:
+            by_source[document_key] = {
+                "id": data_id or source,
+                "data_id": data_id,
                 "name": meta.get("filename") or Path(source).name or source,
                 "source": source,
                 "type": _source_type(source, meta),
                 "chunks": 0,
                 "category": str(meta.get("ext") or _source_type(source, meta)).lstrip("."),
                 "workspace_id": meta.get("workspace_id"),
+                "classification": meta.get("classification"),
                 "channels": set(),
             }
-        by_source[source]["chunks"] += 1
-        by_source[source]["channels"].update(chunk.get("retrieval_channels") or [])
+        by_source[document_key]["chunks"] += 1
+        by_source[document_key]["channels"].update(chunk.get("retrieval_channels") or [])
     docs = []
     for doc in by_source.values():
         doc["channels"] = sorted(doc["channels"])
