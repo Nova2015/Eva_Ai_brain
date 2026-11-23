@@ -133,8 +133,8 @@ class DeepLearningRegistry:
                 raise ValueError("Dataset is not eligible for training")
             conn.execute("UPDATE dl_datasets SET status='approved' WHERE dataset_id=?", (dataset_id,))
             existing = conn.execute("""SELECT * FROM dl_training_jobs
-                WHERE dataset_id=? AND owner_id=? AND status IN ('queued','running')
-                ORDER BY created_at DESC LIMIT 1""", (dataset_id, owner_id)).fetchone()
+                WHERE dataset_id=? AND owner_id=? AND workspace_id=? AND status IN ('queued','running')
+                ORDER BY created_at DESC LIMIT 1""", (dataset_id, owner_id, workspace_id)).fetchone()
             if existing:
                 return dict(existing)
             job = {
