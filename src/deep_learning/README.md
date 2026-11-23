@@ -38,7 +38,7 @@ Extraction limits are defined in `processor.py`. Optional reader failures are re
 
 ## Executable training adapter
 
-The current worker implements a local XGBoost adapter for reviewed CSV/JSON/JSONL/XLSX tabular classification and regression. It verifies owner/workspace scope, Data Governance approval, source SHA-256, source version and prepared-artifact hash before training. Jobs are atomically claimed to avoid duplicate execution, use a deterministic 80/20 holdout split, and persist evaluation metrics plus model artifacts as candidates. GPU jobs recheck CUDA and free VRAM immediately before training; CPU jobs use one training thread.
+The current worker implements a local XGBoost adapter for reviewed CSV/JSON/JSONL/XLSX tabular classification and regression. It verifies owner/workspace scope, Data Governance approval, source SHA-256, source version and prepared-artifact hash before training. Jobs are atomically claimed and serialized to one active local training job at a time, protecting shared system/GPU resources and draining queued work sequentially. Training uses a deterministic 80/20 holdout split and persists evaluation metrics plus model artifacts as candidates. GPU jobs recheck CUDA, XGBoost CUDA support and free VRAM immediately before training; CPU jobs use one training thread.
 
 CNN/ViT, detection, Transformer, LSTM/time-series and multimodal fusion remain model-family recommendations only; their executable training adapters are not yet implemented. Model activation, rollback, inference/prediction APIs, full restart queue dispatch and GPU reservation against concurrent Chat/RAG workloads remain future work. A queued job is not proof of a successful model; inspect its terminal status and metrics.
 
