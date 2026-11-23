@@ -41,7 +41,7 @@ def _tabular_rows(prepared: dict[str, Any]) -> tuple[list[str], list[dict[str, A
 
 def _train_tabular(prepared: dict[str, Any], review: dict[str, Any], device: str) -> tuple[dict[str, Any], dict[str, Any]]:
     try:
-        from xgboost import XGBClassifier, XGBRegressor
+        import xgboost as xgb
     except ImportError as exc:
         raise RuntimeError("XGBoost is not installed; tabular training adapter unavailable") from exc
 
@@ -137,17 +137,30 @@ def _train_tabular(prepared: dict[str, Any], review: dict[str, Any], device: str
     else:
         model_device = "cpu"
 
-    common = {"n_estimators": 120, "max_depth": 4, "learning_rate": 0.05,
-              "subsample": 0.9, "colsample_bytree": 0.9, "n_jobs": 1,
-              "random_state": 42, "tree_method": "hist", "device": model_device}
+    train_matrix = xgb.DMatrix(x[train_indices], label=y[train_indices])
+    validation_matrix = xgb.DMatrix(x[test_indices], label=y[test_indices])
+    common = {"max_depth": 4, "eta": 0.05, "subsample": 0.9,
+              "colsample_bytree": 0.9, "nthread": 1, "seed": 42,
+              "tree_method": "hist", "device": model_device}
     if task == "classification":
-        model = XGBClassifier(**common, eval_metric="mlogloss")
+        if len(label_mapping) == 2:
+            common.update({"objective": "binary:logistic", "eval_metric": "logloss"})
+        else:
+            common.update({"objective": "multi:softprob", "num_class": len(label_mapping),
+                           "eval_metric": "mlogloss"})
     else:
-        model = XGBRegressor(**common, objective="reg:squarederror", eval_metric="rmse")
-    model.fit(x[train_indices], y[train_indices])
-    predictions = model.predict(x[test_indices])
+        common.update({"objective": "reg:squarederror", "eval_metric": "rmse"})
+
+    # Use XGBoost's native Booster API rather than its scikit-learn wrappers.
+    # This avoids estimator-tag incompatibilities across sklearn releases.
+    model = xgb.train(common, train_matrix, num_boost_round=120)
+    predictions = model.predict(validation_matrix)
     if task == "classification":
-        metrics = {"accuracy": float(np.mean(predictions.astype(int) == y[test_indices]))}
+        if len(label_mapping) == 2:
+            predicted_labels = (predictions >= 0.5).astype(np.int32)
+        else:
+            predicted_labels = np.asarray(predictions).reshape(-1, len(label_mapping)).argmax(axis=1)
+        metrics = {"accuracy": float(np.mean(predicted_labels == y[test_indices]))}
     else:
         rmse = float(np.sqrt(np.mean((predictions.astype(float)-y[test_indices]) ** 2)))
         metrics = {"rmse": rmse, "mae": float(np.mean(np.abs(predictions.astype(float)-y[test_indices])))}
