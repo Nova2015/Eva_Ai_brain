@@ -5,6 +5,7 @@ import pytest
 
 from src.data_governance import (
     get_record,
+    approve_content_revision,
     list_records,
     list_audit_events,
     list_versions,
@@ -193,4 +194,47 @@ def test_recover_location_rejects_hash_mismatch_and_outside_root(tmp_path, monke
             record["data_id"], outside, owner_id="user-1",
             workspace_id="workspace-1", actor_id="user-1",
             allowed_root=governed_root,
+        )
+
+
+
+def test_approved_content_revision_increments_version_and_audits(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "revision.txt"
+    source.write_text("version one", encoding="utf-8")
+    record = _register(source)
+    source.write_text("version two", encoding="utf-8")
+
+    result = approve_content_revision(
+        record["data_id"],
+        owner_id="user-1",
+        workspace_id="workspace-1",
+        actor_id="user-1",
+        expected_sha256=record["sha256"],
+    )
+
+    assert result["changed"] is True
+    assert result["version"] == 2
+    assert list_versions(record["data_id"])[-1]["sha256"] == result["sha256"]
+    assert list_audit_events(record["data_id"])[-1]["action"] == "content_revision_approved"
+
+
+def test_content_revision_approval_rejects_stale_hash_and_wrong_owner(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "revision.txt"
+    source.write_text("version one", encoding="utf-8")
+    record = _register(source)
+    source.write_text("version two", encoding="utf-8")
+
+    with pytest.raises(KeyError):
+        approve_content_revision(
+            record["data_id"], owner_id="other-user",
+            workspace_id="workspace-1", actor_id="other-user",
+            expected_sha256=record["sha256"],
+        )
+    with pytest.raises(ValueError, match="revision changed"):
+        approve_content_revision(
+            record["data_id"], owner_id="user-1",
+            workspace_id="workspace-1", actor_id="user-1",
+            expected_sha256="stale-hash",
         )
