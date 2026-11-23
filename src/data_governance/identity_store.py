@@ -342,3 +342,25 @@ def list_versions(data_id: str) -> list[dict[str, Any]]:
             (data_id,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def list_audit_events(data_id: str) -> list[dict[str, Any]]:
+    """Return the append-only audit trail for a registered data item."""
+    with _connect() as conn:
+        exists = conn.execute("SELECT 1 FROM data_items WHERE data_id=?", (data_id,)).fetchone()
+        if exists is None:
+            raise KeyError(f"Unknown Data ID: {data_id}")
+        rows = conn.execute(
+            """SELECT action, actor_id, details_json, created_at
+               FROM data_item_audit WHERE data_id=? ORDER BY audit_id""",
+            (data_id,),
+        ).fetchall()
+    return [
+        {
+            "action": row["action"],
+            "actor_id": row["actor_id"],
+            "details": json.loads(row["details_json"]),
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
