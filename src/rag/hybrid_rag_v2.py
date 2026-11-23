@@ -411,12 +411,35 @@ def reconcile_data_sources(user_id: str, workspace_id: Optional[str] = None) -> 
         from data_governance import list_records, sha256_file
 
     records = list_records(owner_id=user_id, workspace_id=workspace_id)
-    chunks = (
-        _chroma_chunks_for_user(user_id, workspace_id=workspace_id)
-        + _vectorless_chunks_for_user(user_id, workspace_id=workspace_id)
-    )
+    # Enumerate Chroma metadata in pages so large collections do not
+    # silently omit Data IDs beyond the normal document-list page size.
     indexed_ids = set()
-    for chunk in chunks:
+    _, collection = _get_chroma()
+    if collection is not None and collection.count() > 0:
+        where = {"user_id": user_id} if user_id not in {"default", "anonymous"} else None
+        page_size = 2000
+        offset = 0
+        while True:
+            page = collection.get(
+                where=where,
+                limit=page_size,
+                offset=offset,
+                include=["metadatas"],
+            )
+            ids = page.get("ids") or []
+            metadatas = page.get("metadatas") or []
+            for index, metadata in enumerate(metadatas):
+                meta = metadata or {}
+                if workspace_id and meta.get("workspace_id") != workspace_id:
+                    continue
+                data_id = meta.get("data_id")
+                if data_id:
+                    indexed_ids.add(str(data_id))
+            if len(ids) < page_size:
+                break
+            offset += len(ids)
+
+    for chunk in _vectorless_chunks_for_user(user_id, workspace_id=workspace_id):
         meta = chunk.get("metadata") or {}
         data_id = meta.get("data_id")
         if data_id:
