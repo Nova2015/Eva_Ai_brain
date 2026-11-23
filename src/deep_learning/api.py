@@ -118,14 +118,14 @@ def build_router(auth_dependency) -> APIRouter:
         from .processor import process_dataset, sha256_file
         if sha256_file(source_path) != dataset["sha256"]:
             raise HTTPException(status_code=409, detail="Dataset file integrity check failed")
+        artifact_dir = DATASET_ROOT / "processed" / dataset_id
+        artifact_dir.mkdir(parents=True, exist_ok=True)
         try:
-            prepared = process_dataset(source_path)
+            prepared = process_dataset(source_path, assets_dir=artifact_dir / "assets")
         except Exception as exc:
             raise HTTPException(status_code=422, detail=f"Dataset preparation failed: {type(exc).__name__}")
         if prepared["source_sha256"] != dataset["sha256"]:
             raise HTTPException(status_code=409, detail="Dataset changed during preparation")
-        artifact_dir = DATASET_ROOT / "processed" / dataset_id
-        artifact_dir.mkdir(parents=True, exist_ok=True)
         artifact_path = artifact_dir / "prepared.json"
         temporary_path = artifact_dir / "prepared.json.tmp"
         import json
