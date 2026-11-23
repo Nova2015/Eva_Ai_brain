@@ -121,6 +121,10 @@ def _train_tabular(prepared: dict[str, Any], review: dict[str, Any], device: str
         import torch
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA became unavailable before training began")
+        free_bytes, _total_bytes = torch.cuda.mem_get_info()
+        minimum_vram = int(os.getenv("EVA_DL_MIN_FREE_VRAM_MB", "1024"))
+        if free_bytes < minimum_vram * 1024 * 1024:
+            raise RuntimeError("Free GPU memory fell below the training safety threshold")
         model_device = "cuda"
     else:
         model_device = "cpu"
