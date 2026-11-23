@@ -144,3 +144,39 @@ def test_graph_evidence_from_old_source_revision_cannot_be_approved(tmp_path):
             source["evidence_id"], "approved",
             owner_id="user-a", workspace_id="cad", actor_id="user-a",
         )
+
+
+
+def test_previously_approved_graph_evidence_is_hidden_after_source_revision(tmp_path):
+    record = _governed_source(tmp_path)
+    base = dict(
+        data_id=record["data_id"], owner_id="user-a", workspace_id="cad",
+        actor_id="user-a", evidence_text="Steering column is mounted to instrument panel.",
+    )
+    source = graph_store.upsert_entity("Steering Column", "component", chunk_id="c1", **base)
+    target = graph_store.upsert_entity("Instrument Panel", "component", chunk_id="c2", **base)
+    edge = graph_store.upsert_relationship(
+        source["entity_id"], target["entity_id"], "mounted_to", chunk_id="c3", **base,
+    )
+    for evidence in (source, target, edge):
+        graph_store.review_evidence(
+            evidence["evidence_id"], "approved",
+            owner_id="user-a", workspace_id="cad", actor_id="user-a",
+        )
+    assert graph_store.traverse_verified_relationships(
+        [source["entity_id"]], owner_id="user-a", workspace_id="cad"
+    )
+
+    source_file = tmp_path / "user-a-cad.txt"
+    source_file.write_text("Revised engineering source; previous relation may be obsolete.", encoding="utf-8")
+    approve_content_revision(
+        record["data_id"], owner_id="user-a", workspace_id="cad",
+        actor_id="user-a", expected_sha256=record["sha256"],
+    )
+
+    assert graph_store.traverse_verified_relationships(
+        [source["entity_id"]], owner_id="user-a", workspace_id="cad"
+    ) == []
+    assert graph_store.search_entities(
+        "steering", owner_id="user-a", workspace_id="cad"
+    ) == []
