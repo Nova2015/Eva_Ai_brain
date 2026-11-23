@@ -220,9 +220,16 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str) -> dict[s
 
 
 def run_training_job_safely(job_id: str, *, owner_id: str, workspace_id: str) -> None:
-    """BackgroundTasks entry point; job failures are already persisted by the worker."""
+    """BackgroundTasks entry point; persist failures from every worker phase."""
     try:
         run_training_job(job_id, owner_id=owner_id, workspace_id=workspace_id)
-    except Exception:
-        # The persisted job record contains a bounded failure reason and code.
+    except Exception as exc:
+        current = registry.get_job(job_id, owner_id=owner_id, workspace_id=workspace_id)
+        if current and current.get("status") == "running":
+            registry.update_job(
+                job_id, owner_id=owner_id, workspace_id=workspace_id,
+                status="failed", stage="failed", progress=0,
+                error_code=type(exc).__name__,
+                metadata={"failure_message": str(exc)[:500]},
+            )
         return
