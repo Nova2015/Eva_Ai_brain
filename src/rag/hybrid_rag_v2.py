@@ -330,6 +330,9 @@ def _chroma_chunks_for_user(user_id: str, limit: int = 2000, workspace_id: Optio
     chunks = []
     for i, text in enumerate(texts):
         meta = metas[i] if i < len(metas) and metas[i] else {}
+        # Defense in depth: do not rely only on the vector database's where filter.
+        if meta.get("user_id") != user_id:
+            continue
         if workspace_id and meta.get("workspace_id") != workspace_id:
             continue
         chunks.append({
@@ -767,6 +770,8 @@ def _vector_search(query: str, user_id: str, top_k: int = 8, workspace_id: Optio
             # Cosine distance â†’ similarity score
             score = max(0.0, 1.0 - distance)
             meta = results["metadatas"][0][i] if results["metadatas"] else {}
+            if meta.get("user_id") != user_id:
+                continue
             if workspace_id and meta.get("workspace_id") != workspace_id:
                 continue
             hits.append({
