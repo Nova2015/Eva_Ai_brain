@@ -145,6 +145,34 @@ def test_retry_job_links_to_original_and_preserves_private_source_reference():
 
 
 
+
+
+def test_url_ingest_url_validation_rejects_private_and_local_destinations(monkeypatch):
+    from src.rag.rag_routes_v2 import _validate_public_ingest_url
+
+    with pytest.raises(ValueError):
+        _validate_public_ingest_url("http://127.0.0.1/admin")
+    with pytest.raises(ValueError):
+        _validate_public_ingest_url("http://localhost/")
+    with pytest.raises(ValueError):
+        _validate_public_ingest_url("http://192.168.1.10/")
+    with pytest.raises(ValueError):
+        _validate_public_ingest_url("file:///etc/passwd")
+    with pytest.raises(ValueError):
+        _validate_public_ingest_url("https://example.com:8443/")
+
+
+def test_url_ingest_url_validation_rejects_dns_with_private_answer(monkeypatch):
+    from src.rag import rag_routes_v2
+
+    monkeypatch.setattr(
+        rag_routes_v2.socket, "getaddrinfo",
+        lambda *args, **kwargs: [(None, None, None, None, ("10.0.0.5", 443))],
+    )
+    with pytest.raises(ValueError, match="public IP"):
+        rag_routes_v2._validate_public_ingest_url("https://internal.example/")
+
+
 def test_reconciliation_reports_orphans_missing_files_and_hash_mismatches(tmp_path, monkeypatch):
     monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
 
