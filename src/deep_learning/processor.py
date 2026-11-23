@@ -119,7 +119,7 @@ def _extract_pdf(path: Path, warnings: list[str], assets_dir: Path | None = None
             for page in pdf.pages[:MAX_PDF_PAGES]:
                 for table in page.extract_tables() or []:
                     if table and len(tables) < MAX_TABLE_ROWS:
-                        tables.extend(table[:MAX_TABLE_ROWS-len(tables)])
+                        tables.append(table[:MAX_TABLE_ROWS])
     except ImportError:
         warnings.append("PDF table extraction unavailable: pdfplumber is not installed.")
     except Exception as exc:
@@ -196,7 +196,7 @@ def process_dataset(path: str | Path, *, assets_dir: str | Path | None = None) -
     if suffix == ".pdf":
         text_parts, tables, images = _extract_pdf(source, warnings, Path(assets_dir) if assets_dir else None)
     elif suffix in {".csv"}:
-        tables = _parse_delimited(source.read_bytes())
+        tables = [_parse_delimited(source.read_bytes())]
     elif suffix in {".xlsx", ".xls"}:
         if suffix == ".xls":
             warnings.append("Legacy .xls is not parsed by the XLSX reader; convert to .xlsx or CSV.")
@@ -221,7 +221,7 @@ def process_dataset(path: str | Path, *, assets_dir: str | Path | None = None) -
                 parsed = json.loads(raw)
                 if isinstance(parsed, list) and parsed and all(isinstance(x, dict) for x in parsed[:100]):
                     headers = list(dict.fromkeys(k for item in parsed[:1000] for k in item.keys()))[:MAX_COLUMNS]
-                    tables = [headers] + [[item.get(key) for key in headers] for item in parsed[:MAX_TABLE_ROWS]]
+                    tables = [[headers] + [[item.get(key) for key in headers] for item in parsed[:MAX_TABLE_ROWS]]]
                 else:
                     text_parts.append({"page": 1, "text": json.dumps(parsed, ensure_ascii=False, indent=2), "extraction": "structured_json"})
             except json.JSONDecodeError:
@@ -237,7 +237,7 @@ def process_dataset(path: str | Path, *, assets_dir: str | Path | None = None) -
                     warnings.append("Some JSONL lines were invalid.")
             if parsed_rows:
                 headers = list(dict.fromkeys(k for item in parsed_rows for k in item.keys()))[:MAX_COLUMNS]
-                tables = [headers] + [[item.get(key) for key in headers] for item in parsed_rows]
+                tables = [[headers] + [[item.get(key) for key in headers] for item in parsed_rows]]
         else:
             text_parts.append({"page": 1, "text": _clean_text(raw), "extraction": "text"})
     elif suffix in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}:
@@ -265,8 +265,9 @@ def process_dataset(path: str | Path, *, assets_dir: str | Path | None = None) -
             doc = Document(str(source))
             text_parts.append({"page": 1, "text": _clean_text("\n".join(p.text for p in doc.paragraphs)), "extraction": "docx"})
             for table in doc.tables:
-                for row in table.rows[:MAX_TABLE_ROWS]:
-                    tables.append([cell.text for cell in row.cells[:MAX_COLUMNS]])
+                table_rows = [[cell.text for cell in row.cells[:MAX_COLUMNS]] for row in table.rows[:MAX_TABLE_ROWS]]
+                if table_rows:
+                    tables.append(table_rows)
         except Exception as exc:
             warnings.append(f"DOCX extraction failed: {type(exc).__name__}")
     elif suffix == ".pptx":
@@ -279,8 +280,9 @@ def process_dataset(path: str | Path, *, assets_dir: str | Path | None = None) -
                     if getattr(shape, "has_text_frame", False):
                         chunks.append(shape.text)
                     if getattr(shape, "has_table", False):
-                        for row in shape.table.rows:
-                            tables.append([cell.text for cell in row.cells[:MAX_COLUMNS]])
+                        slide_table = [[cell.text for cell in row.cells[:MAX_COLUMNS]] for row in shape.table.rows[:MAX_TABLE_ROWS]]
+                        if slide_table:
+                            tables.append(slide_table)
                 text_parts.append({"page": index+1, "text": _clean_text("\n".join(chunks)), "extraction": "pptx"})
         except Exception as exc:
             warnings.append(f"PPTX extraction failed: {type(exc).__name__}")
