@@ -33,6 +33,7 @@ try:
         answer,
         chunk_text,
         delete_indexed_document,
+        delete_orphaned_data_id,
         hybrid_search,
         index_document,
         _get_chroma,
@@ -58,9 +59,9 @@ except ImportError:
     )
 
 try:
-    from ..data_governance import approve_content_revision, get_record, list_audit_events, record_governance_event, register_import, recover_location, sha256_file
+    from ..data_governance import approve_content_revision, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, sha256_file
 except ImportError:
-    from data_governance import approve_content_revision, get_record, list_audit_events, record_governance_event, register_import, recover_location, sha256_file
+    from data_governance import approve_content_revision, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, sha256_file
 
 try:
     import upload_policy
@@ -211,6 +212,12 @@ def effective_workspace_id(workspace_id: Optional[str], user_id: Optional[str]) 
         return requested
     user_namespace = (user_id or "").strip()
     return user_namespace if user_namespace and user_namespace != "anonymous" else "default"
+
+
+class OrphanIndexCleanupRequest(BaseModel):
+    data_id: str
+    approved: bool = False
+    workspace_id: Optional[str] = None
 
 
 class ContentRevisionApprovalRequest(BaseModel):
@@ -692,6 +699,85 @@ async def rag_reconciliation_repair(
         "warnings": result.get("warnings", []),
         "source_file_deleted": False,
         "governance_record_changed": False,
+    }
+
+
+@router.post("/reconciliation/cleanup-orphan")
+async def rag_reconciliation_cleanup_orphan(
+    req: OrphanIndexCleanupRequest,
+    user_id: str = Depends(get_user_id),
+):
+    """Delete chunks for one confirmed orphan Data ID after explicit approval."""
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required for orphan cleanup")
+    if req.approved is not True:
+        raise HTTPException(status_code=400, detail="Explicit approval is required before orphan cleanup")
+
+    workspace_id = effective_workspace_id(req.workspace_id, user_id)
+    try:
+        report = reconcile_data_sources(user_id, workspace_id=workspace_id)
+    except Exception:
+        logger.exception("Orphan cleanup preflight reconciliation failed")
+        raise HTTPException(status_code=500, detail="Could not verify orphan status; no cleanup was attempted")
+    orphan_ids = {item["data_id"] for item in report.get("index_without_governance", [])}
+    if req.data_id not in orphan_ids:
+        raise HTTPException(status_code=409, detail="Data ID is not currently confirmed as an orphan in this workspace")
+
+    try:
+        result = delete_orphaned_data_id(
+            req.data_id,
+            user_id=user_id,
+            workspace_id=workspace_id,
+        )
+    except PermissionError:
+        raise HTTPException(status_code=401, detail="Authenticated owner is required")
+    except Exception:
+        logger.exception("Orphan index cleanup failed")
+        raise HTTPException(status_code=500, detail="Orphan cleanup failed; inspect the reconciliation report before retrying")
+
+    record_reconciliation_event(
+        req.data_id,
+        owner_id=user_id,
+        workspace_id=workspace_id,
+        action="orphan_rag_index_cleaned",
+        actor_id=user_id,
+        details={
+            "deleted_vector_chunks": result["deleted_vector_chunks"],
+            "deleted_vectorless_chunks": result["deleted_vectorless_chunks"],
+            "deleted_chunks": result["deleted_chunks"],
+            "source_files_deleted": False,
+        },
+    )
+    return {
+        "ok": True,
+        "action": "cleanup_orphan",
+        "approved": True,
+        **result,
+        "workspace_id": workspace_id,
+        "source_files_deleted": False,
+        "governance_records_changed": False,
+        "audit_recorded": True,
+    }
+
+
+@router.get("/reconciliation/audit")
+async def rag_reconciliation_audit(
+    data_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+    user_id: str = Depends(get_user_id),
+):
+    """Read owner/workspace-scoped reconciliation events, including orphan cleanup."""
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to view reconciliation audit")
+    namespace = effective_workspace_id(workspace_id, user_id)
+    return {
+        "ok": True,
+        "workspace_id": namespace,
+        "events": list_reconciliation_events(
+            owner_id=user_id,
+            workspace_id=namespace,
+            data_id=data_id,
+        ),
     }
 
 
