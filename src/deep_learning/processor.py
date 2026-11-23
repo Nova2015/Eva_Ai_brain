@@ -11,7 +11,6 @@ import io
 import json
 import math
 import re
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -86,9 +85,10 @@ def _parse_delimited(data: bytes, delimiter: str | None = None) -> list[list[Any
     return rows
 
 
-def _extract_pdf(path: Path, warnings: list[str]) -> tuple[list[dict[str, Any]], list[list[Any]]]:
+def _extract_pdf(path: Path, warnings: list[str], assets_dir: Path | None = None) -> tuple[list[dict[str, Any]], list[list[Any]], list[dict[str, Any]]]:
     pages: list[dict[str, Any]] = []
     tables: list[list[Any]] = []
+    images: list[dict[str, Any]] = []
     try:
         from pypdf import PdfReader
         reader = PdfReader(str(path), strict=False)
@@ -111,31 +111,62 @@ def _extract_pdf(path: Path, warnings: list[str]) -> tuple[list[dict[str, Any]],
     except Exception as exc:
         warnings.append(f"PDF table extraction warning: {type(exc).__name__}")
 
-    if any(not item["text"] for item in pages):
-        try:
-            import fitz
-            from PIL import Image
-            import pytesseract
-            document = fitz.open(str(path))
-            for index, page in enumerate(document[:MAX_PDF_PAGES]):
-                if pages[index]["text"]:
-                    continue
-                pix = page.get_pixmap(matrix=fitz.Matrix(1.4, 1.4), alpha=False)
-                if pix.width * pix.height > MAX_IMAGE_PIXELS:
-                    warnings.append(f"Skipped OCR on PDF page {index+1}: pixel limit.")
-                    continue
-                image = Image.open(io.BytesIO(pix.tobytes("png")))
-                ocr = _clean_text(pytesseract.image_to_string(image))
-                if ocr:
-                    pages[index] = {"page": index+1, "text": ocr, "extraction": "ocr"}
-        except ImportError:
+    try:
+        import fitz
+        document = fitz.open(str(path))
+        if any(not item["text"] for item in pages):
+            try:
+                from PIL import Image
+                import pytesseract
+                for index, page in enumerate(document[:MAX_PDF_PAGES]):
+                    if pages[index]["text"]:
+                        continue
+                    pix = page.get_pixmap(matrix=fitz.Matrix(1.4, 1.4), alpha=False)
+                    if pix.width * pix.height > MAX_IMAGE_PIXELS:
+                        warnings.append(f"Skipped OCR on PDF page {index+1}: pixel limit.")
+                        continue
+                    image = Image.open(io.BytesIO(pix.tobytes("png")))
+                    ocr = _clean_text(pytesseract.image_to_string(image))
+                    if ocr:
+                        pages[index] = {"page": index+1, "text": ocr, "extraction": "ocr"}
+            except ImportError:
+                warnings.append("Scanned PDF OCR unavailable: install Pillow and pytesseract with local Tesseract.")
+        if assets_dir is not None:
+            assets_dir.mkdir(parents=True, exist_ok=True)
+            total_bytes = 0
+            for page_index, page in enumerate(document[:MAX_PDF_PAGES]):
+                for image_index, image_info in enumerate(page.get_images(full=True)):
+                    if len(images) >= 100:
+                        warnings.append("PDF embedded-image limit reached (100).")
+                        break
+                    xref = image_info[0]
+                    extracted = document.extract_image(xref)
+                    image_bytes = extracted.get("image", b"")
+                    if not image_bytes or len(image_bytes) > 20 * 1024 * 1024 or total_bytes + len(image_bytes) > 100 * 1024 * 1024:
+                        warnings.append(f"Skipped oversized PDF image on page {page_index+1}.")
+                        continue
+                    extension = re.sub(r"[^a-z0-9]", "", str(extracted.get("ext") or "png").lower())[:8] or "png"
+                    width, height = int(extracted.get("width", 0)), int(extracted.get("height", 0))
+                    if width <= 0 or height <= 0 or width * height > MAX_IMAGE_PIXELS:
+                        warnings.append(f"Skipped invalid/oversized PDF image on page {page_index+1}.")
+                        continue
+                    asset_name = f"page_{page_index+1:03d}_image_{image_index+1:03d}.{extension}"
+                    (assets_dir / asset_name).write_bytes(image_bytes)
+                    total_bytes += len(image_bytes)
+                    images.append({"page": page_index+1, "asset_name": asset_name,
+                                   "width": width, "height": height, "format": extension,
+                                   "source": "embedded_pdf_image"})
+    except ImportError:
+        if assets_dir is not None:
+            warnings.append("PDF embedded-image extraction unavailable: install PyMuPDF.")
+        if any(not item["text"] for item in pages):
             warnings.append("Scanned PDF OCR unavailable: install PyMuPDF, Pillow and pytesseract with local Tesseract.")
-        except Exception as exc:
-            warnings.append(f"Scanned PDF OCR warning: {type(exc).__name__}")
-    return pages, tables
+    except Exception as exc:
+        warnings.append(f"PDF image/OCR extraction warning: {type(exc).__name__}")
+    return pages, tables, images
 
 
-def process_dataset(path: str | Path) -> dict[str, Any]:
+def process_dataset(path: str | Path, *, assets_dir: str | Path | None = None) -> dict[str, Any]:
     source = Path(path).resolve(strict=True)
     if not source.is_file():
         raise ValueError("Dataset source must be a regular file")
@@ -146,7 +177,7 @@ def process_dataset(path: str | Path) -> dict[str, Any]:
     images: list[dict[str, Any]] = []
 
     if suffix == ".pdf":
-        text_parts, tables = _extract_pdf(source, warnings)
+        text_parts, tables, images = _extract_pdf(source, warnings, Path(assets_dir) if assets_dir else None)
     elif suffix in {".csv"}:
         tables = _parse_delimited(source.read_bytes())
     elif suffix in {".xlsx", ".xls"}:
