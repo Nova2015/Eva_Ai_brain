@@ -106,6 +106,17 @@ def _initialize(conn: sqlite3.Connection) -> None:
             UNIQUE(data_id, version)
         );
 
+        CREATE TABLE IF NOT EXISTS reconciliation_audit (
+            audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data_id TEXT NOT NULL,
+            owner_id TEXT NOT NULL,
+            workspace_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            details_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS data_item_audit (
             audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
             data_id TEXT NOT NULL REFERENCES data_items(data_id) ON DELETE CASCADE,
@@ -506,6 +517,64 @@ def record_governance_event(
         if exists is None:
             raise KeyError(f"Unknown governed Data ID: {data_id}")
         _audit(conn, data_id, action, actor_id, details or {})
+
+
+def record_reconciliation_event(
+    data_id: str,
+    *,
+    owner_id: str,
+    workspace_id: str,
+    action: str,
+    actor_id: str,
+    details: Optional[dict[str, Any]] = None,
+) -> None:
+    """Audit reconciliation actions, including orphan IDs without Governance rows."""
+    if not all(isinstance(value, str) and value.strip() for value in
+               (data_id, owner_id, workspace_id, action, actor_id)):
+        raise ValueError("data_id, owner_id, workspace_id, action and actor_id are required")
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO reconciliation_audit
+               (data_id, owner_id, workspace_id, action, actor_id, details_json, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (data_id, owner_id, workspace_id, action, actor_id,
+             json.dumps(details or {}, sort_keys=True), _now()),
+        )
+
+
+def list_reconciliation_events(
+    *,
+    owner_id: str,
+    workspace_id: str,
+    data_id: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Read reconciliation audit events for the authenticated owner/workspace."""
+    if not all(isinstance(value, str) and value.strip() for value in (owner_id, workspace_id)):
+        raise ValueError("owner_id and workspace_id are required")
+    with _connect() as conn:
+        if data_id:
+            rows = conn.execute(
+                """SELECT data_id, action, actor_id, details_json, created_at
+                   FROM reconciliation_audit
+                   WHERE owner_id=? AND workspace_id=? AND data_id=?
+                   ORDER BY audit_id""",
+                (owner_id, workspace_id, data_id),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT data_id, action, actor_id, details_json, created_at
+                   FROM reconciliation_audit
+                   WHERE owner_id=? AND workspace_id=?
+                   ORDER BY audit_id""",
+                (owner_id, workspace_id),
+            ).fetchall()
+    return [{
+        "data_id": row["data_id"],
+        "action": row["action"],
+        "actor_id": row["actor_id"],
+        "details": json.loads(row["details_json"]),
+        "created_at": row["created_at"],
+    } for row in rows]
 
 
 def list_audit_events(data_id: str) -> list[dict[str, Any]]:
