@@ -108,3 +108,20 @@ def test_job_state_transitions_and_model_registration(tmp_path):
     listed = registry.list_models(owner_id="alice", workspace_id="team-a")
     assert len(listed) == 1
     assert listed[0]["metrics"]["accuracy"] == 0.9
+
+
+def test_training_job_claim_is_atomic_and_only_succeeds_once(tmp_path):
+    registry = DeepLearningRegistry(tmp_path / "dl.sqlite3")
+    dataset = registry.create_dataset(
+        data_id="EVA-DATA-CLAIM", owner_id="alice", workspace_id="team-a",
+        file_name="train.csv", file_path=str(tmp_path / "train.csv"),
+        file_type=".csv", size_bytes=12, sha256="f" * 64,
+        classification="restricted",
+    )
+    job = registry.approve_dataset(
+        dataset["dataset_id"], owner_id="alice", workspace_id="team-a",
+        device="cpu", environment="local",
+    )
+    assert registry.claim_job(job["job_id"], owner_id="alice", workspace_id="team-a") is True
+    assert registry.claim_job(job["job_id"], owner_id="alice", workspace_id="team-a") is False
+    assert registry.get_job(job["job_id"], owner_id="alice", workspace_id="team-a")["status"] == "running"
