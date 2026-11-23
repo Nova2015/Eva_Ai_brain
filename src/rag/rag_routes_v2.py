@@ -334,6 +334,12 @@ class IngestURLRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+class GraphExtractionRequest(BaseModel):
+    data_id: str
+    workspace_id: Optional[str] = None
+    max_chunks: int = 12
+
+
 class GraphEntityCandidate(BaseModel):
     name: str
     entity_type: str
@@ -396,6 +402,45 @@ def _load_current_governed_text(data_id: str, user_id: str, workspace_id: str):
     if not source_text or not source_text.strip():
         raise HTTPException(status_code=422, detail="No extractable text found in governed source")
     return record, source_text
+
+
+@router.post("/graph/extract")
+async def rag_graph_extract(req: GraphExtractionRequest, user_id: str = Depends(get_user_id)):
+    """Run opt-in local-only extraction and store source-backed proposals for review."""
+    _require_authenticated_user(user_id)
+    workspace_id = effective_workspace_id(req.workspace_id, user_id)
+    if not 1 <= req.max_chunks <= 24:
+        raise HTTPException(status_code=400, detail="max_chunks must be between 1 and 24")
+    record, source_text = _load_current_governed_text(req.data_id, user_id, workspace_id)
+    try:
+        try:
+            from .graph_extractor import extract_graph_candidates
+        except ImportError:
+            from graph_extractor import extract_graph_candidates
+        extracted = extract_graph_candidates(source_text, max_chunks=req.max_chunks)
+    except Exception as exc:
+        logger.exception("Local Graph RAG extraction failed")
+        raise HTTPException(status_code=503, detail=f"Local graph extraction unavailable: {type(exc).__name__}")
+    if not extracted.get("entities") and not extracted.get("relationships"):
+        return {
+            "ok": True, "data_id": req.data_id, "source_version": record.get("version", 1),
+            "workspace_id": workspace_id, "status": "no_candidates",
+            "entities": [], "relationships": [],
+            "chunks_processed": extracted.get("chunks_processed", 0),
+            "warnings": extracted.get("warnings", []),
+        }
+    proposal = GraphProposalRequest(
+        data_id=req.data_id, workspace_id=workspace_id,
+        entities=extracted.get("entities", []),
+        relationships=extracted.get("relationships", []),
+    )
+    result = await rag_graph_proposals(proposal, user_id=user_id)
+    result["extraction"] = {
+        "provider": "eva_local", "model": extracted.get("model", "configured-local"),
+        "chunks_processed": extracted.get("chunks_processed", 0),
+        "warnings": extracted.get("warnings", []),
+    }
+    return result
 
 
 @router.post("/graph/proposals")
