@@ -273,3 +273,48 @@ def test_reconciliation_repair_requires_explicit_approval():
 
     assert error.value.status_code == 400
     assert "approval" in error.value.detail.lower()
+
+
+
+def test_reconciliation_repair_blocks_modified_source_content(tmp_path, monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+    from src.rag import rag_routes_v2 as routes
+
+    source = tmp_path / "modified.txt"
+    source.write_text("changed since governance approval", encoding="utf-8")
+    record = {
+        "data_id": "EVA-DATA-REPAIR-3",
+        "owner_id": "user-a",
+        "workspace_id": "cad",
+        "file_path": str(source),
+        "file_name": "modified.txt",
+        "sha256": "old-hash",
+        "classification": "restricted",
+    }
+    monkeypatch.setattr(routes, "get_record", lambda data_id: record)
+    monkeypatch.setattr(
+        routes,
+        "reconcile_data_sources",
+        lambda user_id, workspace_id=None: {
+            "missing_from_index": [{"data_id": record["data_id"]}]
+        },
+    )
+    monkeypatch.setattr(routes, "sha256_file", lambda path: "new-hash")
+    monkeypatch.setattr(
+        routes,
+        "index_document",
+        lambda **kwargs: pytest.fail("Modified content must not be re-indexed automatically"),
+    )
+
+    request = routes.ReconciliationRepairRequest(
+        data_id=record["data_id"],
+        action="reindex_missing",
+        approved=True,
+        workspace_id="cad",
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(routes.rag_reconciliation_repair(request, user_id="user-a"))
+
+    assert error.value.status_code == 409
+    assert "revision review" in error.value.detail.lower()
