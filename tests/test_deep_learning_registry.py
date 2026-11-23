@@ -51,3 +51,24 @@ def test_unapproved_dataset_cannot_be_queued(tmp_path):
     # Queue creation is intentionally only exposed through approve_dataset;
     # a fresh dataset remains in the approval-pending state.
     assert registry.get_dataset(dataset["dataset_id"], owner_id="alice", workspace_id="team-a")["status"] == "awaiting_training_approval"
+
+
+def test_prepared_dataset_can_be_queued_after_approval(tmp_path):
+    registry = DeepLearningRegistry(tmp_path / "dl.sqlite3")
+    dataset = registry.create_dataset(
+        data_id="EVA-DATA-PREPARED", owner_id="alice", workspace_id="team-a",
+        file_name="inspection.csv", file_path=str(tmp_path / "inspection.csv"),
+        file_type=".csv", size_bytes=24, sha256="d" * 64,
+        classification="restricted",
+    )
+    registry.update_dataset_metadata(
+        dataset["dataset_id"], owner_id="alice", workspace_id="team-a",
+        updates={"preparation_status": "completed", "label_status": "not_reviewed"},
+        status="prepared",
+    )
+    job = registry.approve_dataset(
+        dataset["dataset_id"], owner_id="alice", workspace_id="team-a",
+        device="cpu", environment="local",
+    )
+    assert job["status"] == "queued"
+    assert registry.get_dataset(dataset["dataset_id"], owner_id="alice", workspace_id="team-a")["status"] == "approved"
