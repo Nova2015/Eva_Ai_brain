@@ -14,6 +14,7 @@ from .identity_store import (
     set_permissions,
     set_training_approval,
     list_versions,
+    list_audit_events,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "set_permissions",
     "set_training_approval",
     "list_versions",
+    "list_audit_events",
 ]
