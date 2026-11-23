@@ -129,6 +129,34 @@ def build_router(auth_dependency) -> APIRouter:
             "note": "Dataset approved and automatically queued. A compatible training worker must be available to execute the queued job.",
         }
 
+    @router.post("/training/start")
+    async def start_training(
+        dataset_id: str = Form(...),
+        workspace_id: str = Form("default"),
+        user_id: str = Depends(auth_dependency),
+    ):
+        dataset = registry.get_dataset(dataset_id, owner_id=user_id, workspace_id=workspace_id)
+        if dataset is None:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+        governed = get_record(dataset["data_id"])
+        if not governed or governed.get("owner_id") != user_id or governed.get("workspace_id") != workspace_id:
+            raise HTTPException(status_code=404, detail="Governed dataset not found")
+        if governed.get("training_approval") != "approved" or dataset.get("status") != "approved":
+            raise HTTPException(status_code=403, detail="Explicit Data Governance training approval is required")
+        if governed.get("sha256") != dataset["sha256"] or int(governed.get("version", 0)) != int(dataset["source_version"]):
+            raise HTTPException(status_code=409, detail="Dataset source revision changed; revalidate before training")
+        if not Path(dataset["file_path"]).is_file():
+            raise HTTPException(status_code=409, detail="Dataset source file is missing")
+        try:
+            policy = get_runtime_policy()
+            job = registry.approve_dataset(
+                dataset_id, owner_id=user_id, workspace_id=workspace_id,
+                device=policy["selected_device"], environment="local",
+            )
+        except (KeyError, ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        return {"ok": True, "job": job, "policy": policy}
+
     @router.get("/training/status/{job_id}")
     async def training_status(
         job_id: str,
