@@ -13,9 +13,9 @@ from .config import get_runtime_policy
 from .registry import registry
 
 try:
-    from src.data_governance import register_import, get_record, set_training_approval
+    from src.data_governance import register_import, get_record, set_training_approval, record_governance_event
 except ImportError:
-    from data_governance import register_import, get_record, set_training_approval
+    from data_governance import register_import, get_record, set_training_approval, record_governance_event
 
 MAX_UPLOAD_BYTES = int(os.getenv("EVA_DL_MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
 ALLOWED_EXTENSIONS = {
@@ -238,6 +238,13 @@ def build_router(auth_dependency) -> APIRouter:
             dataset_id, owner_id=user_id, workspace_id=workspace_id,
             updates={"label_status": "verified", "label_review": review_data},
             status="reviewed",
+        )
+        record_governance_event(
+            dataset["data_id"], "deep_learning_label_reviewed",
+            owner_id=user_id, workspace_id=workspace_id, actor_id=user_id,
+            details={"modality": modality, "task_type": task_type,
+                     "target_column": target_column, "feature_columns": features,
+                     "labelled_rows": labelled_rows},
         )
         return {"ok": True, "dataset_id": dataset_id, "label_review": review_data,
                 "note": "Label review recorded. Training still requires separate Data Governance approval."}
