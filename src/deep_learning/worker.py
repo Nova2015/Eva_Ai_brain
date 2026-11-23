@@ -67,25 +67,29 @@ def _train_tabular(prepared: dict[str, Any], review: dict[str, Any], device: str
 
     encoders: dict[str, dict[str, int]] = {}
     medians: dict[str, float] = {}
+    feature_kinds: dict[str, str] = {}
+    for name in features:
+        values = [record.get(name) for record in cleaned if record.get(name) not in (None, "")]
+        numeric_values = []
+        try:
+            numeric_values = [float(value) for value in values]
+            if not all(math.isfinite(value) for value in numeric_values):
+                raise ValueError
+            feature_kinds[name] = "numeric"
+        except (TypeError, ValueError):
+            feature_kinds[name] = "categorical"
+            encoders[name] = {key: index for index, key in enumerate(sorted({str(value) for value in values}))}
     matrix = []
     for record in cleaned:
         row = []
         for name in features:
             value = record.get(name)
-            try:
-                number = float(value)
-                if not math.isfinite(number):
-                    raise ValueError
-                row.append(number)
-            except (TypeError, ValueError):
-                if value is None or str(value).strip() == "":
-                    row.append(float("nan"))
-                else:
-                    mapping = encoders.setdefault(name, {})
-                    key = str(value)
-                    if key not in mapping:
-                        mapping[key] = len(mapping)
-                    row.append(float(mapping[key]))
+            if value is None or str(value).strip() == "":
+                row.append(float("nan"))
+            elif feature_kinds[name] == "numeric":
+                row.append(float(value))
+            else:
+                row.append(float(encoders[name][str(value)]))
         matrix.append(row)
     x = np.asarray(matrix, dtype=np.float32)
     for index, name in enumerate(features):
@@ -145,7 +149,7 @@ def _train_tabular(prepared: dict[str, Any], review: dict[str, Any], device: str
         metrics = {"rmse": rmse, "mae": float(np.mean(np.abs(predictions.astype(float)-y[test_indices])))}
     metrics.update({"train_rows": int(len(train_indices)), "validation_rows": int(len(test_indices))})
     preprocessing = {"feature_columns": features, "target_column": target,
-                     "missing_value_medians": medians, "categorical_encoders": encoders,
+                     "missing_value_medians": medians, "categorical_encoders": encoders, "feature_kinds": feature_kinds,
                      "label_mapping": label_mapping, "split_seed": 42, "validation_fraction": 0.2}
     return model, {"metrics": metrics, "preprocessing": preprocessing, "model_family": "XGBoost"}
 
