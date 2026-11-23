@@ -32,3 +32,50 @@ def test_tabular_xgboost_worker_trains_and_evaluates_cpu_candidate():
     assert 0.0 <= result["metrics"]["accuracy"] <= 1.0
     assert result["metrics"]["train_rows"] + result["metrics"]["validation_rows"] == 40
     assert result["model_family"] == "XGBoost"
+
+
+def test_safe_worker_persists_failure_after_job_is_claimed(tmp_path, monkeypatch):
+    import json
+
+    from src.deep_learning import worker
+    from src.deep_learning.registry import DeepLearningRegistry
+
+    test_registry = DeepLearningRegistry(tmp_path / "worker-failure.sqlite3")
+    dataset = test_registry.create_dataset(
+        data_id="EVA-DATA-WORKER-FAIL", owner_id="alice", workspace_id="team-a",
+        file_name="synthetic.csv", file_path=str(tmp_path / "synthetic.csv"),
+        file_type=".csv", size_bytes=12, sha256="4" * 64,
+        classification="internal",
+    )
+    job = test_registry.approve_dataset(
+        dataset["dataset_id"], owner_id="alice", workspace_id="team-a",
+        device="cpu", environment="local",
+    )
+    monkeypatch.setattr(worker, "registry", test_registry)
+
+    def fail_after_claim(job_id, *, owner_id, workspace_id, already_claimed=False):
+        assert test_registry.claim_job(
+            job_id, owner_id=owner_id, workspace_id=workspace_id
+        )
+        raise RuntimeError("synthetic worker failure")
+
+    monkeypatch.setattr(worker, "run_training_job", fail_after_claim)
+    worker._execute_job_safely(
+        job["job_id"], owner_id="alice", workspace_id="team-a"
+    )
+
+    persisted = test_registry.get_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a"
+    )
+    assert persisted["status"] == "failed"
+    assert persisted["stage"] == "failed"
+    assert persisted["progress"] == 0
+    assert persisted["error_code"] == "RuntimeError"
+
+    with test_registry.connect() as conn:
+        row = conn.execute(
+            "SELECT metadata_json FROM dl_training_jobs WHERE job_id=?",
+            (job["job_id"],),
+        ).fetchone()
+    metadata = json.loads(row["metadata_json"])
+    assert metadata["failure_message"] == "synthetic worker failure"
