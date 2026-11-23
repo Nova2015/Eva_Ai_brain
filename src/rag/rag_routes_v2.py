@@ -128,6 +128,13 @@ def _run_upload_job(job_id: str, filename: str, tmp_file: str, size_bytes: int, 
             stored_path.unlink(missing_ok=True)
             raise
 
+        # Persist the governed source reference before indexing so a restart
+        # never loses the Data ID or the retained local document location.
+        jm.update_job(
+            job_id,
+            data_id=data_record["data_id"],
+            document_path=str(stored_path),
+        )
         jm.update_job(job_id, status=jm.INDEXING, progress=70, current_step="Indexing document", chunk_count=len(chunks))
         result = index_document(
             text=text,
