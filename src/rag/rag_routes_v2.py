@@ -58,9 +58,9 @@ except ImportError:
     )
 
 try:
-    from ..data_governance import approve_content_revision, get_record, register_import, recover_location, sha256_file
+    from ..data_governance import approve_content_revision, get_record, record_governance_event, register_import, recover_location, sha256_file
 except ImportError:
-    from data_governance import approve_content_revision, get_record, register_import, recover_location, sha256_file
+    from data_governance import approve_content_revision, get_record, record_governance_event, register_import, recover_location, sha256_file
 
 try:
     import upload_policy
@@ -667,6 +667,19 @@ async def rag_reconciliation_repair(
     )
     if not result.get("ok"):
         raise HTTPException(status_code=500, detail=result.get("error", "Re-indexing failed"))
+    record_governance_event(
+        record["data_id"],
+        "rag_index_repaired",
+        owner_id=user_id,
+        workspace_id=workspace_id,
+        actor_id=user_id,
+        details={
+            "action": "reindex_missing",
+            "chunks": result.get("chunks", len(chunks)),
+            "vector_indexed": result.get("vector_indexed", False),
+            "vectorless_indexed": result.get("vectorless_indexed", False),
+        },
+    )
     return {
         "ok": True,
         "action": "reindex_missing",
