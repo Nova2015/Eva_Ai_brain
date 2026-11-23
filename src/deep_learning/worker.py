@@ -211,3 +211,12 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str) -> dict[s
                             error_code=type(exc).__name__,
                             metadata={"failure_message": str(exc)[:500]})
         raise
+
+
+def run_training_job_safely(job_id: str, *, owner_id: str, workspace_id: str) -> None:
+    """BackgroundTasks entry point; job failures are already persisted by the worker."""
+    try:
+        run_training_job(job_id, owner_id=owner_id, workspace_id=workspace_id)
+    except Exception:
+        # The persisted job record contains a bounded failure reason and code.
+        return
