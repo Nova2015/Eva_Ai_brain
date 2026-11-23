@@ -252,6 +252,62 @@ def update_location(
     return _row_dict(updated)  # type: ignore[return-value]
 
 
+def recover_location(
+    data_id: str,
+    new_file_path: str | os.PathLike[str],
+    *,
+    owner_id: str,
+    workspace_id: str,
+    actor_id: str,
+    allowed_root: str | os.PathLike[str],
+) -> dict[str, Any]:
+    """Recover a missing governed file location without changing its identity.
+
+    The candidate must remain inside the configured governed-document root and
+    its bytes must match the currently approved SHA-256 revision.
+    """
+    if not all(isinstance(value, str) and value.strip() for value in
+               (data_id, owner_id, workspace_id, actor_id)):
+        raise ValueError("data_id, owner_id, workspace_id and actor_id are required")
+    root = Path(allowed_root).expanduser().resolve(strict=True)
+    candidate = Path(new_file_path).expanduser().resolve(strict=True)
+    if not root.is_dir() or not candidate.is_file():
+        raise ValueError("Recovery root and candidate must be an existing directory and file")
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Recovery candidate must be inside the governed document directory") from exc
+
+    digest = sha256_file(candidate)
+    size = candidate.stat().st_size
+    with _connect() as conn:
+        row = conn.execute(
+            """SELECT * FROM data_items
+               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
+            (data_id, owner_id, workspace_id),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown governed Data ID: {data_id}")
+        if digest != row["sha256"]:
+            raise ValueError("Candidate content does not match the governed SHA-256 revision")
+        old_path = row["file_path"]
+        conn.execute(
+            """UPDATE data_items
+               SET file_path=?, file_name=?, size_bytes=?, updated_at=?
+               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
+            (str(candidate), candidate.name, size, _now(), data_id, owner_id, workspace_id),
+        )
+        _audit(conn, data_id, "location_recovered", actor_id, {
+            "old_path": old_path,
+            "new_path": str(candidate),
+            "sha256": digest,
+        })
+        updated = conn.execute(
+            "SELECT * FROM data_items WHERE data_id=?", (data_id,)
+        ).fetchone()
+    return _row_dict(updated)  # type: ignore[return-value]
+
+
 def record_revision(
     data_id: str,
     *,
