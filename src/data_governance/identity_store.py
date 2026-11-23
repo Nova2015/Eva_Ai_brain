@@ -346,6 +346,67 @@ def record_revision(
                 "sha256": digest, "changed": True}
 
 
+def approve_content_revision(
+    data_id: str,
+    *,
+    owner_id: str,
+    workspace_id: str,
+    actor_id: str,
+    expected_sha256: str,
+) -> dict[str, Any]:
+    """Approve changed local bytes as the next revision for the scoped owner."""
+    if not all(isinstance(value, str) and value.strip() for value in
+               (data_id, owner_id, workspace_id, actor_id, expected_sha256)):
+        raise ValueError("data_id, owner_id, workspace_id, actor_id and expected_sha256 are required")
+    with _connect() as conn:
+        row = conn.execute(
+            """SELECT * FROM data_items
+               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
+            (data_id, owner_id, workspace_id),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown governed Data ID: {data_id}")
+        if row["sha256"] != expected_sha256:
+            raise ValueError("Governance revision changed; refresh reconciliation before approval")
+        path = Path(row["file_path"])
+        if not path.is_file():
+            raise FileNotFoundError("Governed source file is missing")
+        digest = sha256_file(path)
+        size = path.stat().st_size
+        if digest == row["sha256"]:
+            return {
+                "data_id": data_id,
+                "version": row["version"],
+                "sha256": digest,
+                "changed": False,
+            }
+        next_version = int(row["version"]) + 1
+        now = _now()
+        conn.execute(
+            """UPDATE data_items SET sha256=?, size_bytes=?, version=?, updated_at=?
+               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
+            (digest, size, next_version, now, data_id, owner_id, workspace_id),
+        )
+        conn.execute(
+            """INSERT INTO data_item_versions
+               (data_id, version, sha256, size_bytes, file_path, changed_by, changed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (data_id, next_version, digest, size, str(path), actor_id, now),
+        )
+        _audit(conn, data_id, "content_revision_approved", actor_id, {
+            "version": next_version,
+            "previous_sha256": row["sha256"],
+            "sha256": digest,
+            "size_bytes": size,
+        })
+        return {
+            "data_id": data_id,
+            "version": next_version,
+            "sha256": digest,
+            "changed": True,
+        }
+
+
 def set_classification(
     data_id: str,
     classification: str,
