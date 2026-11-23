@@ -158,15 +158,20 @@ def _train_tabular(prepared: dict[str, Any], review: dict[str, Any], device: str
     return model, {"metrics": metrics, "preprocessing": preprocessing, "model_family": "XGBoost"}
 
 
-def run_training_job(job_id: str, *, owner_id: str, workspace_id: str) -> dict[str, Any]:
+def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
+                     already_claimed: bool = False) -> dict[str, Any]:
     """Execute one approved local job. Errors are persisted without leaking paths."""
     job = registry.get_job(job_id, owner_id=owner_id, workspace_id=workspace_id)
     if job is None:
         raise KeyError("Training job not found")
-    if job["status"] != "queued":
-        return job
-    if not registry.claim_job(job_id, owner_id=owner_id, workspace_id=workspace_id):
-        return registry.get_job(job_id, owner_id=owner_id, workspace_id=workspace_id) or job
+    if already_claimed:
+        if job["status"] != "running":
+            return job
+    else:
+        if job["status"] != "queued":
+            return job
+        if not registry.claim_job(job_id, owner_id=owner_id, workspace_id=workspace_id):
+            return registry.get_job(job_id, owner_id=owner_id, workspace_id=workspace_id) or job
     dataset = registry.get_dataset(job["dataset_id"], owner_id=owner_id, workspace_id=workspace_id)
     if dataset is None:
         raise KeyError("Training dataset not found")
@@ -227,10 +232,11 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str) -> dict[s
         raise
 
 
-def run_training_job_safely(job_id: str, *, owner_id: str, workspace_id: str) -> None:
-    """BackgroundTasks entry point; persist failures from every worker phase."""
+def _execute_job_safely(job_id: str, *, owner_id: str, workspace_id: str,
+                        already_claimed: bool = False) -> None:
     try:
-        run_training_job(job_id, owner_id=owner_id, workspace_id=workspace_id)
+        run_training_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
+                         already_claimed=already_claimed)
     except Exception as exc:
         current = registry.get_job(job_id, owner_id=owner_id, workspace_id=workspace_id)
         if current and current.get("status") == "running":
@@ -240,4 +246,17 @@ def run_training_job_safely(job_id: str, *, owner_id: str, workspace_id: str) ->
                 error_code=type(exc).__name__,
                 metadata={"failure_message": str(exc)[:500]},
             )
-        return
+
+
+def run_training_job_safely(job_id: str, *, owner_id: str, workspace_id: str) -> None:
+    """Run one job, then drain the persistent queue serially on this local worker."""
+    _execute_job_safely(job_id, owner_id=owner_id, workspace_id=workspace_id)
+    while True:
+        queued = registry.get_next_queued_job()
+        if queued is None:
+            return
+        if not registry.claim_job(queued["job_id"], owner_id=queued["owner_id"],
+                                  workspace_id=queued["workspace_id"]):
+            return
+        _execute_job_safely(queued["job_id"], owner_id=queued["owner_id"],
+                            workspace_id=queued["workspace_id"], already_claimed=True)
