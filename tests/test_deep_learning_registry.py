@@ -148,3 +148,101 @@ def test_local_worker_claims_only_one_training_job_at_a_time(tmp_path):
         status="completed", stage="completed", progress=100,
     )
     assert registry.claim_job(jobs[1]["job_id"], owner_id="alice", workspace_id="team-a") is True
+
+
+
+def test_concurrent_claim_attempts_only_start_one_worker(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    registry = DeepLearningRegistry(tmp_path / "concurrent-claims.sqlite3")
+    dataset = registry.create_dataset(
+        data_id="EVA-DATA-CONCURRENT", owner_id="alice", workspace_id="team-a",
+        file_name="train.csv", file_path=str(tmp_path / "train.csv"),
+        file_type=".csv", size_bytes=12, sha256="1" * 64,
+        classification="restricted",
+    )
+    job = registry.approve_dataset(
+        dataset["dataset_id"], owner_id="alice", workspace_id="team-a",
+        device="cpu", environment="local",
+    )
+
+    def attempt_claim(_):
+        return registry.claim_job(
+            job["job_id"], owner_id="alice", workspace_id="team-a"
+        )
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(attempt_claim, range(12)))
+
+    assert sum(results) == 1
+    persisted = registry.get_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a"
+    )
+    assert persisted["status"] == "running"
+    assert persisted["stage"] == "validating"
+
+
+def test_job_state_machine_rejects_invalid_terminal_transitions(tmp_path):
+    import pytest
+
+    registry = DeepLearningRegistry(tmp_path / "job-state.sqlite3")
+    dataset = registry.create_dataset(
+        data_id="EVA-DATA-STATE", owner_id="alice", workspace_id="team-a",
+        file_name="train.csv", file_path=str(tmp_path / "train.csv"),
+        file_type=".csv", size_bytes=12, sha256="2" * 64,
+        classification="restricted",
+    )
+    job = registry.approve_dataset(
+        dataset["dataset_id"], owner_id="alice", workspace_id="team-a",
+        device="cpu", environment="local",
+    )
+
+    with pytest.raises(ValueError, match="Invalid training job transition"):
+        registry.update_job(
+            job["job_id"], owner_id="alice", workspace_id="team-a",
+            status="completed", stage="completed", progress=100,
+        )
+
+    assert registry.claim_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a"
+    ) is True
+    registry.update_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a",
+        status="completed", stage="completed", progress=100,
+    )
+
+    with pytest.raises(ValueError, match="Invalid training job transition"):
+        registry.update_job(
+            job["job_id"], owner_id="alice", workspace_id="team-a",
+            status="running", stage="training", progress=20,
+        )
+
+    assert registry.get_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a"
+    )["status"] == "completed"
+
+
+def test_job_updates_remain_scope_protected(tmp_path):
+    import pytest
+
+    registry = DeepLearningRegistry(tmp_path / "job-scope.sqlite3")
+    dataset = registry.create_dataset(
+        data_id="EVA-DATA-SCOPE", owner_id="alice", workspace_id="team-a",
+        file_name="train.csv", file_path=str(tmp_path / "train.csv"),
+        file_type=".csv", size_bytes=12, sha256="3" * 64,
+        classification="restricted",
+    )
+    job = registry.approve_dataset(
+        dataset["dataset_id"], owner_id="alice", workspace_id="team-a",
+        device="cpu", environment="local",
+    )
+
+    with pytest.raises(KeyError, match="Training job not found"):
+        registry.update_job(
+            job["job_id"], owner_id="mallory", workspace_id="team-a",
+            status="running", stage="training", progress=20,
+        )
+
+    assert registry.get_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a"
+    )["status"] == "queued"
