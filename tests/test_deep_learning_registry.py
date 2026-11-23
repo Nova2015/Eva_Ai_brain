@@ -72,3 +72,39 @@ def test_prepared_dataset_can_be_queued_after_approval(tmp_path):
     )
     assert job["status"] == "queued"
     assert registry.get_dataset(dataset["dataset_id"], owner_id="alice", workspace_id="team-a")["status"] == "approved"
+
+
+def test_job_state_transitions_and_model_registration(tmp_path):
+    registry = DeepLearningRegistry(tmp_path / "dl.sqlite3")
+    dataset = registry.create_dataset(
+        data_id="EVA-DATA-WORKER", owner_id="alice", workspace_id="team-a",
+        file_name="train.csv", file_path=str(tmp_path / "train.csv"),
+        file_type=".csv", size_bytes=120, sha256="e" * 64,
+        classification="restricted",
+    )
+    registry.update_dataset_metadata(
+        dataset["dataset_id"], owner_id="alice", workspace_id="team-a",
+        updates={"label_review": {"status": "verified"}}, status="reviewed",
+    )
+    job = registry.approve_dataset(
+        dataset["dataset_id"], owner_id="alice", workspace_id="team-a",
+        device="cpu", environment="local",
+    )
+    running = registry.update_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a",
+        status="running", stage="training", progress=20,
+    )
+    assert running["status"] == "running"
+    assert running["progress"] == 20
+    model = registry.create_model(
+        model_id="EVA-MODEL-TEST", version=1, dataset_id=dataset["dataset_id"],
+        data_id="EVA-DATA-WORKER", owner_id="alice", workspace_id="team-a",
+        model_family="XGBoost", task_type="classification",
+        artifact_path=str(tmp_path / "model.json"), metrics={"accuracy": 0.9},
+        preprocessing={"target_column": "label"}, status="candidate",
+    )
+    assert model["status"] == "candidate"
+    assert "artifact_path" not in model
+    listed = registry.list_models(owner_id="alice", workspace_id="team-a")
+    assert len(listed) == 1
+    assert listed[0]["metrics"]["accuracy"] == 0.9
