@@ -91,3 +91,6 @@ src/rag/data/chroma_db/
 eva-acl-backup.txt
 eva-current-changes.patch
 data/marathi_triplets_audit/
+
+# Persistent local RAG uploads (user/project data)
+data/rag_documents/
