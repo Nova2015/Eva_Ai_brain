@@ -12,6 +12,7 @@ from src.data_governance import (
     record_revision,
     register_import,
     recover_location,
+    record_governance_event,
     set_training_approval,
     update_location,
 )
@@ -238,3 +239,27 @@ def test_content_revision_approval_rejects_stale_hash_and_wrong_owner(tmp_path, 
             workspace_id="workspace-1", actor_id="user-1",
             expected_sha256="stale-hash",
         )
+
+
+
+def test_governance_events_are_owner_scoped_and_append_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "audit.txt"
+    source.write_text("audit data", encoding="utf-8")
+    record = _register(source)
+
+    with pytest.raises(KeyError):
+        record_governance_event(
+            record["data_id"], "unauthorized_action",
+            owner_id="other-user", workspace_id="workspace-1",
+            actor_id="other-user",
+        )
+
+    record_governance_event(
+        record["data_id"], "approved_repair",
+        owner_id="user-1", workspace_id="workspace-1",
+        actor_id="user-1", details={"action": "reindex_missing"},
+    )
+    events = list_audit_events(record["data_id"])
+    assert events[-1]["action"] == "approved_repair"
+    assert events[-1]["actor_id"] == "user-1"
