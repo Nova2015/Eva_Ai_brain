@@ -149,3 +149,43 @@ def test_tabular_xgboost_worker_trains_native_cpu_multiclass_with_missing_values
     probabilities = reloaded.predict(sample)
     assert probabilities.shape == (1, 3)
     assert np.isclose(float(probabilities.sum()), 1.0, atol=1e-5)
+
+
+
+def test_tabular_xgboost_worker_records_actual_cuda_execution():
+    import pytest
+    import torch
+    import xgboost as xgb
+    from src.deep_learning.worker import _train_tabular
+
+    cuda_flag = xgb.build_info().get("USE_CUDA", False)
+    cuda_build = cuda_flag is True or str(cuda_flag).strip().lower() in {
+        "1", "true", "on", "yes"
+    }
+    if not torch.cuda.is_available() or not cuda_build:
+        pytest.skip("CUDA-enabled PyTorch and XGBoost are required")
+
+    rows = [["measurement", "temperature", "defect"]]
+    for index in range(600):
+        measurement = float(index % 97)
+        temperature = float((index * 7) % 53)
+        defect = "yes" if measurement + temperature > 75 else "no"
+        rows.append([measurement, temperature, defect])
+
+    model, result = _train_tabular(
+        {"tables": [rows]},
+        {
+            "target_column": "defect",
+            "feature_columns": ["measurement", "temperature"],
+            "task_type": "classification",
+        },
+        "cuda",
+    )
+
+    assert isinstance(model, xgb.Booster)
+    execution = result["execution"]
+    assert execution["requested_device"] == "cuda"
+    assert "cuda" in execution["actual_device"].lower()
+    assert "grow_gpu_hist" in execution["actual_updater"].lower()
+    assert execution["xgboost_cuda_build"] is True
+    assert execution["gpu_name"] == torch.cuda.get_device_name(0)
