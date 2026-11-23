@@ -149,6 +149,90 @@ def test_retry_job_links_to_original_and_preserves_private_source_reference():
 
 
 
+
+
+def test_graph_proposal_review_and_query_flow(tmp_path, monkeypatch):
+    import asyncio
+    from src.rag import rag_routes_v2
+
+    source = tmp_path / "source.txt"
+    source.write_text("The steering column is mounted to the instrument panel.", encoding="utf-8")
+    record = register_import(
+        source, source="test", owner_id="user-a", workspace_id="cad",
+        actor_id="user-a", classification="confidential",
+    )
+    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id: {
+        **record, "file_path": str(source),
+    })
+    monkeypatch.setattr(rag_routes_v2, "sha256_file", lambda path: record["sha256"])
+
+    request = rag_routes_v2.GraphProposalRequest(
+        data_id=record["data_id"], workspace_id="cad",
+        entities=[
+            {"name": "Steering Column", "entity_type": "component", "chunk_id": "c1",
+             "evidence_text": "The steering column is mounted to the instrument panel."},
+            {"name": "Instrument Panel", "entity_type": "component", "chunk_id": "c1",
+             "evidence_text": "The steering column is mounted to the instrument panel."},
+        ],
+        relationships=[{
+            "source_name": "Steering Column", "source_type": "component",
+            "target_name": "Instrument Panel", "target_type": "component",
+            "predicate": "mounted_to", "chunk_id": "c1",
+            "evidence_text": "The steering column is mounted to the instrument panel.",
+        }],
+    )
+    proposed = asyncio.run(rag_routes_v2.rag_graph_proposals(request, user_id="user-a"))
+    assert proposed["approval_required"] is True
+    assert proposed["status"] == "proposed"
+    relationship_evidence_id = proposed["relationships"][0]["evidence_id"]
+
+    reviewed = asyncio.run(rag_routes_v2.rag_graph_review(
+        rag_routes_v2.GraphEvidenceReviewRequest(
+            evidence_id=relationship_evidence_id, status="approved", workspace_id="cad",
+        ),
+        user_id="user-a",
+    ))
+    assert reviewed["status"] == "approved"
+
+    result = asyncio.run(rag_routes_v2.rag_graph_query(
+        rag_routes_v2.GraphQueryRequest(query="Steering Column", workspace_id="cad"),
+        user_id="user-a",
+    ))
+    assert result["retrieval_mode"] == "approved_graph_only"
+    assert len(result["relationships"]) == 1
+    assert result["relationships"][0]["data_id"] == record["data_id"]
+
+
+def test_graph_proposal_batch_validates_all_evidence_before_writing(tmp_path, monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+    from src.rag import rag_routes_v2
+
+    source = tmp_path / "source.txt"
+    source.write_text("The steering column is mounted to the instrument panel.", encoding="utf-8")
+    record = register_import(
+        source, source="test", owner_id="user-a", workspace_id="cad",
+        actor_id="user-a", classification="confidential",
+    )
+    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id: {
+        **record, "file_path": str(source),
+    })
+    monkeypatch.setattr(rag_routes_v2, "sha256_file", lambda path: record["sha256"])
+    request = rag_routes_v2.GraphProposalRequest(
+        data_id=record["data_id"], workspace_id="cad",
+        entities=[
+            {"name": "Steering Column", "entity_type": "component", "chunk_id": "c1",
+             "evidence_text": "The steering column is mounted"},
+            {"name": "Invented Component", "entity_type": "component", "chunk_id": "c2",
+             "evidence_text": "This phrase does not occur in the source"},
+        ],
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(rag_routes_v2.rag_graph_proposals(request, user_id="user-a"))
+    assert error.value.status_code == 422
+    assert graph_store.search_entities("Steering Column", owner_id="user-a", workspace_id="cad") == []
+
+
 def test_graph_proposal_endpoint_requires_source_excerpt_and_authentication(tmp_path, monkeypatch):
     from fastapi import HTTPException
     from src.rag import rag_routes_v2
