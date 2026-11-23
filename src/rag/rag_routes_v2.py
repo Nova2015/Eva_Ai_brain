@@ -54,12 +54,13 @@ except ImportError:
         normalize_rag_mode,
         rag_runtime_status,
         rag_stats_snapshot,
+        reconcile_data_sources,
     )
 
 try:
-    from ..data_governance import get_record, register_import
+    from ..data_governance import get_record, register_import, sha256_file
 except ImportError:
-    from data_governance import get_record, register_import
+    from data_governance import get_record, register_import, sha256_file
 
 try:
     import upload_policy
@@ -210,6 +211,13 @@ def effective_workspace_id(workspace_id: Optional[str], user_id: Optional[str]) 
         return requested
     user_namespace = (user_id or "").strip()
     return user_namespace if user_namespace and user_namespace != "anonymous" else "default"
+
+
+class ReconciliationRepairRequest(BaseModel):
+    data_id: str
+    action: str = "reindex_missing"
+    approved: bool = False
+    workspace_id: Optional[str] = None
 
 
 class QueryRequest(BaseModel):
@@ -501,6 +509,85 @@ async def rag_retry_upload_job(job_id: str, user_id: str = Depends(get_user_id))
         "workspace_id": workspace_id,
         "async_jobs": True,
         "message": "Retry accepted. The existing governed source and Data ID will be reused.",
+    }
+
+
+@router.post("/reconciliation/repair")
+async def rag_reconciliation_repair(
+    req: ReconciliationRepairRequest,
+    user_id: str = Depends(get_user_id),
+):
+    """Apply one explicitly approved, safe repair: re-index an unchanged governed file."""
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required for data repair")
+    if req.action != "reindex_missing":
+        raise HTTPException(status_code=400, detail="Unsupported repair action")
+    if req.approved is not True:
+        raise HTTPException(status_code=400, detail="Explicit approval is required before repair")
+
+    workspace_id = effective_workspace_id(req.workspace_id, user_id)
+    record = get_record(req.data_id)
+    if not record or record.get("owner_id") != user_id or record.get("workspace_id") != workspace_id:
+        raise HTTPException(status_code=404, detail="Governed data item not found")
+
+    report = reconcile_data_sources(user_id, workspace_id=workspace_id)
+    missing_ids = {item["data_id"] for item in report.get("missing_from_index", [])}
+    if req.data_id not in missing_ids:
+        raise HTTPException(status_code=409, detail="This Data ID is not currently reported as missing from the RAG index")
+
+    source_path = Path(record["file_path"])
+    if not source_path.is_file():
+        raise HTTPException(status_code=409, detail="Governed source file is missing; location recovery is required")
+    try:
+        actual_hash = sha256_file(source_path)
+    except OSError:
+        raise HTTPException(status_code=409, detail="Governed source file cannot be read")
+    if actual_hash != record.get("sha256"):
+        raise HTTPException(status_code=409, detail="Source content has changed; revision review is required before re-indexing")
+
+    ext = source_path.suffix.lower()
+    if ext not in SUPPORTED_EXTS:
+        raise HTTPException(status_code=415, detail=f"Unsupported governed source type: {ext}")
+    size_bytes = source_path.stat().st_size
+    size_error = upload_policy.validate_upload_size(size_bytes)
+    if size_error:
+        raise HTTPException(status_code=413, detail=size_error["detail"])
+
+    extracted_text = _extract_text(source_path, ext)
+    if not extracted_text or not extracted_text.strip():
+        raise HTTPException(status_code=422, detail="Could not extract text from governed source")
+    chunks = chunk_text(extracted_text)
+    chunk_error = upload_policy.validate_chunk_count(len(chunks))
+    if chunk_error:
+        raise HTTPException(status_code=413, detail=chunk_error["detail"])
+
+    result = index_document(
+        text=extracted_text,
+        source=record["file_name"],
+        user_id=user_id,
+        workspace_id=workspace_id,
+        metadata={
+            "filename": record["file_name"],
+            "ext": ext,
+            "size": size_bytes,
+            "data_id": record["data_id"],
+            "classification": record["classification"],
+        },
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Re-indexing failed"))
+    return {
+        "ok": True,
+        "action": "reindex_missing",
+        "approved": True,
+        "data_id": record["data_id"],
+        "workspace_id": workspace_id,
+        "chunks": result.get("chunks", len(chunks)),
+        "vector_indexed": result.get("vector_indexed", False),
+        "vectorless_indexed": result.get("vectorless_indexed", False),
+        "warnings": result.get("warnings", []),
+        "source_file_deleted": False,
+        "governance_record_changed": False,
     }
 
 
