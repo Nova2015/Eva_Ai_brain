@@ -215,6 +215,13 @@ def effective_workspace_id(workspace_id: Optional[str], user_id: Optional[str]) 
     return user_namespace if user_namespace and user_namespace != "anonymous" else "default"
 
 
+def _require_authenticated_user(user_id: Optional[str]) -> str:
+    """Fail closed before any user-scoped RAG data is read or modified."""
+    if not user_id or user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user_id
+
+
 class OrphanIndexCleanupRequest(BaseModel):
     data_id: str
     approved: bool = False
@@ -298,6 +305,7 @@ async def rag_status():
 @router.post("/query")
 async def rag_query(req: QueryRequest, user_id: str = Depends(get_user_id)):
     """Hybrid RAG query — retrieves + routes to best LLM + returns answer."""
+    _require_authenticated_user(user_id)
     if not req.query or not req.query.strip():
         raise HTTPException(status_code=400, detail="query cannot be empty")
     workspace_id = effective_workspace_id(req.workspace_id, user_id)
@@ -323,6 +331,7 @@ async def rag_query(req: QueryRequest, user_id: str = Depends(get_user_id)):
 @router.post("/chat")
 async def rag_chat(req: ChatRequest, user_id: str = Depends(get_user_id)):
     """Multi-turn RAG chat endpoint."""
+    _require_authenticated_user(user_id)
     prompt = (req.message or req.query or "").strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="message cannot be empty")
@@ -372,6 +381,7 @@ async def rag_upload(
     user_id: str = Depends(get_user_id),
 ):
     """Upload and index a document into the vector store."""
+    _require_authenticated_user(user_id)
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename")
 
@@ -417,6 +427,7 @@ async def rag_upload(
 @router.post("/ingest-url")
 async def rag_ingest_url(req: IngestURLRequest, user_id: str = Depends(get_user_id)):
     """Fetch a URL and index its text content."""
+    _require_authenticated_user(user_id)
     url = req.url.strip()
     if not url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
@@ -824,6 +835,7 @@ async def rag_data_reconciliation(
 @router.get("/documents")
 async def rag_documents(workspace_id: Optional[str] = None, user_id: str = Depends(get_user_id)):
     """List all indexed documents for this user."""
+    _require_authenticated_user(user_id)
     try:
         return list_indexed_documents(user_id, workspace_id=effective_workspace_id(workspace_id, user_id))
     except Exception as e:
@@ -834,6 +846,7 @@ async def rag_documents(workspace_id: Optional[str] = None, user_id: str = Depen
 @router.get("/stats")
 async def rag_stats(workspace_id: Optional[str] = None, user_id: str = Depends(get_user_id)):
     """Collection statistics."""
+    _require_authenticated_user(user_id)
     try:
         stats = rag_stats_snapshot(user_id, workspace_id=effective_workspace_id(workspace_id, user_id))
         return {
@@ -850,6 +863,7 @@ async def rag_stats(workspace_id: Optional[str] = None, user_id: str = Depends(g
 @router.delete("/document/{doc_id}")
 async def rag_delete_document(doc_id: str, workspace_id: Optional[str] = None, user_id: str = Depends(get_user_id)):
     """Delete a specific document chunk by ID."""
+    _require_authenticated_user(user_id)
     try:
         return delete_indexed_document(doc_id, user_id, workspace_id=effective_workspace_id(workspace_id, user_id))
     except Exception as e:
