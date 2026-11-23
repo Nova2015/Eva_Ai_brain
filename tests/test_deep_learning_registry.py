@@ -280,3 +280,104 @@ def test_local_worker_serializes_jobs_across_workspaces(tmp_path):
     assert registry.claim_job(
         jobs[1]["job_id"], owner_id="bob", workspace_id="team-b"
     ) is True
+
+
+def test_failed_job_is_terminal_and_cannot_be_reclaimed(tmp_path):
+    import pytest
+
+    registry = DeepLearningRegistry(tmp_path / "failed-terminal.sqlite3")
+    dataset = registry.create_dataset(
+        data_id="EVA-DATA-FAILED-TERMINAL",
+        owner_id="alice", workspace_id="team-a",
+        file_name="synthetic.csv",
+        file_path=str(tmp_path / "synthetic.csv"),
+        file_type=".csv", size_bytes=12, sha256="a" * 64,
+        classification="internal",
+    )
+    job = registry.approve_dataset(
+        dataset["dataset_id"], owner_id="alice",
+        workspace_id="team-a", device="cpu", environment="local",
+    )
+
+    assert registry.claim_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a"
+    ) is True
+
+    registry.update_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a",
+        status="failed", stage="failed", progress=0,
+        error_code="RuntimeError",
+        metadata={"failure_message": "synthetic failure"},
+    )
+
+    assert registry.claim_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a"
+    ) is False
+
+    for status in ("queued", "running", "completed"):
+        with pytest.raises(ValueError, match="Invalid training job transition"):
+            registry.update_job(
+                job["job_id"], owner_id="alice", workspace_id="team-a",
+                status=status, stage="retry", progress=10,
+            )
+
+    persisted = registry.get_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a"
+    )
+    assert persisted["status"] == "failed"
+    assert persisted["error_code"] == "RuntimeError"
+
+
+def test_new_job_can_be_queued_after_previous_job_failed(tmp_path):
+    import json
+
+    registry = DeepLearningRegistry(tmp_path / "failed-requeue.sqlite3")
+    dataset = registry.create_dataset(
+        data_id="EVA-DATA-FAILED-REQUEUE",
+        owner_id="alice", workspace_id="team-a",
+        file_name="synthetic.csv",
+        file_path=str(tmp_path / "synthetic.csv"),
+        file_type=".csv", size_bytes=12, sha256="b" * 64,
+        classification="internal",
+    )
+
+    first = registry.approve_dataset(
+        dataset["dataset_id"], owner_id="alice",
+        workspace_id="team-a", device="cpu", environment="local",
+    )
+    assert registry.claim_job(
+        first["job_id"], owner_id="alice", workspace_id="team-a"
+    ) is True
+
+    registry.update_job(
+        first["job_id"], owner_id="alice", workspace_id="team-a",
+        status="failed", stage="failed", progress=0,
+        error_code="RuntimeError",
+        metadata={"failure_message": "first attempt failed"},
+    )
+
+    second = registry.approve_dataset(
+        dataset["dataset_id"], owner_id="alice",
+        workspace_id="team-a", device="cpu", environment="local",
+    )
+
+    assert second["job_id"] != first["job_id"]
+    assert second["status"] == "queued"
+
+    old_job = registry.get_job(
+        first["job_id"], owner_id="alice", workspace_id="team-a"
+    )
+    new_job = registry.get_job(
+        second["job_id"], owner_id="alice", workspace_id="team-a"
+    )
+
+    assert old_job["status"] == "failed"
+    assert new_job["status"] == "queued"
+
+    with registry.connect() as conn:
+        row = conn.execute(
+            "SELECT metadata_json FROM dl_training_jobs WHERE job_id=?",
+            (first["job_id"],),
+        ).fetchone()
+
+    assert json.loads(row["metadata_json"])["failure_message"] == "first attempt failed"

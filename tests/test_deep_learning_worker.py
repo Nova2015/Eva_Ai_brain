@@ -189,3 +189,348 @@ def test_tabular_xgboost_worker_records_actual_cuda_execution():
     assert "grow_gpu_hist" in execution["actual_updater"].lower()
     assert execution["xgboost_cuda_build"] is True
     assert execution["gpu_name"] == torch.cuda.get_device_name(0)
+
+def _build_worker_failure_scenario(tmp_path, monkeypatch):
+    import json
+
+    from src.deep_learning import worker
+    from src.deep_learning.processor import sha256_file
+    from src.deep_learning.registry import DeepLearningRegistry
+
+    registry = DeepLearningRegistry(tmp_path / "failure-scenarios.sqlite3")
+    monkeypatch.setattr(worker, "registry", registry)
+
+    source = tmp_path / "synthetic.csv"
+    source.write_text("measurement,defect\n1,no\n2,yes\n", encoding="utf-8")
+    source_hash = sha256_file(source)
+
+    dataset = registry.create_dataset(
+        data_id="EVA-DATA-FAILURE-SCENARIO",
+        owner_id="alice",
+        workspace_id="team-a",
+        file_name=source.name,
+        file_path=str(source),
+        file_type=".csv",
+        size_bytes=source.stat().st_size,
+        sha256=source_hash,
+        classification="internal",
+        metadata={
+            "label_review": {
+                "status": "verified",
+                "modality": "tabular",
+                "target_column": "defect",
+                "feature_columns": ["measurement"],
+                "task_type": "classification",
+            }
+        },
+    )
+
+    job = registry.approve_dataset(
+        dataset["dataset_id"],
+        owner_id="alice",
+        workspace_id="team-a",
+        device="cpu",
+        environment="local",
+    )
+
+    data_root = tmp_path / "datasets"
+    artifact_dir = data_root / "processed" / dataset["dataset_id"]
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "prepared.json").write_text(
+        json.dumps({
+            "source_sha256": source_hash,
+            "tables": [[
+                ["measurement", "defect"],
+                [1, "no"],
+                [2, "yes"],
+            ]],
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("EVA_DL_DATASET_DIR", str(data_root))
+
+    from src import data_governance
+
+    monkeypatch.setattr(
+        data_governance,
+        "get_record",
+        lambda data_id: {
+            "data_id": data_id,
+            "owner_id": "alice",
+            "workspace_id": "team-a",
+            "training_approval": "approved",
+            "sha256": source_hash,
+            "version": 1,
+        },
+    )
+
+    class FakeModel:
+        def save_model(self, path):
+            with open(path, "w", encoding="utf-8") as file:
+                file.write('{"fake_model": true}')
+
+    monkeypatch.setattr(
+        worker,
+        "_train_tabular",
+        lambda prepared, review, device: (
+            FakeModel(),
+            {
+                "model_family": "XGBoost",
+                "metrics": {"accuracy": 0.9},
+                "preprocessing": {"target_column": "defect"},
+                "execution": {
+                    "requested_device": "cpu",
+                    "actual_device": "cpu",
+                },
+            },
+        ),
+    )
+
+    return worker, registry, job, artifact_dir
+
+
+def test_worker_persists_failure_when_model_artifact_save_fails(tmp_path, monkeypatch):
+    import pytest
+
+    worker, registry, job, artifact_dir = _build_worker_failure_scenario(
+        tmp_path, monkeypatch
+    )
+
+    class SaveFailureModel:
+        def save_model(self, path):
+            raise OSError("synthetic artifact save failure")
+
+    monkeypatch.setattr(
+        worker,
+        "_train_tabular",
+        lambda prepared, review, device: (
+            SaveFailureModel(),
+            {
+                "model_family": "XGBoost",
+                "metrics": {"accuracy": 0.9},
+                "preprocessing": {},
+                "execution": {"requested_device": "cpu", "actual_device": "cpu"},
+            },
+        ),
+    )
+
+    with pytest.raises(OSError, match="synthetic artifact save failure"):
+        worker.run_training_job(
+            job["job_id"], owner_id="alice", workspace_id="team-a"
+        )
+
+    persisted = registry.get_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a"
+    )
+    assert persisted["status"] == "failed"
+    assert persisted["error_code"] == "OSError"
+    assert registry.list_models(
+        owner_id="alice", workspace_id="team-a"
+    ) == []
+    assert list(artifact_dir.glob("EVA-MODEL-*_v1.json")) == []
+
+
+def test_worker_persists_failure_when_model_registration_fails(tmp_path, monkeypatch):
+    import pytest
+
+    worker, registry, job, artifact_dir = _build_worker_failure_scenario(
+        tmp_path, monkeypatch
+    )
+
+    def fail_registration(**kwargs):
+        raise RuntimeError("synthetic model registration failure")
+
+    monkeypatch.setattr(registry, "create_model", fail_registration)
+
+    with pytest.raises(RuntimeError, match="synthetic model registration failure"):
+        worker.run_training_job(
+            job["job_id"], owner_id="alice", workspace_id="team-a"
+        )
+
+    persisted = registry.get_job(
+        job["job_id"], owner_id="alice", workspace_id="team-a"
+    )
+    assert persisted["status"] == "failed"
+    assert persisted["error_code"] == "RuntimeError"
+    assert registry.list_models(
+        owner_id="alice", workspace_id="team-a"
+    ) == []
+
+    
+    # Failed model registration must not leave an orphan artifact.
+    artifacts = list(artifact_dir.glob("EVA-MODEL-*_v1.json"))
+    assert len(artifacts) == 0
+
+
+def test_safe_worker_persists_failure_when_dataset_validation_fails(
+    tmp_path, monkeypatch
+):
+    worker, registry, job, artifact_dir = _build_worker_failure_scenario(
+        tmp_path, monkeypatch
+    )
+
+    # Simulate dataset disappearing after the job has been claimed.
+    monkeypatch.setattr(
+        registry,
+        "get_dataset",
+        lambda *args, **kwargs: None,
+    )
+
+    # Safe wrapper must catch the validation exception and persist failure.
+    worker._execute_job_safely(
+        job["job_id"],
+        owner_id="alice",
+        workspace_id="team-a",
+    )
+
+    persisted = registry.get_job(
+        job["job_id"],
+        owner_id="alice",
+        workspace_id="team-a",
+    )
+
+    assert persisted["status"] == "failed"
+    assert persisted["error_code"] == "KeyError"
+    import json
+
+    with registry.connect() as conn:
+        row = conn.execute(
+            "SELECT metadata_json FROM dl_training_jobs WHERE job_id = ?",
+            (job["job_id"],),
+        ).fetchone()
+
+    persisted_metadata = json.loads(row["metadata_json"])
+
+    assert "Training dataset not found" in (
+        persisted_metadata.get("failure_message", "")
+    )
+    
+
+    assert registry.list_models(
+        owner_id="alice",
+        workspace_id="team-a",
+    ) == []
+
+    artifacts = list(artifact_dir.glob("EVA-MODEL-*_v1.json"))
+    assert artifacts == []
+
+
+def test_direct_worker_validation_failure_does_not_leave_job_running(
+    tmp_path, monkeypatch
+):
+    import pytest
+
+    worker, registry, job, artifact_dir = _build_worker_failure_scenario(
+        tmp_path, monkeypatch
+    )
+
+    monkeypatch.setattr(
+        registry,
+        "get_dataset",
+        lambda *args, **kwargs: None,
+    )
+
+    with pytest.raises(KeyError, match="Training dataset not found"):
+        worker.run_training_job(
+            job["job_id"],
+            owner_id="alice",
+            workspace_id="team-a",
+        )
+
+    persisted = registry.get_job(
+        job["job_id"],
+        owner_id="alice",
+        workspace_id="team-a",
+    )
+
+    # This assertion should expose the current pre-try validation gap.
+    assert persisted["status"] == "failed"
+
+
+def test_worker_drains_next_queued_job_after_previous_job_fails(
+    tmp_path, monkeypatch
+):
+    from src.deep_learning import worker
+    from src.deep_learning.registry import DeepLearningRegistry
+
+    test_registry = DeepLearningRegistry(
+        tmp_path / "worker-queue-drain.sqlite3"
+    )
+
+    jobs = []
+    for index in range(2):
+        dataset = test_registry.create_dataset(
+            data_id=f"EVA-DATA-QUEUE-{index}",
+            owner_id="alice",
+            workspace_id="team-a",
+            file_name=f"synthetic-{index}.csv",
+            file_path=str(tmp_path / f"synthetic-{index}.csv"),
+            file_type=".csv",
+            size_bytes=12,
+            sha256=str(index + 1) * 64,
+            classification="internal",
+        )
+        jobs.append(
+            test_registry.approve_dataset(
+                dataset["dataset_id"],
+                owner_id="alice",
+                workspace_id="team-a",
+                device="cpu",
+                environment="local",
+            )
+        )
+
+    monkeypatch.setattr(worker, "registry", test_registry)
+
+    executed = []
+
+    def fake_run_training_job(
+        job_id, *, owner_id, workspace_id, already_claimed=False
+    ):
+        executed.append(job_id)
+
+        if job_id == jobs[0]["job_id"]:
+            assert test_registry.claim_job(
+                job_id,
+                owner_id=owner_id,
+                workspace_id=workspace_id,
+            )
+            raise RuntimeError("synthetic first-job failure")
+
+        assert already_claimed is True
+        return test_registry.update_job(
+            job_id,
+            owner_id=owner_id,
+            workspace_id=workspace_id,
+            status="completed",
+            stage="completed",
+            progress=100,
+        )
+
+    monkeypatch.setattr(
+        worker, "run_training_job", fake_run_training_job
+    )
+
+    worker.run_training_job_safely(
+        jobs[0]["job_id"],
+        owner_id="alice",
+        workspace_id="team-a",
+    )
+
+    first = test_registry.get_job(
+        jobs[0]["job_id"],
+        owner_id="alice",
+        workspace_id="team-a",
+    )
+    second = test_registry.get_job(
+        jobs[1]["job_id"],
+        owner_id="alice",
+        workspace_id="team-a",
+    )
+
+    assert first["status"] == "failed"
+    assert second["status"] == "completed"
+    assert executed == [
+        jobs[0]["job_id"],
+        jobs[1]["job_id"],
+    ]

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,51 @@ import numpy as np
 
 from .processor import sha256_file
 from .registry import registry
+
+
+class _WorkerHeartbeat:
+    """Keep a claimed job lease alive for the duration of worker execution."""
+
+    def __init__(self, job_id: str, worker_token: str, registry_instance: Any):
+        self.job_id = job_id
+        self.worker_token = worker_token
+        self.registry = registry_instance
+        try:
+            configured_interval = float(
+                os.getenv("EVA_DL_WORKER_HEARTBEAT_INTERVAL_SECONDS", "10")
+            )
+        except (TypeError, ValueError):
+            configured_interval = 10.0
+        if not math.isfinite(configured_interval) or configured_interval <= 0:
+            configured_interval = 10.0
+        self.interval = max(1.0, configured_interval)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run,
+            name=f"eva-dl-heartbeat-{job_id[-8:]}",
+            daemon=True,
+        )
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.interval):
+            try:
+                still_owner = self.registry.heartbeat_job(
+                    self.job_id, worker_token=self.worker_token
+                )
+            except Exception:
+                # Transient SQLite errors must not falsely declare a process dead.
+                continue
+            if not still_owner:
+                return
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=self.interval + 1.0)
+
 
 
 def _tabular_rows(prepared: dict[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
@@ -219,12 +265,14 @@ def _train_tabular(prepared: dict[str, Any], review: dict[str, Any], device: str
                    "model_family": "XGBoost", "execution": execution}
 
 
+
 def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
-                     already_claimed: bool = False) -> dict[str, Any]:
+                    already_claimed: bool = False) -> dict[str, Any]:
     """Execute one approved local job. Errors are persisted without leaking paths."""
     job = registry.get_job(job_id, owner_id=owner_id, workspace_id=workspace_id)
     if job is None:
         raise KeyError("Training job not found")
+
     if already_claimed:
         if job["status"] != "running":
             return job
@@ -233,82 +281,154 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
             return job
         if not registry.claim_job(job_id, owner_id=owner_id, workspace_id=workspace_id):
             return registry.get_job(job_id, owner_id=owner_id, workspace_id=workspace_id) or job
-    dataset = registry.get_dataset(job["dataset_id"], owner_id=owner_id, workspace_id=workspace_id)
-    if dataset is None:
-        raise KeyError("Training dataset not found")
-    from src.data_governance import get_record
-    governed = get_record(dataset["data_id"])
-    if not governed or governed.get("owner_id") != owner_id or governed.get("workspace_id") != workspace_id:
-        raise PermissionError("Governed dataset scope verification failed")
-    if governed.get("training_approval") != "approved":
-        raise PermissionError("Explicit Data Governance training approval is required")
-    if governed.get("sha256") != dataset["sha256"] or int(governed.get("version", 0)) != int(dataset["source_version"]):
-        raise ValueError("Dataset source version changed; re-prepare and review it")
-    source = Path(dataset["file_path"])
-    if not source.is_file() or sha256_file(source) != dataset["sha256"]:
-        raise ValueError("Dataset source file is missing or its integrity hash changed")
-    metadata = json.loads(dataset.get("metadata_json") or "{}")
-    review = metadata.get("label_review") or {}
-    if review.get("status") != "verified":
-        raise ValueError("Dataset labels and target columns have not been reviewed")
-    artifact_dir = Path(os.getenv("EVA_DL_DATASET_DIR", str(Path(__file__).resolve().parents[2] / "data" / "deep_learning" / "datasets"))) / "processed" / dataset["dataset_id"]
-    prepared_path = artifact_dir / "prepared.json"
-    if not prepared_path.is_file():
-        raise ValueError("Prepared dataset artifact is missing; prepare the dataset again")
-    prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
-    if prepared.get("source_sha256") != dataset["sha256"]:
-        raise ValueError("Prepared artifact does not match the approved source hash")
 
-    registry.update_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
-                        status="running", stage="validating", progress=5)
+    heartbeat = None
     artifact_path: Path | None = None
     model_registered = False
+
     try:
+        lease_getter = getattr(registry, "get_worker_lease", None)
+        lease = lease_getter(job_id) if callable(lease_getter) else None
+        worker_token = (lease or {}).get("worker_token")
+        heartbeat = (
+            _WorkerHeartbeat(job_id, worker_token, registry)
+            if worker_token and callable(getattr(registry, "heartbeat_job", None))
+            else None
+        )
+        if heartbeat:
+            heartbeat.start()
+        dataset = registry.get_dataset(
+            job["dataset_id"], owner_id=owner_id, workspace_id=workspace_id
+        )
+        if dataset is None:
+            raise KeyError("Training dataset not found")
+
+        from src.data_governance import get_record
+
+        governed = get_record(dataset["data_id"])
+        if (
+            not governed
+            or governed.get("owner_id") != owner_id
+            or governed.get("workspace_id") != workspace_id
+        ):
+            raise PermissionError("Governed dataset scope verification failed")
+
+        if governed.get("training_approval") != "approved":
+            raise PermissionError("Explicit Data Governance training approval is required")
+
+        if (
+            governed.get("sha256") != dataset["sha256"]
+            or int(governed.get("version", 0)) != int(dataset["source_version"])
+        ):
+            raise ValueError("Dataset source version changed; re-prepare and review it")
+
+        source = Path(dataset["file_path"])
+        if not source.is_file() or sha256_file(source) != dataset["sha256"]:
+            raise ValueError("Dataset source file is missing or its integrity hash changed")
+
+        metadata = json.loads(dataset.get("metadata_json") or "{}")
+        review = metadata.get("label_review") or {}
+
+        if review.get("status") != "verified":
+            raise ValueError("Dataset labels and target columns have not been reviewed")
+
+        artifact_dir = (
+            Path(os.getenv(
+                "EVA_DL_DATASET_DIR",
+                str(Path(__file__).resolve().parents[2] / "data" / "deep_learning" / "datasets"),
+            ))
+            / "processed"
+            / dataset["dataset_id"]
+        )
+        prepared_path = artifact_dir / "prepared.json"
+
+        if not prepared_path.is_file():
+            raise ValueError("Prepared dataset artifact is missing; prepare the dataset again")
+
+        prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
+        if prepared.get("source_sha256") != dataset["sha256"]:
+            raise ValueError("Prepared artifact does not match the approved source hash")
+
+        registry.update_job(
+            job_id, owner_id=owner_id, workspace_id=workspace_id,
+            status="running", stage="validating", progress=5,
+        )
+
         if review.get("modality") != "tabular":
-            raise NotImplementedError("This worker release executes tabular datasets only; other modality adapters are not yet enabled")
-        registry.update_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
-                            status="running", stage="training", progress=20)
+            raise NotImplementedError(
+                "This worker release executes tabular datasets only; "
+                "other modality adapters are not yet enabled"
+            )
+
+        registry.update_job(
+            job_id, owner_id=owner_id, workspace_id=workspace_id,
+            status="running", stage="training", progress=20,
+        )
+
         model, result = _train_tabular(prepared, review, job["selected_device"])
         model_id = f"EVA-MODEL-{uuid.uuid4().hex.upper()}"
         version = 1
+
         artifact_dir.mkdir(parents=True, exist_ok=True)
         artifact_path = artifact_dir / f"{model_id}_v{version}.json"
-        # model_id is freshly generated, so this path belongs exclusively to
-        # this execution. The exception handler removes partial save output.
         model.save_model(str(artifact_path))
-        registry.update_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
-                            status="running", stage="evaluating", progress=85)
-        registered = registry.create_model(
-            model_id=model_id, version=version, dataset_id=dataset["dataset_id"],
-            data_id=dataset["data_id"], owner_id=owner_id, workspace_id=workspace_id,
-            model_family=result["model_family"], task_type=review["task_type"],
-            artifact_path=str(artifact_path), metrics=result["metrics"],
-            preprocessing=result["preprocessing"], status="candidate",
+
+        registry.update_job(
+            job_id, owner_id=owner_id, workspace_id=workspace_id,
+            status="running", stage="evaluating", progress=85,
+        )
+
+        registry.create_model(
+            model_id=model_id,
+            version=version,
+            dataset_id=dataset["dataset_id"],
+            data_id=dataset["data_id"],
+            owner_id=owner_id,
+            workspace_id=workspace_id,
+            model_family=result["model_family"],
+            task_type=review["task_type"],
+            artifact_path=str(artifact_path),
+            metrics=result["metrics"],
+            preprocessing=result["preprocessing"],
+            status="candidate",
         )
         model_registered = True
-        return registry.update_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
-                                   status="completed", stage="completed", progress=100,
-                                   metadata={"model_id": model_id, "model_version": version,
-                                             "metrics": result["metrics"],
-                                             "execution": result["execution"]})
+
+        return registry.update_job(
+            job_id, owner_id=owner_id, workspace_id=workspace_id,
+            status="completed", stage="completed", progress=100,
+            metadata={
+                "model_id": model_id,
+                "model_version": version,
+                "metrics": result["metrics"],
+                "execution": result["execution"],
+            },
+        )
+
     except Exception as exc:
-        # Remove only this execution's uniquely named artifact. If registration
-        # succeeded, keep the file because the model registry references it.
         cleanup_error = None
         if artifact_path is not None and not model_registered:
             try:
                 artifact_path.unlink(missing_ok=True)
             except OSError as cleanup_exc:
                 cleanup_error = type(cleanup_exc).__name__
+
         failure_message = str(exc)[:450]
         if cleanup_error:
-            failure_message = f"{failure_message} (artifact cleanup failed: {cleanup_error})"
-        registry.update_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
-                            status="failed", stage="failed", progress=0,
-                            error_code=type(exc).__name__,
-                            metadata={"failure_message": failure_message})
-        raise
+            failure_message = (
+                f"{failure_message} (artifact cleanup failed: {cleanup_error})"
+            )
 
+        registry.update_job(
+            job_id, owner_id=owner_id, workspace_id=workspace_id,
+            status="failed", stage="failed", progress=0,
+            error_code=type(exc).__name__,
+            metadata={"failure_message": failure_message},
+        )
+        raise
+    finally:
+        if heartbeat:
+            heartbeat.stop()
 
 def _execute_job_safely(job_id: str, *, owner_id: str, workspace_id: str,
                         already_claimed: bool = False) -> None:
@@ -327,7 +447,10 @@ def _execute_job_safely(job_id: str, *, owner_id: str, workspace_id: str,
 
 
 def run_training_job_safely(job_id: str, *, owner_id: str, workspace_id: str) -> None:
-    """Run one job, then drain the persistent queue serially on this local worker."""
+    """Recover verified dead workers, run one job, then drain the local queue."""
+    recovery = getattr(registry, "recover_stale_jobs", None)
+    if callable(recovery):
+        recovery()
     _execute_job_safely(job_id, owner_id=owner_id, workspace_id=workspace_id)
     while True:
         queued = registry.get_next_queued_job()

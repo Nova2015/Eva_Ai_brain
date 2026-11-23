@@ -4,9 +4,10 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import socket
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
@@ -16,6 +17,43 @@ _DEFAULT_DB = _ROOT / "data" / "eva_deep_learning.db"
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _process_start_time(pid: int) -> float | None:
+    """Return OS process creation time; None means liveness cannot be verified."""
+    try:
+        import psutil
+        return float(psutil.Process(pid).create_time())
+    except Exception:
+        return None
+
+
+def _is_recorded_process_alive(pid: int, expected_start_time: float) -> bool | None:
+    """True=recorded process alive, False=dead/PID reused, None=unknown."""
+    try:
+        import psutil
+    except ImportError:
+        return None
+    try:
+        process = psutil.Process(pid)
+        actual_start_time = float(process.create_time())
+        return abs(actual_start_time - expected_start_time) <= 1.5
+    except psutil.NoSuchProcess:
+        return False
+    except (psutil.AccessDenied, psutil.ZombieProcess):
+        return None
+    except Exception:
+        return None
+
+
+def _parse_utc(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
 
 
 class DeepLearningRegistry:
@@ -61,6 +99,8 @@ class DeepLearningRegistry:
                     selected_device TEXT NOT NULL, execution_environment TEXT NOT NULL,
                     error_code TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
                     metadata_json TEXT NOT NULL DEFAULT '{}',
+                    worker_token TEXT, worker_hostname TEXT, worker_pid INTEGER,
+                    worker_process_started_at REAL, heartbeat_at TEXT,
                     FOREIGN KEY(dataset_id) REFERENCES dl_datasets(dataset_id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_dl_jobs_scope
@@ -75,6 +115,26 @@ class DeepLearningRegistry:
                     created_at TEXT NOT NULL, PRIMARY KEY(model_id, version)
                 );
             """)
+            # Additive, idempotent migration for databases created by older builds.
+            existing_columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(dl_training_jobs)").fetchall()
+            }
+            lease_columns = {
+                "worker_token": "TEXT",
+                "worker_hostname": "TEXT",
+                "worker_pid": "INTEGER",
+                "worker_process_started_at": "REAL",
+                "heartbeat_at": "TEXT",
+            }
+            for column_name, column_type in lease_columns.items():
+                if column_name not in existing_columns:
+                    conn.execute(
+                        f"ALTER TABLE dl_training_jobs ADD COLUMN {column_name} {column_type}"
+                    )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_dl_jobs_worker_heartbeat "
+                "ON dl_training_jobs(status, heartbeat_at)"
+            )
 
     def create_dataset(self, *, data_id: str, owner_id: str, workspace_id: str,
                        file_name: str, file_path: str, file_type: str,
@@ -136,7 +196,7 @@ class DeepLearningRegistry:
                 WHERE dataset_id=? AND owner_id=? AND workspace_id=? AND status IN ('queued','running')
                 ORDER BY created_at DESC LIMIT 1""", (dataset_id, owner_id, workspace_id)).fetchone()
             if existing:
-                return dict(existing)
+                return self._public_job(dict(existing))
             job = {
                 "job_id": f"EVA-DL-JOB-{uuid.uuid4().hex.upper()}",
                 "dataset_id": dataset_id, "data_id": row["data_id"],
@@ -153,6 +213,17 @@ class DeepLearningRegistry:
                  :selected_device,:execution_environment,:error_code,:created_at,:updated_at,:metadata_json)""", job)
         return job
 
+    @staticmethod
+    def _public_job(row: dict[str, Any]) -> dict[str, Any]:
+        item = dict(row)
+        item.pop("metadata_json", None)
+        for internal_field in (
+            "worker_token", "worker_hostname", "worker_pid",
+            "worker_process_started_at", "heartbeat_at",
+        ):
+            item.pop(internal_field, None)
+        return item
+
     def get_job(self, job_id: str, *, owner_id: str, workspace_id: str) -> Optional[dict[str, Any]]:
         with self.connect() as conn:
             row = conn.execute("""SELECT * FROM dl_training_jobs
@@ -160,9 +231,7 @@ class DeepLearningRegistry:
                 (job_id, owner_id, workspace_id)).fetchone()
         if not row:
             return None
-        item = dict(row)
-        item.pop("metadata_json", None)
-        return item
+        return self._public_job(dict(row))
 
     def update_dataset_metadata(self, dataset_id: str, *, owner_id: str,
                                 workspace_id: str, updates: dict[str, Any],
@@ -181,8 +250,13 @@ class DeepLearningRegistry:
             updated = conn.execute("SELECT * FROM dl_datasets WHERE dataset_id=?", (dataset_id,)).fetchone()
         return self._public_dataset(dict(updated))
 
-    def claim_job(self, job_id: str, *, owner_id: str, workspace_id: str) -> bool:
-        """Atomically claim a queued job so duplicate dispatchers cannot train twice."""
+    def claim_job(self, job_id: str, *, owner_id: str, workspace_id: str,
+                  worker_token: str | None = None) -> bool:
+        """Atomically claim a queued job and bind it to this OS worker process."""
+        token = worker_token or uuid.uuid4().hex
+        pid = os.getpid()
+        process_started_at = _process_start_time(pid)
+        now = _now()
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             active = conn.execute(
@@ -191,11 +265,97 @@ class DeepLearningRegistry:
             ).fetchone()
             if active is not None:
                 return False
-            cursor = conn.execute("""UPDATE dl_training_jobs
-                SET status='running', stage='validating', progress=2, updated_at=?
-                WHERE job_id=? AND owner_id=? AND workspace_id=? AND status='queued'""",
-                (_now(), job_id, owner_id, workspace_id))
+            cursor = conn.execute(
+                """UPDATE dl_training_jobs
+                   SET status='running', stage='validating', progress=2, updated_at=?,
+                       worker_token=?, worker_hostname=?, worker_pid=?,
+                       worker_process_started_at=?, heartbeat_at=?
+                   WHERE job_id=? AND owner_id=? AND workspace_id=? AND status='queued'""",
+                (now, token, socket.gethostname(), pid, process_started_at, now,
+                 job_id, owner_id, workspace_id),
+            )
             return cursor.rowcount == 1
+
+    def get_worker_lease(self, job_id: str) -> Optional[dict[str, Any]]:
+        """Return worker lease details for internal worker code only."""
+        with self.connect() as conn:
+            row = conn.execute(
+                """SELECT worker_token, worker_hostname, worker_pid,
+                          worker_process_started_at, heartbeat_at, status
+                   FROM dl_training_jobs WHERE job_id=?""",
+                (job_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def heartbeat_job(self, job_id: str, *, worker_token: str) -> bool:
+        """Refresh a running job lease only when the caller still owns its token."""
+        now = _now()
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """UPDATE dl_training_jobs SET heartbeat_at=?, updated_at=?
+                   WHERE job_id=? AND status='running' AND worker_token=?""",
+                (now, now, job_id, worker_token),
+            )
+            return cursor.rowcount == 1
+
+    def recover_stale_jobs(self, *, stale_after_seconds: float = 60.0) -> list[str]:
+        """Fail only stale jobs whose recorded local OS process is proven dead.
+
+        Jobs from another host, legacy jobs without process identity, and jobs
+        whose process state cannot be verified are deliberately left untouched.
+        Jobs are never automatically re-queued.
+        """
+        if stale_after_seconds < 0:
+            raise ValueError("stale_after_seconds must be non-negative")
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=float(stale_after_seconds))
+        recovered: list[str] = []
+        local_hostname = socket.gethostname()
+
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            rows = conn.execute(
+                """SELECT job_id, worker_token, worker_hostname, worker_pid,
+                          worker_process_started_at, heartbeat_at, metadata_json
+                   FROM dl_training_jobs
+                   WHERE status='running' AND worker_token IS NOT NULL"""
+            ).fetchall()
+
+            for row in rows:
+                heartbeat = _parse_utc(row["heartbeat_at"])
+                if heartbeat is None or heartbeat > cutoff:
+                    continue
+                if row["worker_hostname"] != local_hostname:
+                    continue
+                if row["worker_pid"] is None or row["worker_process_started_at"] is None:
+                    continue
+                process_alive = _is_recorded_process_alive(
+                    int(row["worker_pid"]), float(row["worker_process_started_at"])
+                )
+                if process_alive is not False:
+                    continue
+
+                metadata = json.loads(row["metadata_json"] or "{}")
+                metadata.update({
+                    "failure_message": "Training worker process was no longer running; job marked failed during recovery.",
+                    "recovery": {
+                        "reason": "verified_worker_process_not_alive",
+                        "recovered_at": _now(),
+                        "worker_hostname": row["worker_hostname"],
+                        "worker_pid": row["worker_pid"],
+                        "last_heartbeat_at": row["heartbeat_at"],
+                    },
+                })
+                cursor = conn.execute(
+                    """UPDATE dl_training_jobs
+                       SET status='failed', stage='failed', progress=0,
+                           error_code='WorkerProcessLost', updated_at=?, metadata_json=?
+                       WHERE job_id=? AND status='running' AND worker_token=?""",
+                    (_now(), json.dumps(metadata, sort_keys=True),
+                     row["job_id"], row["worker_token"]),
+                )
+                if cursor.rowcount == 1:
+                    recovered.append(row["job_id"])
+        return recovered
 
     def get_next_queued_job(self) -> Optional[dict[str, str]]:
         """Return the oldest queued job's dispatch identity (worker-internal use)."""
@@ -228,9 +388,7 @@ class DeepLearningRegistry:
                 (status, stage, max(0.0, min(100.0, float(progress))), error_code, _now(),
                  json.dumps(current, sort_keys=True), job_id, owner_id, workspace_id))
             updated = conn.execute("SELECT * FROM dl_training_jobs WHERE job_id=?", (job_id,)).fetchone()
-        item = dict(updated)
-        item.pop("metadata_json", None)
-        return item
+        return self._public_job(dict(updated))
 
     def create_model(self, *, model_id: str, version: int, dataset_id: str, data_id: str,
                      owner_id: str, workspace_id: str, model_family: str, task_type: str,
