@@ -438,3 +438,62 @@ def test_orphan_cleanup_endpoint_records_audit_and_never_deletes_source(monkeypa
     assert result["governance_records_changed"] is False
     assert result["audit_recorded"] is True
     assert captured["audit"][1]["action"] == "orphan_rag_index_cleaned"
+
+
+def test_rag_owner_filter_does_not_treat_anonymous_or_default_as_wildcard():
+    from src.rag import hybrid_rag_v2 as rag
+
+    private_chunk = {
+        "user_id": "user-a",
+        "workspace_id": "cad",
+        "metadata": {"user_id": "user-a", "workspace_id": "cad"},
+    }
+    assert rag._chunk_user_matches(private_chunk, "user-a", "cad") is True
+    assert rag._chunk_user_matches(private_chunk, "user-b", "cad") is False
+    assert rag._chunk_user_matches(private_chunk, "anonymous", "cad") is False
+    assert rag._chunk_user_matches(private_chunk, "default", "cad") is False
+
+
+def test_chroma_bm25_fetch_always_filters_by_exact_owner(monkeypatch):
+    from src.rag import hybrid_rag_v2 as rag
+
+    class FakeCollection:
+        def count(self):
+            return 1
+
+        def get(self, **kwargs):
+            self.where = kwargs.get("where")
+            return {
+                "ids": ["private-1"],
+                "documents": ["private engineering data"],
+                "metadatas": [{"user_id": "user-a", "workspace_id": "cad"}],
+            }
+
+    collection = FakeCollection()
+    monkeypatch.setattr(rag, "_get_chroma", lambda: (object(), collection))
+
+    assert rag._chroma_chunks_for_user("anonymous") == []
+    assert collection.where == {"user_id": "anonymous"}
+    assert rag._chroma_chunks_for_user("user-a", workspace_id="cad")[0]["text"] == "private engineering data"
+    assert collection.where == {"user_id": "user-a"}
+
+
+def test_rag_query_rejects_anonymous_user():
+    from fastapi import HTTPException
+    from src.rag import rag_routes_v2 as routes
+
+    request = routes.QueryRequest(query="private document question")
+    with pytest.raises(HTTPException) as error:
+        routes.rag_query(request, user_id="anonymous")
+    assert error.value.status_code == 401
+
+
+def test_rag_chat_rejects_anonymous_user():
+    import asyncio
+    from fastapi import HTTPException
+    from src.rag import rag_routes_v2 as routes
+
+    request = routes.ChatRequest(message="private document question")
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(routes.rag_chat(request, user_id="anonymous"))
+    assert error.value.status_code == 401
