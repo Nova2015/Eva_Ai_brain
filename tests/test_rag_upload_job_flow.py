@@ -142,3 +142,55 @@ def test_retry_job_links_to_original_and_preserves_private_source_reference():
     assert public_retry["retry_of"] == "original-failed"
     assert "document_path" not in public_retry
     assert jm.get_job_internal("original-failed", owner_id="user-b") is None
+
+
+
+def test_reconciliation_reports_orphans_missing_files_and_hash_mismatches(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+
+    from src.data_governance import register_import
+    from src.rag import hybrid_rag_v2 as rag
+
+    def register(name, contents):
+        source = tmp_path / name
+        source.write_text(contents, encoding="utf-8")
+        return register_import(
+            source,
+            source="test",
+            owner_id="user-a",
+            workspace_id="cad",
+            actor_id="user-a",
+        ), source
+
+    indexed_record, _ = register("indexed.txt", "indexed source")
+    missing_index_record, _ = register("missing-index.txt", "not indexed")
+    changed_record, changed_path = register("changed.txt", "original bytes")
+    missing_file_record, missing_file_path = register("missing.txt", "will be removed")
+    missing_file_path.unlink()
+    changed_path.write_text("modified bytes", encoding="utf-8")
+
+    monkeypatch.setattr(rag, "_chroma_chunks_for_user", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        rag,
+        "_vectorless_chunks_for_user",
+        lambda *args, **kwargs: [
+            {"metadata": {"data_id": indexed_record["data_id"]}},
+            {"metadata": {"data_id": changed_record["data_id"]}},
+            {"metadata": {"data_id": "EVA-DATA-ORPHAN"}},
+        ],
+    )
+
+    report = rag.reconcile_data_sources("user-a", workspace_id="cad")
+
+    assert report["read_only"] is True
+    assert report["summary"]["missing_from_index"] == 2
+    assert report["summary"]["index_without_governance"] == 1
+    assert report["summary"]["missing_files"] == 1
+    assert report["summary"]["hash_mismatches"] == 1
+    assert {item["data_id"] for item in report["missing_from_index"]} == {
+        missing_index_record["data_id"],
+        missing_file_record["data_id"],
+    }
+    assert report["hash_mismatches"][0]["data_id"] == changed_record["data_id"]
+    assert report["actions_taken"] == []
+    assert not missing_file_path.exists()
