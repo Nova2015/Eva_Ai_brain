@@ -507,3 +507,36 @@ def test_jwt_without_user_identity_fails_closed(monkeypatch):
     monkeypatch.setattr(jose.jwt, "decode", lambda *args, **kwargs: {})
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="signed-token")
     assert routes.get_user_id(credentials) == "anonymous"
+
+
+def test_delete_indexed_document_is_owner_and_workspace_scoped(monkeypatch):
+    from src.rag import hybrid_rag_v2 as rag
+
+    class FakeCollection:
+        def __init__(self):
+            self.deleted = []
+            self.where_values = []
+
+        def count(self):
+            return 2
+
+        def get(self, **kwargs):
+            self.where_values.append(kwargs.get("where"))
+            return {
+                "ids": ["user-a-doc", "user-b-doc"],
+                "metadatas": [
+                    {"user_id": "user-a", "workspace_id": "cad", "source": "shared.txt"},
+                    {"user_id": "user-b", "workspace_id": "cad", "source": "shared.txt"},
+                ],
+            }
+
+        def delete(self, ids):
+            self.deleted.extend(ids)
+
+    collection = FakeCollection()
+    monkeypatch.setattr(rag, "_get_chroma", lambda: (object(), collection))
+    result = rag.delete_indexed_document("shared.txt", "user-a", workspace_id="cad")
+
+    assert result["deleted_chunks"] == 1
+    assert collection.deleted == ["user-a-doc"]
+    assert collection.where_values == [{"user_id": "user-a"}]
