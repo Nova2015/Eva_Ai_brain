@@ -19,6 +19,7 @@ from .identity_store import (
     set_training_approval,
     list_versions,
     list_audit_events,
+    record_governance_event,
 )
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "set_training_approval",
     "list_versions",
     "list_audit_events",
+    "record_governance_event",
 ]
