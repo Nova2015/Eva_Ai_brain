@@ -154,6 +154,53 @@ def _train_tabular(prepared: dict[str, Any], review: dict[str, Any], device: str
     # Use XGBoost's native Booster API rather than its scikit-learn wrappers.
     # This avoids estimator-tag incompatibilities across sklearn releases.
     model = xgb.train(common, train_matrix, num_boost_round=120)
+
+    # Capture execution evidence from the live Booster before serialization.
+    # XGBoost model files may reload with a CPU default even when training ran
+    # on CUDA, so artifact reload configuration is not a reliable GPU audit.
+    training_config = json.loads(model.save_config())
+
+    def _config_values(node: Any, key: str) -> list[str]:
+        found: list[str] = []
+        if isinstance(node, dict):
+            for child_key, child_value in node.items():
+                if child_key == key and child_value is not None:
+                    found.append(str(child_value))
+                found.extend(_config_values(child_value, key))
+        elif isinstance(node, list):
+            for child_value in node:
+                found.extend(_config_values(child_value, key))
+        return found
+
+    device_values = _config_values(training_config, "device")
+    updater_values = _config_values(training_config, "updater")
+    actual_device = next((value for value in device_values if "cuda" in value.lower()),
+                         device_values[-1] if device_values else "unknown")
+    actual_updater = next((value for value in updater_values if "gpu" in value.lower()),
+                          updater_values[-1] if updater_values else "unknown")
+    execution = {
+        "requested_device": device,
+        "actual_device": actual_device,
+        "actual_updater": actual_updater,
+        "xgboost_version": xgb.__version__,
+        "xgboost_cuda_build": bool(
+            xgb.build_info().get("USE_CUDA", False) is True
+            or str(xgb.build_info().get("USE_CUDA", False)).strip().lower()
+            in {"1", "true", "on", "yes"}
+        ),
+    }
+    if device == "cuda":
+        if not any("cuda" in value.lower() for value in device_values):
+            raise RuntimeError(
+                "CUDA was requested but the trained Booster reports no CUDA device"
+            )
+        if not any("grow_gpu_hist" in value.lower() for value in updater_values):
+            raise RuntimeError(
+                "CUDA was requested but the trained Booster reports no GPU histogram updater"
+            )
+        import torch
+        execution["gpu_name"] = torch.cuda.get_device_name(0)
+
     predictions = model.predict(validation_matrix)
     if task == "classification":
         if len(label_mapping) == 2:
@@ -168,7 +215,8 @@ def _train_tabular(prepared: dict[str, Any], review: dict[str, Any], device: str
     preprocessing = {"feature_columns": features, "target_column": target,
                      "missing_value_medians": medians, "categorical_encoders": encoders, "feature_kinds": feature_kinds,
                      "label_mapping": label_mapping, "split_seed": 42, "validation_fraction": 0.2}
-    return model, {"metrics": metrics, "preprocessing": preprocessing, "model_family": "XGBoost"}
+    return model, {"metrics": metrics, "preprocessing": preprocessing,
+                   "model_family": "XGBoost", "execution": execution}
 
 
 def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
@@ -236,7 +284,8 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
         return registry.update_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
                                    status="completed", stage="completed", progress=100,
                                    metadata={"model_id": model_id, "model_version": version,
-                                             "metrics": result["metrics"]})
+                                             "metrics": result["metrics"],
+                                             "execution": result["execution"]})
     except Exception as exc:
         registry.update_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
                             status="failed", stage="failed", progress=0,
