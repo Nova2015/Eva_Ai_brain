@@ -261,6 +261,8 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
 
     registry.update_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
                         status="running", stage="validating", progress=5)
+    artifact_path: Path | None = None
+    model_registered = False
     try:
         if review.get("modality") != "tabular":
             raise NotImplementedError("This worker release executes tabular datasets only; other modality adapters are not yet enabled")
@@ -271,6 +273,8 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
         version = 1
         artifact_dir.mkdir(parents=True, exist_ok=True)
         artifact_path = artifact_dir / f"{model_id}_v{version}.json"
+        # model_id is freshly generated, so this path belongs exclusively to
+        # this execution. The exception handler removes partial save output.
         model.save_model(str(artifact_path))
         registry.update_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
                             status="running", stage="evaluating", progress=85)
@@ -281,16 +285,28 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
             artifact_path=str(artifact_path), metrics=result["metrics"],
             preprocessing=result["preprocessing"], status="candidate",
         )
+        model_registered = True
         return registry.update_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
                                    status="completed", stage="completed", progress=100,
                                    metadata={"model_id": model_id, "model_version": version,
                                              "metrics": result["metrics"],
                                              "execution": result["execution"]})
     except Exception as exc:
+        # Remove only this execution's uniquely named artifact. If registration
+        # succeeded, keep the file because the model registry references it.
+        cleanup_error = None
+        if artifact_path is not None and not model_registered:
+            try:
+                artifact_path.unlink(missing_ok=True)
+            except OSError as cleanup_exc:
+                cleanup_error = type(cleanup_exc).__name__
+        failure_message = str(exc)[:450]
+        if cleanup_error:
+            failure_message = f"{failure_message} (artifact cleanup failed: {cleanup_error})"
         registry.update_job(job_id, owner_id=owner_id, workspace_id=workspace_id,
                             status="failed", stage="failed", progress=0,
                             error_code=type(exc).__name__,
-                            metadata={"failure_message": str(exc)[:500]})
+                            metadata={"failure_message": failure_message})
         raise
 
 
