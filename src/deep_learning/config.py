@@ -9,6 +9,35 @@ import os
 from typing import Any
 
 
+def choose_compute_device(
+    compute: str,
+    *,
+    cuda_available: bool,
+    free_vram_mb: int | None,
+    available_ram_mb: int | None,
+    min_free_vram_mb: int = 1024,
+    min_available_ram_mb: int = 2048,
+) -> tuple[str, str]:
+    """Choose a device conservatively from observed free resources."""
+    if compute not in {"auto", "gpu", "cpu"}:
+        raise ValueError("Unsupported compute policy")
+    if compute == "cpu":
+        return "cpu", "CPU-only policy selected"
+    ram_ok = available_ram_mb is None or available_ram_mb >= min_available_ram_mb
+    gpu_ok = cuda_available and free_vram_mb is not None and free_vram_mb >= min_free_vram_mb and ram_ok
+    if compute == "gpu":
+        if not cuda_available:
+            raise RuntimeError("GPU priority requested but CUDA is unavailable")
+        if free_vram_mb is None or free_vram_mb < min_free_vram_mb:
+            raise RuntimeError("GPU priority requested but free VRAM is below the configured safety threshold")
+        if not ram_ok:
+            raise RuntimeError("GPU priority requested but available system RAM is below the configured safety threshold")
+        return "cuda", "GPU priority selected; free VRAM and system RAM satisfy safety thresholds"
+    if gpu_ok:
+        return "cuda", "Auto selected GPU; free VRAM and system RAM satisfy safety thresholds"
+    return "cpu", "Auto selected CPU because CUDA/resource checks did not satisfy safety thresholds"
+
+
 def get_runtime_policy() -> dict[str, Any]:
     training_mode = os.getenv("EVA_DL_TRAINING_MODE", "automatic").strip().lower()
     environment = os.getenv("EVA_DL_ENVIRONMENT", "local-cloud").strip().lower()
@@ -21,27 +50,45 @@ def get_runtime_policy() -> dict[str, Any]:
     if compute not in {"auto", "gpu", "cpu"}:
         compute = "auto"
 
-    device = "cpu"
     cuda_available = False
+    free_vram_mb = None
     try:
         import torch
         cuda_available = bool(torch.cuda.is_available())
-        if compute == "gpu":
-            if not cuda_available:
-                raise RuntimeError("GPU priority requested but CUDA is unavailable")
-            device = "cuda"
-        elif compute == "auto" and cuda_available:
-            device = "cuda"
+        if cuda_available:
+            free_bytes, _total_bytes = torch.cuda.mem_get_info()
+            free_vram_mb = int(free_bytes / (1024 * 1024))
     except ImportError:
-        if compute == "gpu":
-            raise RuntimeError("GPU priority requested but PyTorch is not installed")
+        pass
+    except Exception:
+        # A failed telemetry query must not make Auto overcommit the GPU.
+        free_vram_mb = None
 
+    available_ram_mb = None
+    try:
+        import psutil
+        available_ram_mb = int(psutil.virtual_memory().available / (1024 * 1024))
+    except Exception:
+        pass
+
+    min_vram = int(os.getenv("EVA_DL_MIN_FREE_VRAM_MB", "1024"))
+    min_ram = int(os.getenv("EVA_DL_MIN_AVAILABLE_RAM_MB", "2048"))
+    device, selection_reason = choose_compute_device(
+        compute, cuda_available=cuda_available, free_vram_mb=free_vram_mb,
+        available_ram_mb=available_ram_mb, min_free_vram_mb=min_vram,
+        min_available_ram_mb=min_ram,
+    )
     return {
         "training_mode": training_mode,
         "environment": environment,
         "compute": compute,
         "selected_device": device,
+        "selection_reason": selection_reason,
         "cuda_available": cuda_available,
+        "free_vram_mb": free_vram_mb,
+        "available_ram_mb": available_ram_mb,
+        "min_free_vram_mb": min_vram,
+        "min_available_ram_mb": min_ram,
         "cloud_enabled": cloud_enabled,
         "cloud_ready": False,
         "cloud_policy": "public data only; explicit per-job approval required",
