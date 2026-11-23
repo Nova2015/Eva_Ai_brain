@@ -28,8 +28,38 @@ def test_tabular_xgboost_worker_trains_and_evaluates_cpu_candidate():
         {"target_column": "defect", "feature_columns": ["measurement"], "task_type": "classification"},
         "cpu",
     )
-    assert model is not None
+    import xgboost as xgb
+    assert isinstance(model, xgb.Booster)
     assert 0.0 <= result["metrics"]["accuracy"] <= 1.0
+    assert result["metrics"]["train_rows"] + result["metrics"]["validation_rows"] == 40
+    assert result["model_family"] == "XGBoost"
+
+    # Native Booster serialization must not depend on sklearn estimator tags.
+    artifact = tmp_path / "classifier.json"
+    model.save_model(str(artifact))
+    reloaded = xgb.Booster()
+    reloaded.load_model(str(artifact))
+    sample = xgb.DMatrix([[10.0]])
+    prediction = reloaded.predict(sample)
+    assert prediction.shape == (1,)
+    assert 0.0 <= float(prediction[0]) <= 1.0
+
+
+def test_tabular_xgboost_worker_trains_native_cpu_regressor():
+    import xgboost as xgb
+    from src.deep_learning.worker import _train_tabular
+
+    rows = [["measurement", "target"]]
+    for index in range(40):
+        rows.append([float(index), float(index * 3 + 2)])
+    model, result = _train_tabular(
+        {"tables": [rows]},
+        {"target_column": "target", "feature_columns": ["measurement"], "task_type": "regression"},
+        "cpu",
+    )
+    assert isinstance(model, xgb.Booster)
+    assert result["metrics"]["rmse"] >= 0.0
+    assert result["metrics"]["mae"] >= 0.0
     assert result["metrics"]["train_rows"] + result["metrics"]["validation_rows"] == 40
     assert result["model_family"] == "XGBoost"
 
