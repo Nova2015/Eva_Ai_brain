@@ -9,6 +9,7 @@ from src.data_governance import (
     list_versions,
     record_revision,
     register_import,
+    recover_location,
     set_training_approval,
     update_location,
 )
@@ -128,3 +129,67 @@ def test_list_records_is_scoped_to_owner_and_workspace(tmp_path, monkeypatch):
     assert [record["data_id"] for record in scoped] == [first["data_id"]]
     assert len(owner_records) == 2
     assert all(record["owner_id"] == "user-1" for record in owner_records)
+
+
+
+def test_recover_location_preserves_data_id_and_requires_matching_hash(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    governed_root = tmp_path / "governed"
+    governed_root.mkdir()
+    original = governed_root / "original.txt"
+    recovered = governed_root / "renamed.txt"
+    original.write_text("same approved bytes", encoding="utf-8")
+    record = register_import(
+        original,
+        source="test",
+        owner_id="user-1",
+        workspace_id="workspace-1",
+        actor_id="user-1",
+    )
+    original.rename(recovered)
+
+    updated = recover_location(
+        record["data_id"],
+        recovered,
+        owner_id="user-1",
+        workspace_id="workspace-1",
+        actor_id="user-1",
+        allowed_root=governed_root,
+    )
+
+    assert updated["data_id"] == record["data_id"]
+    assert updated["file_path"] == str(recovered.resolve())
+    assert updated["version"] == record["version"]
+    assert list_audit_events(record["data_id"])[-1]["action"] == "location_recovered"
+
+
+def test_recover_location_rejects_hash_mismatch_and_outside_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    governed_root = tmp_path / "governed"
+    governed_root.mkdir()
+    original = governed_root / "original.txt"
+    changed = governed_root / "changed.txt"
+    outside = tmp_path / "outside.txt"
+    original.write_text("approved bytes", encoding="utf-8")
+    changed.write_text("different bytes", encoding="utf-8")
+    outside.write_text("approved bytes", encoding="utf-8")
+    record = register_import(
+        original,
+        source="test",
+        owner_id="user-1",
+        workspace_id="workspace-1",
+        actor_id="user-1",
+    )
+
+    with pytest.raises(ValueError, match="SHA-256"):
+        recover_location(
+            record["data_id"], changed, owner_id="user-1",
+            workspace_id="workspace-1", actor_id="user-1",
+            allowed_root=governed_root,
+        )
+    with pytest.raises(ValueError, match="inside"):
+        recover_location(
+            record["data_id"], outside, owner_id="user-1",
+            workspace_id="workspace-1", actor_id="user-1",
+            allowed_root=governed_root,
+        )
