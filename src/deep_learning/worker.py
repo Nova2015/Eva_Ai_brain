@@ -155,8 +155,10 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str) -> dict[s
     job = registry.get_job(job_id, owner_id=owner_id, workspace_id=workspace_id)
     if job is None:
         raise KeyError("Training job not found")
-    if job["status"] not in {"queued", "failed"}:
+    if job["status"] != "queued":
         return job
+    if not registry.claim_job(job_id, owner_id=owner_id, workspace_id=workspace_id):
+        return registry.get_job(job_id, owner_id=owner_id, workspace_id=workspace_id) or job
     dataset = registry.get_dataset(job["dataset_id"], owner_id=owner_id, workspace_id=workspace_id)
     if dataset is None:
         raise KeyError("Training dataset not found")
