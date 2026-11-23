@@ -201,7 +201,10 @@ def get_user_id(creds: Optional[HTTPAuthorizationCredentials] = Depends(security
         if not secret:
             return "anonymous"
         payload = jose_jwt.decode(creds.credentials, secret, algorithms=["HS256"])
-        return payload.get("sub") or payload.get("email") or payload.get("user_id") or "user"
+        identity = payload.get("sub") or payload.get("email") or payload.get("user_id")
+        if not isinstance(identity, str) or not identity.strip():
+            return "anonymous"
+        return identity.strip()
     except Exception:
         return "anonymous"
 
