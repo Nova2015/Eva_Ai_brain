@@ -275,12 +275,20 @@ def _index_vectorless_chunks(chunks: List[str], source: str, user_id: str, metad
     global _vectorless_chunks
     base_meta = metadata or {}
     created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    incoming_data_id = base_meta.get("data_id")
     _vectorless_chunks = [
         chunk for chunk in _vectorless_chunks
         if not (
             chunk.get("user_id") == user_id
-            and chunk.get("source") == source
             and (chunk.get("metadata") or {}).get("workspace_id") == base_meta.get("workspace_id")
+            and (
+                (incoming_data_id and (chunk.get("metadata") or {}).get("data_id") == incoming_data_id)
+                or (
+                    not incoming_data_id
+                    and not (chunk.get("metadata") or {}).get("data_id")
+                    and chunk.get("source") == source
+                )
+            )
         )
     ]
     for i, chunk in enumerate(chunks):
