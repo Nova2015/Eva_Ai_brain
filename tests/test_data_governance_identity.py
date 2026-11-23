@@ -5,6 +5,7 @@ import pytest
 
 from src.data_governance import (
     get_record,
+    list_records,
     list_versions,
     record_revision,
     register_import,
@@ -96,3 +97,34 @@ def test_invalid_classification_is_rejected(tmp_path, monkeypatch):
             actor_id="user-1",
             classification="unknown",
         )
+
+
+
+def test_list_records_is_scoped_to_owner_and_workspace(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    first_file = tmp_path / "first.txt"
+    second_file = tmp_path / "second.txt"
+    third_file = tmp_path / "third.txt"
+    first_file.write_text("owner one workspace one", encoding="utf-8")
+    second_file.write_text("owner one workspace two", encoding="utf-8")
+    third_file.write_text("owner two workspace one", encoding="utf-8")
+
+    first = register_import(
+        first_file, source="test", owner_id="user-1", workspace_id="workspace-1",
+        actor_id="user-1",
+    )
+    register_import(
+        second_file, source="test", owner_id="user-1", workspace_id="workspace-2",
+        actor_id="user-1",
+    )
+    register_import(
+        third_file, source="test", owner_id="user-2", workspace_id="workspace-1",
+        actor_id="user-2",
+    )
+
+    scoped = list_records(owner_id="user-1", workspace_id="workspace-1")
+    owner_records = list_records(owner_id="user-1")
+
+    assert [record["data_id"] for record in scoped] == [first["data_id"]]
+    assert len(owner_records) == 2
+    assert all(record["owner_id"] == "user-1" for record in owner_records)
