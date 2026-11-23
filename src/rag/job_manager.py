@@ -3,6 +3,7 @@ import json
 import os
 import sqlite3
 import threading
+from contextlib import contextmanager
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -19,16 +20,24 @@ _LOCK=threading.RLock()
 def _db_path():
     return Path(os.getenv("EVA_RAG_JOB_DB",str(_DEFAULT_DB))).expanduser()
 
+@contextmanager
 def _connect():
     path=_db_path(); path.parent.mkdir(parents=True,exist_ok=True)
     conn=sqlite3.connect(str(path),timeout=30)
     conn.row_factory=sqlite3.Row
     conn.execute("PRAGMA busy_timeout=30000")
-    conn.execute("""CREATE TABLE IF NOT EXISTS rag_ingestion_jobs(
-        job_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
-        status TEXT NOT NULL, updated_at REAL NOT NULL, payload_json TEXT NOT NULL)""")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_jobs_owner_updated ON rag_ingestion_jobs(owner_id,updated_at)")
-    return conn
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS rag_ingestion_jobs(
+            job_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
+            status TEXT NOT NULL, updated_at REAL NOT NULL, payload_json TEXT NOT NULL)""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_jobs_owner_updated ON rag_ingestion_jobs(owner_id,updated_at)")
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def _persist(job):
     payload=json.dumps(job,ensure_ascii=False,separators=(",",":"))
