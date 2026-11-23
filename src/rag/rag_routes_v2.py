@@ -21,6 +21,10 @@ import uuid
 import logging
 import threading
 import shutil
+import asyncio
+import ipaddress
+import socket
+from urllib.parse import urlsplit
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -83,6 +87,49 @@ PERSISTENT_DOCUMENT_DIR = Path(
 ).expanduser()
 
 SUPPORTED_EXTS = {".pdf", ".txt", ".md", ".docx", ".csv", ".json", ".py", ".js", ".ts", ".html"}
+MAX_INGEST_URL_BYTES = int(os.getenv("EVA_RAG_MAX_URL_BYTES", str(5 * 1024 * 1024)))
+ALLOWED_INGEST_CONTENT_TYPES = {
+    "text/html", "application/xhtml+xml", "text/plain"
+}
+
+
+def _validate_public_ingest_url(url: str) -> str:
+    """Reject non-public destinations before making an outbound URL-ingest request."""
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("A valid HTTP(S) URL is required")
+    parsed = urlsplit(url.strip())
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise ValueError("Only HTTP and HTTPS URLs are supported")
+    if not parsed.hostname or parsed.username is not None or parsed.password is not None:
+        raise ValueError("URL host is invalid")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("URL port is invalid") from exc
+    expected_port = 443 if parsed.scheme.lower() == "https" else 80
+    if port not in (None, expected_port):
+        raise ValueError("Only standard HTTP and HTTPS ports are allowed")
+
+    host = parsed.hostname.rstrip(".").lower()
+    if host in {"localhost"} or host.endswith((".localhost", ".local", ".internal", ".test")):
+        raise ValueError("Local and internal hostnames are not allowed")
+    try:
+        literal = ipaddress.ip_address(host)
+        addresses = [literal]
+    except ValueError:
+        try:
+            resolved = socket.getaddrinfo(host, port or expected_port, type=socket.SOCK_STREAM)
+        except OSError as exc:
+            raise ValueError("URL hostname could not be resolved") from exc
+        addresses = []
+        for item in resolved:
+            try:
+                addresses.append(ipaddress.ip_address(item[4][0].split("%", 1)[0]))
+            except ValueError:
+                continue
+    if not addresses or any(not address.is_global for address in addresses):
+        raise ValueError("URL must resolve exclusively to public IP addresses")
+    return parsed.geturl()
 
 
 def _run_upload_job(job_id: str, filename: str, tmp_file: str, size_bytes: int, user_id: str, workspace_id: Optional[str], ext: str, existing_data_id: Optional[str] = None, existing_document_path: Optional[str] = None):
@@ -429,37 +476,93 @@ async def rag_upload(
 
 @router.post("/ingest-url")
 async def rag_ingest_url(req: IngestURLRequest, user_id: str = Depends(get_user_id)):
-    """Fetch a URL and index its text content."""
+    """Safely fetch a public web page, retain it locally and index it as governed data."""
     _require_authenticated_user(user_id)
-    url = req.url.strip()
-    if not url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
+    try:
+        url = await asyncio.to_thread(_validate_public_ingest_url, req.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     workspace_id = effective_workspace_id(req.workspace_id, user_id)
     try:
         import httpx
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            resp = await client.get(url, headers={"User-Agent": "EVA-RAG/2.0"})
-            resp.raise_for_status()
-            raw = resp.text
+        body = bytearray()
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0), follow_redirects=False) as client:
+            async with client.stream(
+                "GET", url, headers={"User-Agent": "EVA-RAG/2.0"}
+            ) as resp:
+                if 300 <= resp.status_code < 400:
+                    raise HTTPException(status_code=400, detail="Redirects are not followed by secure URL ingestion")
+                resp.raise_for_status()
+                content_type = resp.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                if content_type not in ALLOWED_INGEST_CONTENT_TYPES:
+                    raise HTTPException(status_code=415, detail="Only HTML and plain-text web pages can be ingested")
+                declared_size = resp.headers.get("content-length")
+                if declared_size:
+                    try:
+                        if int(declared_size) > MAX_INGEST_URL_BYTES:
+                            raise HTTPException(status_code=413, detail="URL content exceeds the ingestion size limit")
+                    except ValueError:
+                        raise HTTPException(status_code=502, detail="Invalid Content-Length from URL source")
+                async for chunk in resp.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > MAX_INGEST_URL_BYTES:
+                        raise HTTPException(status_code=413, detail="URL content exceeds the ingestion size limit")
 
-        text = _strip_html(raw)
-        if not text or len(text.strip()) < 100:
+        raw = bytes(body).decode("utf-8", errors="replace")
+        extracted_text = _strip_html(raw) if content_type != "text/plain" else raw
+        if not extracted_text or len(extracted_text.strip()) < 100:
             raise HTTPException(status_code=422, detail="URL returned insufficient text content")
 
+        PERSISTENT_DOCUMENT_DIR.mkdir(parents=True, exist_ok=True)
+        web_source_dir = PERSISTENT_DOCUMENT_DIR / "web_sources"
+        web_source_dir.mkdir(parents=True, exist_ok=True)
+        stored_path = web_source_dir / f"{uuid.uuid4().hex}.txt"
+        stored_path.write_text(extracted_text, encoding="utf-8")
+        try:
+            data_record = register_import(
+                stored_path,
+                source="rag_url_ingest",
+                owner_id=user_id,
+                workspace_id=workspace_id,
+                actor_id=user_id,
+                classification=os.getenv("EVA_RAG_DEFAULT_CLASSIFICATION", "restricted"),
+            )
+        except Exception:
+            stored_path.unlink(missing_ok=True)
+            raise
+
         result = index_document(
-            text=text,
-            source=url,
+            text=extracted_text,
+            source=stored_path.name,
             user_id=user_id,
             workspace_id=workspace_id,
-            metadata={"url": url, "type": "web", **(req.metadata or {})},
+            metadata={
+                "filename": stored_path.name,
+                "ext": ".txt",
+                "size": stored_path.stat().st_size,
+                "data_id": data_record["data_id"],
+                "classification": data_record["classification"],
+                "source_url": url,
+                "type": "web",
+            },
         )
-
         if not result.get("ok"):
-            raise HTTPException(status_code=500, detail=result.get("error", "Indexing failed"))
+            # Keep the governed source: reconciliation can safely repair indexing later.
+            raise HTTPException(
+                status_code=500,
+                detail={"message": result.get("error", "Indexing failed"), "data_id": data_record["data_id"]},
+            )
 
+        record_governance_event(
+            data_record["data_id"], action="rag_url_ingested", actor_id=user_id,
+            details={"source_url": url, "chunks": result.get("chunks", 0)},
+        )
         return {
             "ok": True,
             "url": url,
+            "data_id": data_record["data_id"],
+            "classification": data_record["classification"],
             "workspace_id": workspace_id,
             "chunks_created": result["chunks"],
             "vector_indexed": result.get("vector_indexed", False),
@@ -468,9 +571,9 @@ async def rag_ingest_url(req: IngestURLRequest, user_id: str = Depends(get_user_
         }
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"URL ingest failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        logger.error("URL ingest failed: %s", exc)
+        raise HTTPException(status_code=500, detail="URL ingestion failed")
 
 
 @router.get("/jobs/{job_id}")
