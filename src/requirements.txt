@@ -8,7 +8,7 @@ python-dotenv
 httpx
 pandas
 numpy
-xgboost
+xgboost>=2.0
 Pillow
 gtts
 faiss-cpu
