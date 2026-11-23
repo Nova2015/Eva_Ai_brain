@@ -1,6 +1,7 @@
 """Authenticated FastAPI surface for EVA's independent Deep Learning Engine."""
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from pathlib import Path
