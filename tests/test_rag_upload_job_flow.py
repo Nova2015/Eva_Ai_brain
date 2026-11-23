@@ -320,3 +320,121 @@ def test_reconciliation_repair_blocks_modified_source_content(tmp_path, monkeypa
 
     assert error.value.status_code == 409
     assert "revision review" in error.value.detail.lower()
+
+
+
+def test_orphan_cleanup_deletes_only_exact_owner_workspace_data_id(monkeypatch):
+    from src.rag import hybrid_rag_v2 as rag
+
+    class FakeCollection:
+        def __init__(self):
+            self.deleted = []
+
+        def count(self):
+            return 3
+
+        def get(self, where=None, limit=None, offset=0, include=None):
+            rows = [
+                ("chunk-a", {"user_id": "user-a", "workspace_id": "cad", "data_id": "ORPHAN-A"}),
+                ("chunk-b", {"user_id": "user-a", "workspace_id": "cad", "data_id": "VALID-B"}),
+                ("chunk-c", {"user_id": "user-b", "workspace_id": "cad", "data_id": "ORPHAN-A"}),
+            ][offset:offset + limit]
+            return {"ids": [row[0] for row in rows], "metadatas": [row[1] for row in rows]}
+
+        def delete(self, ids):
+            self.deleted.extend(ids)
+
+    collection = FakeCollection()
+    monkeypatch.setattr(rag, "_get_chroma", lambda: (object(), collection))
+    monkeypatch.setattr(rag, "_vectorless_chunks", [
+        {
+            "id": "vl-a",
+            "user_id": "user-a",
+            "workspace_id": "cad",
+            "metadata": {"user_id": "user-a", "workspace_id": "cad", "data_id": "ORPHAN-A"},
+        },
+        {
+            "id": "vl-b",
+            "user_id": "user-a",
+            "workspace_id": "cad",
+            "metadata": {"user_id": "user-a", "workspace_id": "other", "data_id": "ORPHAN-A"},
+        },
+        {
+            "id": "vl-c",
+            "user_id": "user-b",
+            "workspace_id": "cad",
+            "metadata": {"user_id": "user-b", "workspace_id": "cad", "data_id": "ORPHAN-A"},
+        },
+    ])
+
+    result = rag.delete_orphaned_data_id(
+        "ORPHAN-A", user_id="user-a", workspace_id="cad"
+    )
+
+    assert collection.deleted == ["chunk-a"]
+    assert result["deleted_vector_chunks"] == 1
+    assert result["deleted_vectorless_chunks"] == 1
+    assert [item["id"] for item in rag._vectorless_chunks] == ["vl-b", "vl-c"]
+
+
+def test_orphan_cleanup_requires_current_orphan_and_explicit_approval(monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+    from src.rag import rag_routes_v2 as routes
+
+    request = routes.OrphanIndexCleanupRequest(
+        data_id="ORPHAN-A", approved=False, workspace_id="cad"
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(routes.rag_reconciliation_cleanup_orphan(request, user_id="user-a"))
+    assert error.value.status_code == 400
+
+    request.approved = True
+    monkeypatch.setattr(
+        routes, "reconcile_data_sources",
+        lambda user_id, workspace_id=None: {"index_without_governance": []},
+    )
+    monkeypatch.setattr(
+        routes, "delete_orphaned_data_id",
+        lambda *args, **kwargs: pytest.fail("Non-orphan data must never be deleted"),
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(routes.rag_reconciliation_cleanup_orphan(request, user_id="user-a"))
+    assert error.value.status_code == 409
+
+
+def test_orphan_cleanup_endpoint_records_audit_and_never_deletes_source(monkeypatch):
+    import asyncio
+    from src.rag import rag_routes_v2 as routes
+
+    captured = {}
+    request = routes.OrphanIndexCleanupRequest(
+        data_id="ORPHAN-A", approved=True, workspace_id="cad"
+    )
+    monkeypatch.setattr(
+        routes, "reconcile_data_sources",
+        lambda user_id, workspace_id=None: {
+            "index_without_governance": [{"data_id": "ORPHAN-A"}]
+        },
+    )
+    monkeypatch.setattr(
+        routes, "delete_orphaned_data_id",
+        lambda *args, **kwargs: {
+            "ok": True, "data_id": "ORPHAN-A",
+            "deleted_vector_chunks": 2,
+            "deleted_vectorless_chunks": 1,
+            "deleted_chunks": 3,
+        },
+    )
+    monkeypatch.setattr(
+        routes, "record_reconciliation_event",
+        lambda *args, **kwargs: captured.update({"audit": (args, kwargs)}),
+    )
+
+    result = asyncio.run(routes.rag_reconciliation_cleanup_orphan(request, user_id="user-a"))
+
+    assert result["deleted_chunks"] == 3
+    assert result["source_files_deleted"] is False
+    assert result["governance_records_changed"] is False
+    assert result["audit_recorded"] is True
+    assert captured["audit"][1]["action"] == "orphan_rag_index_cleaned"
