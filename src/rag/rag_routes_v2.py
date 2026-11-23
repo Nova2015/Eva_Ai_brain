@@ -75,6 +75,11 @@ except ImportError:
     from . import upload_policy
     from . import job_manager as jm
 
+try:
+    from . import graph_store
+except ImportError:
+    import graph_store
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
@@ -329,7 +334,189 @@ class IngestURLRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+class GraphEntityCandidate(BaseModel):
+    name: str
+    entity_type: str
+    chunk_id: str
+    evidence_text: str
+    confidence: float = 0.5
+
+
+class GraphRelationshipCandidate(BaseModel):
+    source_name: str
+    source_type: str
+    target_name: str
+    target_type: str
+    predicate: str
+    chunk_id: str
+    evidence_text: str
+    confidence: float = 0.5
+
+
+class GraphProposalRequest(BaseModel):
+    data_id: str
+    workspace_id: Optional[str] = None
+    entities: List[GraphEntityCandidate] = []
+    relationships: List[GraphRelationshipCandidate] = []
+
+
+class GraphEvidenceReviewRequest(BaseModel):
+    evidence_id: str
+    status: str
+    workspace_id: Optional[str] = None
+
+
+class GraphQueryRequest(BaseModel):
+    query: str
+    workspace_id: Optional[str] = None
+    max_hops: int = 2
+    limit: int = 30
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+def _normalized_evidence_text(value: str) -> str:
+    import re
+    return re.sub(r"\\s+", " ", (value or "").strip()).casefold()
+
+
+def _load_current_governed_text(data_id: str, user_id: str, workspace_id: str):
+    record = get_record(data_id)
+    if not record or record.get("owner_id") != user_id or record.get("workspace_id") != workspace_id:
+        raise HTTPException(status_code=404, detail="Governed source not found")
+    source_path = Path(record.get("file_path") or "")
+    if not source_path.is_file():
+        raise HTTPException(status_code=409, detail="Governed source file is unavailable")
+    if sha256_file(source_path) != record.get("sha256"):
+        raise HTTPException(status_code=409, detail="Source content differs from its approved Governance revision")
+    ext = source_path.suffix.lower()
+    if ext not in SUPPORTED_EXTS:
+        raise HTTPException(status_code=415, detail="Unsupported governed source type for graph extraction")
+    source_text = _extract_text(source_path, ext)
+    if not source_text or not source_text.strip():
+        raise HTTPException(status_code=422, detail="No extractable text found in governed source")
+    return record, source_text
+
+
+@router.post("/graph/proposals")
+async def rag_graph_proposals(req: GraphProposalRequest, user_id: str = Depends(get_user_id)):
+    """Validate model-generated graph candidates against the current governed source."""
+    _require_authenticated_user(user_id)
+    workspace_id = effective_workspace_id(req.workspace_id, user_id)
+    if len(req.entities) > 200 or len(req.relationships) > 300:
+        raise HTTPException(status_code=413, detail="Graph proposal batch exceeds the allowed candidate count")
+    if not req.entities and not req.relationships:
+        raise HTTPException(status_code=400, detail="At least one entity or relationship candidate is required")
+    record, source_text = _load_current_governed_text(req.data_id, user_id, workspace_id)
+    normalized_source = _normalized_evidence_text(source_text)
+    entity_ids = {}
+    entity_results = []
+    relationship_results = []
+    try:
+        for candidate in req.entities:
+            evidence = _normalized_evidence_text(candidate.evidence_text)
+            if not evidence or evidence not in normalized_source:
+                raise HTTPException(status_code=422, detail="Entity evidence must be an exact excerpt from the governed source")
+            item = graph_store.upsert_entity(
+                candidate.name, candidate.entity_type,
+                data_id=req.data_id, owner_id=user_id, workspace_id=workspace_id,
+                actor_id=user_id, chunk_id=candidate.chunk_id,
+                evidence_text=candidate.evidence_text, confidence=candidate.confidence,
+            )
+            entity_ids[(candidate.name.strip().casefold(), candidate.entity_type.strip().casefold())] = item["entity_id"]
+            entity_results.append(item)
+
+        for candidate in req.relationships:
+            evidence = _normalized_evidence_text(candidate.evidence_text)
+            if not evidence or evidence not in normalized_source:
+                raise HTTPException(status_code=422, detail="Relationship evidence must be an exact excerpt from the governed source")
+            source_key = (candidate.source_name.strip().casefold(), candidate.source_type.strip().casefold())
+            target_key = (candidate.target_name.strip().casefold(), candidate.target_type.strip().casefold())
+            source_id = entity_ids.get(source_key)
+            target_id = entity_ids.get(target_key)
+            if not source_id:
+                source_item = graph_store.upsert_entity(
+                    candidate.source_name, candidate.source_type,
+                    data_id=req.data_id, owner_id=user_id, workspace_id=workspace_id,
+                    actor_id=user_id, chunk_id=candidate.chunk_id,
+                    evidence_text=candidate.evidence_text, confidence=candidate.confidence,
+                )
+                source_id = source_item["entity_id"]
+                entity_ids[source_key] = source_id
+                entity_results.append(source_item)
+            if not target_id:
+                target_item = graph_store.upsert_entity(
+                    candidate.target_name, candidate.target_type,
+                    data_id=req.data_id, owner_id=user_id, workspace_id=workspace_id,
+                    actor_id=user_id, chunk_id=candidate.chunk_id,
+                    evidence_text=candidate.evidence_text, confidence=candidate.confidence,
+                )
+                target_id = target_item["entity_id"]
+                entity_ids[target_key] = target_id
+                entity_results.append(target_item)
+            relationship_results.append(graph_store.upsert_relationship(
+                source_id, target_id, candidate.predicate,
+                data_id=req.data_id, owner_id=user_id, workspace_id=workspace_id,
+                actor_id=user_id, chunk_id=candidate.chunk_id,
+                evidence_text=candidate.evidence_text, confidence=candidate.confidence,
+            ))
+    except HTTPException:
+        raise
+    except (ValueError, PermissionError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    record_governance_event(
+        req.data_id, action="graph_proposals_created", actor_id=user_id,
+        details={"entity_candidates": len(entity_results), "relationship_candidates": len(relationship_results)},
+    )
+    return {
+        "ok": True, "data_id": req.data_id, "source_version": record.get("version", 1),
+        "workspace_id": workspace_id, "status": "proposed",
+        "entities": entity_results, "relationships": relationship_results,
+        "approval_required": True,
+    }
+
+
+@router.post("/graph/review")
+async def rag_graph_review(req: GraphEvidenceReviewRequest, user_id: str = Depends(get_user_id)):
+    _require_authenticated_user(user_id)
+    workspace_id = effective_workspace_id(req.workspace_id, user_id)
+    if req.status not in {"approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="status must be approved or rejected")
+    try:
+        result = graph_store.review_evidence(
+            req.evidence_id, req.status, owner_id=user_id,
+            workspace_id=workspace_id, actor_id=user_id,
+        )
+        return {"ok": True, **result, "workspace_id": workspace_id}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Graph evidence not found")
+    except (ValueError, PermissionError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.post("/graph/query")
+async def rag_graph_query(req: GraphQueryRequest, user_id: str = Depends(get_user_id)):
+    _require_authenticated_user(user_id)
+    workspace_id = effective_workspace_id(req.workspace_id, user_id)
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="query cannot be empty")
+    try:
+        seeds = graph_store.search_entities(
+            req.query, owner_id=user_id, workspace_id=workspace_id, limit=min(max(req.limit, 1), 100),
+        )
+        edges = graph_store.traverse_verified_relationships(
+            [item["entity_id"] for item in seeds],
+            owner_id=user_id, workspace_id=workspace_id,
+            max_hops=min(max(req.max_hops, 1), 5), limit=min(max(req.limit, 1), 100),
+        ) if seeds else []
+        return {
+            "ok": True, "workspace_id": workspace_id,
+            "entities": seeds, "relationships": edges,
+            "retrieval_mode": "approved_graph_only",
+        }
+    except (ValueError, PermissionError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
 
 @router.get("/limits")
 async def rag_limits():
