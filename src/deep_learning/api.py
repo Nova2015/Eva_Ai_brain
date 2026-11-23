@@ -97,6 +97,75 @@ def build_router(auth_dependency) -> APIRouter:
     ):
         return {"ok": True, "datasets": registry.list_datasets(owner_id=user_id, workspace_id=workspace_id)}
 
+    @router.post("/training/datasets/{dataset_id}/prepare")
+    async def prepare_dataset(
+        dataset_id: str,
+        workspace_id: str = Query("default"),
+        user_id: str = Depends(auth_dependency),
+    ):
+        dataset = registry.get_dataset(dataset_id, owner_id=user_id, workspace_id=workspace_id)
+        if dataset is None:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+        governed = get_record(dataset["data_id"])
+        if not governed or governed.get("owner_id") != user_id or governed.get("workspace_id") != workspace_id:
+            raise HTTPException(status_code=404, detail="Governed dataset not found")
+        if governed.get("sha256") != dataset["sha256"] or int(governed.get("version", 0)) != int(dataset["source_version"]):
+            raise HTTPException(status_code=409, detail="Dataset source revision changed; revalidate before preparation")
+        source_path = Path(dataset["file_path"])
+        if not source_path.is_file():
+            raise HTTPException(status_code=409, detail="Dataset source file is missing")
+        from .processor import process_dataset, sha256_file
+        if sha256_file(source_path) != dataset["sha256"]:
+            raise HTTPException(status_code=409, detail="Dataset file integrity check failed")
+        try:
+            prepared = process_dataset(source_path)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"Dataset preparation failed: {type(exc).__name__}")
+        if prepared["source_sha256"] != dataset["sha256"]:
+            raise HTTPException(status_code=409, detail="Dataset changed during preparation")
+        artifact_dir = DATASET_ROOT / "processed" / dataset_id
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        artifact_path = artifact_dir / "prepared.json"
+        temporary_path = artifact_dir / "prepared.json.tmp"
+        import json
+        temporary_path.write_text(json.dumps(prepared, ensure_ascii=False), encoding="utf-8")
+        temporary_path.replace(artifact_path)
+        summary = prepared["profile"]
+        registry.update_dataset_metadata(
+            dataset_id, owner_id=user_id, workspace_id=workspace_id,
+            updates={
+                "preparation_status": "completed",
+                "preparation_artifact": str(artifact_path),
+                "profile": summary,
+                "label_status": "not_reviewed",
+                "prepared_source_sha256": prepared["source_sha256"],
+            },
+            status="prepared",
+        )
+        return {
+            "ok": True, "dataset_id": dataset_id, "data_id": dataset["data_id"],
+            "preparation_status": "completed", "profile": summary,
+            "labeling": prepared["labeling"],
+            "training_ready": False,
+            "note": "Extraction and profiling completed locally. Labels still require review; no model was trained.",
+        }
+
+    @router.get("/training/datasets/{dataset_id}/profile")
+    async def dataset_profile(
+        dataset_id: str,
+        workspace_id: str = Query("default"),
+        user_id: str = Depends(auth_dependency),
+    ):
+        dataset = registry.get_dataset(dataset_id, owner_id=user_id, workspace_id=workspace_id)
+        if dataset is None:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+        metadata = json.loads(dataset.get("metadata_json") or "{}")
+        if not metadata.get("profile"):
+            raise HTTPException(status_code=404, detail="Dataset has not been prepared")
+        return {"ok": True, "dataset_id": dataset_id, "data_id": dataset["data_id"],
+                "preparation_status": metadata.get("preparation_status"),
+                "profile": metadata["profile"], "label_status": metadata.get("label_status", "not_reviewed")}
+
     @router.post("/training/datasets/{dataset_id}/approve")
     async def approve_dataset(
         dataset_id: str,
