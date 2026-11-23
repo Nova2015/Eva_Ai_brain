@@ -17,7 +17,7 @@ def test_worker_reads_first_excel_sheet_container():
     assert len(records) == 2
 
 
-def test_tabular_xgboost_worker_trains_and_evaluates_cpu_candidate():
+def test_tabular_xgboost_worker_trains_and_evaluates_cpu_candidate(tmp_path):
     from src.deep_learning.worker import _train_tabular
 
     rows = [["measurement", "defect"]]
