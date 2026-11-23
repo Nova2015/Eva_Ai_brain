@@ -125,3 +125,26 @@ def test_training_job_claim_is_atomic_and_only_succeeds_once(tmp_path):
     assert registry.claim_job(job["job_id"], owner_id="alice", workspace_id="team-a") is True
     assert registry.claim_job(job["job_id"], owner_id="alice", workspace_id="team-a") is False
     assert registry.get_job(job["job_id"], owner_id="alice", workspace_id="team-a")["status"] == "running"
+
+
+def test_local_worker_claims_only_one_training_job_at_a_time(tmp_path):
+    registry = DeepLearningRegistry(tmp_path / "dl.sqlite3")
+    jobs = []
+    for index in range(2):
+        dataset = registry.create_dataset(
+            data_id=f"EVA-DATA-SERIAL-{index}", owner_id="alice", workspace_id="team-a",
+            file_name=f"train-{index}.csv", file_path=str(tmp_path / f"train-{index}.csv"),
+            file_type=".csv", size_bytes=12, sha256=str(index) * 64,
+            classification="restricted",
+        )
+        jobs.append(registry.approve_dataset(
+            dataset["dataset_id"], owner_id="alice", workspace_id="team-a",
+            device="cpu", environment="local",
+        ))
+    assert registry.claim_job(jobs[0]["job_id"], owner_id="alice", workspace_id="team-a") is True
+    assert registry.claim_job(jobs[1]["job_id"], owner_id="alice", workspace_id="team-a") is False
+    registry.update_job(
+        jobs[0]["job_id"], owner_id="alice", workspace_id="team-a",
+        status="completed", stage="completed", progress=100,
+    )
+    assert registry.claim_job(jobs[1]["job_id"], owner_id="alice", workspace_id="team-a") is True
