@@ -19,7 +19,7 @@ _JOBS: Dict[str, Dict[str, Any]] = {}
 _LOCK = threading.Lock()
 
 
-def create_job(job_id: str, filename: str = "") -> Dict[str, Any]:
+def create_job(job_id: str, filename: str = "", *, owner_id: str = "anonymous", workspace_id: str = "default") -> Dict[str, Any]:
     now = time.time()
     job = {
         "job_id": job_id,
