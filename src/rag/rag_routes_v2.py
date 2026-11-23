@@ -40,6 +40,7 @@ try:
         normalize_rag_mode,
         rag_runtime_status,
         rag_stats_snapshot,
+        reconcile_data_sources,
     )
 except ImportError:
     from hybrid_rag_v2 import (
@@ -501,6 +502,24 @@ async def rag_retry_upload_job(job_id: str, user_id: str = Depends(get_user_id))
         "async_jobs": True,
         "message": "Retry accepted. The existing governed source and Data ID will be reused.",
     }
+
+
+@router.get("/reconciliation")
+async def rag_data_reconciliation(
+    workspace_id: Optional[str] = None,
+    user_id: str = Depends(get_user_id),
+):
+    """Read-only Governance/RAG/local-file consistency report."""
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required for data reconciliation")
+    try:
+        return reconcile_data_sources(
+            user_id,
+            workspace_id=effective_workspace_id(workspace_id, user_id),
+        )
+    except Exception as exc:
+        logger.exception("Data reconciliation failed")
+        raise HTTPException(status_code=500, detail="Data reconciliation failed")
 
 
 @router.get("/documents")
