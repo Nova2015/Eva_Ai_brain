@@ -175,7 +175,7 @@ def get_user_id(creds: Optional[HTTPAuthorizationCredentials] = Depends(security
         if not secret:
             return "anonymous"
         payload = jose_jwt.decode(creds.credentials, secret, algorithms=["HS256"])
-        return payload.get("sub") or payload.get("email") or "user"
+        return payload.get("sub") or payload.get("email") or payload.get("user_id") or "user"
     except Exception:
         return "anonymous"
 
@@ -342,7 +342,7 @@ async def rag_upload(
 
     namespace = effective_workspace_id(workspace_id, user_id)
     job_id = uuid.uuid4().hex[:12]
-    jm.create_job(job_id, filename=file.filename)
+    jm.create_job(job_id, filename=file.filename, owner_id=user_id, workspace_id=namespace)
     thread = threading.Thread(
         target=_run_upload_job,
         args=(job_id, file.filename, str(tmp_path), size_bytes, user_id, namespace, ext),
