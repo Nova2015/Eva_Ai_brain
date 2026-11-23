@@ -13,8 +13,10 @@ Configure with environment variables:
 - `EVA_DL_REGISTRY_DB` (optional SQLite registry path)
 - `EVA_DL_DATASET_DIR` (optional persistent dataset root)
 - `EVA_DL_MAX_UPLOAD_BYTES` (default 100 MiB)
+- `EVA_DL_MIN_FREE_VRAM_MB` (default 1024)
+- `EVA_DL_MIN_AVAILABLE_RAM_MB` (default 2048)
 
-Automatic compute selects CUDA when PyTorch is installed and CUDA is available; otherwise it selects CPU. Explicit GPU mode fails closed when CUDA is unavailable. A later resource-aware scheduler should also consider free VRAM, active EVA workloads and configured limits before dispatching jobs.
+Automatic compute selects CUDA only when PyTorch/CUDA telemetry is available and free VRAM plus available system RAM meet the configured thresholds; otherwise it selects CPU. Explicit GPU mode fails closed when CUDA or the resource thresholds are unavailable. The current policy does not yet account for all active EVA workloads or reserve GPU memory for concurrent chat/RAG inference; the training worker must enforce those limits before execution.
 
 ## Data lifecycle
 
