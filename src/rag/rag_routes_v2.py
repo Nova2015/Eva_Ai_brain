@@ -48,6 +48,7 @@ except ImportError:
         answer,
         chunk_text,
         delete_indexed_document,
+        delete_orphaned_data_id,
         hybrid_search,
         index_document,
         _get_chroma,
