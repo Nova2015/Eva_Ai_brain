@@ -147,6 +147,70 @@ def test_retry_job_links_to_original_and_preserves_private_source_reference():
 
 
 
+
+
+def test_graph_proposal_endpoint_requires_source_excerpt_and_authentication(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from src.rag import rag_routes_v2
+
+    source = tmp_path / "source.txt"
+    source.write_text("The steering column is mounted to the instrument panel.", encoding="utf-8")
+    record = register_import(
+        source, source="test", owner_id="user-a", workspace_id="cad",
+        actor_id="user-a", classification="confidential",
+    )
+    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id: {
+        **record, "file_path": str(source),
+    })
+    monkeypatch.setattr(rag_routes_v2, "sha256_file", lambda path: record["sha256"])
+
+    async def run_invalid():
+        request = rag_routes_v2.GraphProposalRequest(
+            data_id=record["data_id"], workspace_id="cad",
+            entities=[{
+                "name": "Steering Column", "entity_type": "component",
+                "chunk_id": "c1", "evidence_text": "This claim is not in the source.",
+            }],
+        )
+        return await rag_routes_v2.rag_graph_proposals(request, user_id="user-a")
+
+    with pytest.raises(HTTPException) as error:
+        import asyncio
+        asyncio.run(run_invalid())
+    assert error.value.status_code == 422
+
+
+def test_graph_proposal_endpoint_rejects_stale_governed_source(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from src.rag import rag_routes_v2
+
+    source = tmp_path / "source.txt"
+    source.write_text("The steering column is mounted to the instrument panel.", encoding="utf-8")
+    record = register_import(
+        source, source="test", owner_id="user-a", workspace_id="cad",
+        actor_id="user-a", classification="confidential",
+    )
+    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id: {
+        **record, "file_path": str(source),
+    })
+    monkeypatch.setattr(rag_routes_v2, "sha256_file", lambda path: "0" * 64)
+
+    async def run_invalid():
+        request = rag_routes_v2.GraphProposalRequest(
+            data_id=record["data_id"], workspace_id="cad",
+            entities=[{
+                "name": "Steering Column", "entity_type": "component",
+                "chunk_id": "c1", "evidence_text": "The steering column is mounted",
+            }],
+        )
+        return await rag_routes_v2.rag_graph_proposals(request, user_id="user-a")
+
+    with pytest.raises(HTTPException) as error:
+        import asyncio
+        asyncio.run(run_invalid())
+    assert error.value.status_code == 409
+
+
 def test_url_ingest_url_validation_rejects_private_and_local_destinations(monkeypatch):
     from src.rag.rag_routes_v2 import _validate_public_ingest_url
 
