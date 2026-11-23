@@ -508,7 +508,14 @@ def index_document(
 
     try:
         embeddings = embed.encode(chunks, batch_size=8, show_progress_bar=False).tolist()
-        ids = [f"{user_id}::{source}::{i}::{uuid.uuid4().hex[:8]}" for i in range(len(chunks))]
+        data_id = metadata.get("data_id")
+        if data_id:
+            # A retry/re-index replaces prior vector chunks for this immutable
+            # Data ID, including chunks left by an interrupted earlier attempt.
+            collection.delete(where={"data_id": data_id})
+            ids = [f"{user_id}::{data_id}::{i}" for i in range(len(chunks))]
+        else:
+            ids = [f"{user_id}::{source}::{i}::{uuid.uuid4().hex[:8]}" for i in range(len(chunks))]
         metas = [
             {
                 "source": source,
@@ -518,7 +525,10 @@ def index_document(
             }
             for i in range(len(chunks))
         ]
-        collection.add(documents=chunks, embeddings=embeddings, ids=ids, metadatas=metas)
+        if data_id:
+            collection.upsert(documents=chunks, embeddings=embeddings, ids=ids, metadatas=metas)
+        else:
+            collection.add(documents=chunks, embeddings=embeddings, ids=ids, metadatas=metas)
         logger.info(f"âœ… Indexed {len(chunks)} chunks from '{source}' for user '{user_id}'")
         return {
             "ok": True,
