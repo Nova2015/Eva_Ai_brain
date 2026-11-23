@@ -164,6 +164,23 @@ class DeepLearningRegistry:
         item.pop("metadata_json", None)
         return item
 
+    def update_dataset_metadata(self, dataset_id: str, *, owner_id: str,
+                                workspace_id: str, updates: dict[str, Any],
+                                status: str | None = None) -> dict[str, Any]:
+        with self.connect() as conn:
+            row = conn.execute("""SELECT * FROM dl_datasets
+                WHERE dataset_id=? AND owner_id=? AND workspace_id=?""",
+                (dataset_id, owner_id, workspace_id)).fetchone()
+            if row is None:
+                raise KeyError("Dataset not found")
+            metadata = json.loads(row["metadata_json"] or "{}")
+            metadata.update(updates)
+            next_status = status or row["status"]
+            conn.execute("UPDATE dl_datasets SET metadata_json=?, status=? WHERE dataset_id=?",
+                         (json.dumps(metadata, sort_keys=True), next_status, dataset_id))
+            updated = conn.execute("SELECT * FROM dl_datasets WHERE dataset_id=?", (dataset_id,)).fetchone()
+        return self._public_dataset(dict(updated))
+
     def list_models(self, *, owner_id: str, workspace_id: str) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute("""SELECT * FROM dl_models
