@@ -548,17 +548,29 @@ def delete_indexed_document(doc_id: str, user_id: str = "default", workspace_id:
     try:
         _, collection = _get_chroma()
         if collection is not None and collection.count() > 0:
-            where = {"user_id": user_id} if user_id not in {"default", "anonymous"} else None
-            data = collection.get(where=where, limit=2000, include=["metadatas"])
-            ids = data.get("ids") or []
-            metas = data.get("metadatas") or []
             delete_ids = []
-            for i, item_id in enumerate(ids):
-                meta = metas[i] if i < len(metas) and metas[i] else {}
-                if workspace_id and meta.get("workspace_id") != workspace_id:
-                    continue
-                if item_id == doc_id or meta.get("source") == doc_id or meta.get("filename") == doc_id:
-                    delete_ids.append(item_id)
+            page_size = 2000
+            offset = 0
+            while True:
+                data = collection.get(
+                    where={"user_id": user_id},
+                    limit=page_size,
+                    offset=offset,
+                    include=["metadatas"],
+                )
+                ids = data.get("ids") or []
+                metas = data.get("metadatas") or []
+                for i, item_id in enumerate(ids):
+                    meta = metas[i] if i < len(metas) and metas[i] else {}
+                    if meta.get("user_id") != user_id:
+                        continue
+                    if workspace_id and meta.get("workspace_id") != workspace_id:
+                        continue
+                    if item_id == doc_id or meta.get("source") == doc_id or meta.get("filename") == doc_id:
+                        delete_ids.append(item_id)
+                if len(ids) < page_size:
+                    break
+                offset += len(ids)
             if delete_ids:
                 collection.delete(ids=delete_ids)
                 deleted_vector = len(delete_ids)
