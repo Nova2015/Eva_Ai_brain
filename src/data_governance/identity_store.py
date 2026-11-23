@@ -484,6 +484,30 @@ def list_versions(data_id: str) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def record_governance_event(
+    data_id: str,
+    action: str,
+    *,
+    owner_id: str,
+    workspace_id: str,
+    actor_id: str,
+    details: Optional[dict[str, Any]] = None,
+) -> None:
+    """Append an audit event only when the Data ID belongs to the caller scope."""
+    if not all(isinstance(value, str) and value.strip() for value in
+               (data_id, action, owner_id, workspace_id, actor_id)):
+        raise ValueError("data_id, action, owner_id, workspace_id and actor_id are required")
+    with _connect() as conn:
+        exists = conn.execute(
+            """SELECT 1 FROM data_items
+               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
+            (data_id, owner_id, workspace_id),
+        ).fetchone()
+        if exists is None:
+            raise KeyError(f"Unknown governed Data ID: {data_id}")
+        _audit(conn, data_id, action, actor_id, details or {})
+
+
 def list_audit_events(data_id: str) -> list[dict[str, Any]]:
     """Return the append-only audit trail for a registered data item."""
     with _connect() as conn:
