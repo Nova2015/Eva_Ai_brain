@@ -197,6 +197,29 @@ def register_import(
     return _row_dict(row)  # type: ignore[return-value]
 
 
+def list_records(
+    *,
+    owner_id: str,
+    workspace_id: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """List governance records within an authenticated owner's scope."""
+    if not isinstance(owner_id, str) or not owner_id.strip():
+        raise ValueError("owner_id is required")
+    with _connect() as conn:
+        if workspace_id is None:
+            rows = conn.execute(
+                "SELECT * FROM data_items WHERE owner_id=? ORDER BY imported_at",
+                (owner_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT * FROM data_items
+                   WHERE owner_id=? AND workspace_id=? ORDER BY imported_at""",
+                (owner_id, workspace_id),
+            ).fetchall()
+    return [_row_dict(row) for row in rows]  # type: ignore[misc]
+
+
 def get_record(data_id: str) -> Optional[dict[str, Any]]:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM data_items WHERE data_id = ?", (data_id,)).fetchone()
