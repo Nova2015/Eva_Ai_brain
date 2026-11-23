@@ -151,6 +151,77 @@ def test_retry_job_links_to_original_and_preserves_private_source_reference():
 
 
 
+
+
+def test_local_graph_extractor_parses_json_and_marks_candidates(tmp_path, monkeypatch):
+    from src.rag import graph_extractor
+
+    monkeypatch.setattr(graph_extractor, "chunk_text", lambda text, chunk_size, overlap: [
+        "The steering column is mounted to the instrument panel."
+    ])
+    monkeypatch.setattr(graph_extractor, "route_and_call", lambda **kwargs: {
+        "answer": (
+            '{"entities":[{"name":"Steering Column","entity_type":"component"},'
+            '{"name":"Instrument Panel","entity_type":"component"}],'
+            '"relationships":[{"source_name":"Steering Column","source_type":"component",'
+            '"target_name":"Instrument Panel","target_type":"component",'
+            '"predicate":"mounted_to","evidence_text":"The steering column is mounted to the instrument panel."}]}'
+        ),
+        "provider": "eva_local", "model": "gemma3:12b",
+    })
+    result = graph_extractor.extract_graph_candidates("The steering column is mounted to the instrument panel.")
+    assert len(result["entities"]) == 2
+    assert len(result["relationships"]) == 1
+    assert result["relationships"][0]["chunk_id"].startswith("EVA-GRAPH-CHUNK-")
+    assert result["model"] == "gemma3:12b"
+
+
+def test_local_graph_extractor_handles_malformed_json_without_cloud_fallback(monkeypatch):
+    from src.rag import graph_extractor
+
+    monkeypatch.setattr(graph_extractor, "chunk_text", lambda text, chunk_size, overlap: ["source excerpt"])
+    calls = []
+    def local_call(**kwargs):
+        calls.append(kwargs)
+        return {"answer": "not json", "provider": "eva_local", "model": "local-test"}
+    monkeypatch.setattr(graph_extractor, "route_and_call", local_call)
+    result = graph_extractor.extract_graph_candidates("source excerpt")
+    assert calls and calls[0]["temperature"] == 0.0
+    assert result["entities"] == []
+    assert result["relationships"] == []
+    assert result["warnings"]
+
+
+def test_graph_extract_endpoint_persists_only_proposals(tmp_path, monkeypatch):
+    import asyncio
+    from src.rag import rag_routes_v2, graph_extractor
+
+    source = tmp_path / "source.txt"
+    source.write_text("The steering column is mounted to the instrument panel.", encoding="utf-8")
+    record = register_import(
+        source, source="test", owner_id="user-a", workspace_id="cad",
+        actor_id="user-a", classification="confidential",
+    )
+    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id: {
+        **record, "file_path": str(source),
+    })
+    monkeypatch.setattr(rag_routes_v2, "sha256_file", lambda path: record["sha256"])
+    monkeypatch.setattr(graph_extractor, "extract_graph_candidates", lambda text, max_chunks: {
+        "entities": [{
+            "name": "Steering Column", "entity_type": "component",
+            "chunk_id": "chunk-a", "evidence_text": "The steering column is mounted to the instrument panel.",
+        }],
+        "relationships": [], "chunks_processed": 1, "model": "local-test", "warnings": [],
+    })
+    response = asyncio.run(rag_routes_v2.rag_graph_extract(
+        rag_routes_v2.GraphExtractionRequest(data_id=record["data_id"], workspace_id="cad"),
+        user_id="user-a",
+    ))
+    assert response["status"] == "proposed"
+    assert response["approval_required"] is True
+    assert response["extraction"]["provider"] == "eva_local"
+
+
 def test_graph_proposal_review_and_query_flow(tmp_path, monkeypatch):
     import asyncio
     from src.rag import rag_routes_v2
