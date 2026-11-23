@@ -22,8 +22,8 @@ Automatic compute selects CUDA only when PyTorch/CUDA telemetry is available and
 
 1. Upload through `POST /api/training/datasets`. The file is stored locally and registered with the existing Data Governance system. Its Data ID, source hash, owner, workspace, classification and version are retained.
 2. Prepare through `POST /api/training/datasets/{dataset_id}/prepare`. Extraction and profiling are local and bounded. Prepared artifacts are stored under the configured dataset root; the public API returns profiles, not local paths or extracted private content.
-3. Review labels and data quality. The processor intentionally marks labels as unreviewed and supervised training as not ready.
-4. Explicitly approve the governed Data ID through `POST /api/training/datasets/{dataset_id}/approve`. The job is then queued for a compatible worker.
+3. Review supervised target and feature columns through `POST /api/training/datasets/{dataset_id}/review` with `confirm_labels=true`. This worker release accepts tabular classification and regression only.
+4. Explicitly approve the governed Data ID through `POST /api/training/datasets/{dataset_id}/approve`. Governance approval is checked separately from label review; the approved job is dispatched to a local FastAPI background worker.
 5. Check `GET /api/training/status/{job_id}`.
 
 ## Current extraction coverage
@@ -36,10 +36,16 @@ Automatic compute selects CUDA only when PyTorch/CUDA telemetry is available and
 
 Extraction limits are defined in `processor.py`. Optional reader failures are reported as warnings; they do not silently mark a dataset as training-ready.
 
+## Executable training adapter
+
+The current worker implements a local XGBoost adapter for reviewed CSV/JSON/JSONL/XLSX tabular classification and regression. It verifies owner/workspace scope, Data Governance approval, source SHA-256, source version and prepared-artifact hash before training. Jobs are atomically claimed to avoid duplicate execution, use a deterministic 80/20 holdout split, and persist evaluation metrics plus model artifacts as candidates. GPU jobs recheck CUDA and free VRAM immediately before training; CPU jobs use one training thread.
+
+CNN/ViT, detection, Transformer, LSTM/time-series and multimodal fusion remain model-family recommendations only; their executable training adapters are not yet implemented. Model activation, rollback, inference/prediction APIs, full restart queue dispatch and GPU reservation against concurrent Chat/RAG workloads remain future work. A queued job is not proof of a successful model; inspect its terminal status and metrics.
+
 ## Model selection
 
 `model_selector.py` recommends families by modality and task: CNN/ViT or detectors for vision, XGBoost/MLP for tabular data, Transformers for text, temporal models for time-series, and fusion models for paired multimodal data. Supervised tasks without labels return `needs_labels`. Selection is a recommendation, not a trained model.
 
 ## Not yet implemented
 
-The persistent queue is metadata only until a background worker is installed. Actual CNN/ViT, XGBoost/MLP, Transformer and temporal training adapters; evaluation; safe artifact loading; activation/rollback; prediction; and cloud GPU execution remain future stages. Do not interpret a queued job as a completed training run. Cloud transfer is disabled by default and private project data must not be sent to cloud workers.
+Additional modality-specific training adapters, robust model activation/rollback, safe artifact loading, prediction APIs, restart-time queued-job dispatch, GPU reservation against concurrent Chat/RAG inference, and cloud GPU execution remain future stages. The current XGBoost worker evaluates a holdout set but does not automatically activate a candidate. Cloud transfer is disabled by default and private project data must not be sent to cloud workers.
