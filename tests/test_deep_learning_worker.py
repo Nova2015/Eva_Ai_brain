@@ -109,3 +109,43 @@ def test_safe_worker_persists_failure_after_job_is_claimed(tmp_path, monkeypatch
         ).fetchone()
     metadata = json.loads(row["metadata_json"])
     assert metadata["failure_message"] == "synthetic worker failure"
+
+
+def test_tabular_xgboost_worker_trains_native_cpu_multiclass_with_missing_values(tmp_path):
+    import numpy as np
+    import xgboost as xgb
+    from src.deep_learning.worker import _train_tabular
+
+    rows = [["measurement", "machine_type", "defect_class"]]
+    classes = ["low", "medium", "high"]
+    for index in range(90):
+        measurement = None if index % 11 == 0 else float(index % 30)
+        machine_type = ["A", "B", "C"][index % 3]
+        rows.append([measurement, machine_type, classes[index % 3]])
+
+    model, result = _train_tabular(
+        {"tables": [rows]},
+        {
+            "target_column": "defect_class",
+            "feature_columns": ["measurement", "machine_type"],
+            "task_type": "classification",
+        },
+        "cpu",
+    )
+
+    assert isinstance(model, xgb.Booster)
+    assert 0.0 <= result["metrics"]["accuracy"] <= 1.0
+    assert result["metrics"]["train_rows"] + result["metrics"]["validation_rows"] == 90
+    preprocessing = result["preprocessing"]
+    assert preprocessing["label_mapping"] == {"high": 0, "low": 1, "medium": 2}
+    assert preprocessing["feature_kinds"]["machine_type"] == "categorical"
+    assert preprocessing["missing_value_medians"]["measurement"] >= 0.0
+
+    artifact = tmp_path / "multiclass.json"
+    model.save_model(str(artifact))
+    reloaded = xgb.Booster()
+    reloaded.load_model(str(artifact))
+    sample = xgb.DMatrix(np.asarray([[5.0, 0.0]], dtype=np.float32))
+    probabilities = reloaded.predict(sample)
+    assert probabilities.shape == (1, 3)
+    assert np.isclose(float(probabilities.sum()), 1.0, atol=1e-5)
