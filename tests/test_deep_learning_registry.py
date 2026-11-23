@@ -246,3 +246,37 @@ def test_job_updates_remain_scope_protected(tmp_path):
     assert registry.get_job(
         job["job_id"], owner_id="alice", workspace_id="team-a"
     )["status"] == "queued"
+
+
+def test_local_worker_serializes_jobs_across_workspaces(tmp_path):
+    registry = DeepLearningRegistry(tmp_path / "cross-workspace-serial.sqlite3")
+    jobs = []
+    scopes = [("alice", "team-a"), ("bob", "team-b")]
+    for index, (owner_id, workspace_id) in enumerate(scopes):
+        dataset = registry.create_dataset(
+            data_id=f"EVA-DATA-CROSS-SCOPE-{index}",
+            owner_id=owner_id, workspace_id=workspace_id,
+            file_name=f"synthetic-{index}.csv",
+            file_path=str(tmp_path / f"synthetic-{index}.csv"),
+            file_type=".csv", size_bytes=12, sha256=str(index + 5) * 64,
+            classification="internal",
+        )
+        jobs.append(registry.approve_dataset(
+            dataset["dataset_id"], owner_id=owner_id,
+            workspace_id=workspace_id, device="cpu", environment="local",
+        ))
+
+    assert registry.claim_job(
+        jobs[0]["job_id"], owner_id="alice", workspace_id="team-a"
+    ) is True
+    assert registry.claim_job(
+        jobs[1]["job_id"], owner_id="bob", workspace_id="team-b"
+    ) is False
+
+    registry.update_job(
+        jobs[0]["job_id"], owner_id="alice", workspace_id="team-a",
+        status="completed", stage="completed", progress=100,
+    )
+    assert registry.claim_job(
+        jobs[1]["job_id"], owner_id="bob", workspace_id="team-b"
+    ) is True
