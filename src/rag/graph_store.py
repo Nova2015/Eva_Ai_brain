@@ -91,7 +91,7 @@ def _initialize(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             reviewed_at TEXT,
             reviewed_by TEXT,
-            UNIQUE(entity_id, data_id, chunk_id, evidence_sha256)
+            UNIQUE(entity_id, data_id, source_version, chunk_id, evidence_sha256)
         );
         CREATE INDEX IF NOT EXISTS idx_graph_entity_evidence_scope
             ON graph_entity_evidence(owner_id, workspace_id, data_id, status);
@@ -127,7 +127,7 @@ def _initialize(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             reviewed_at TEXT,
             reviewed_by TEXT,
-            UNIQUE(relationship_id, data_id, chunk_id, evidence_sha256)
+            UNIQUE(relationship_id, data_id, source_version, chunk_id, evidence_sha256)
         );
         CREATE INDEX IF NOT EXISTS idx_graph_relationship_evidence_scope
             ON graph_relationship_evidence(owner_id, workspace_id, data_id, status);
@@ -336,7 +336,7 @@ def review_evidence(
     now = _now()
     with _connection() as conn:
         row = conn.execute(
-            """SELECT evidence_id FROM graph_entity_evidence
+            """SELECT evidence_id, data_id, source_version FROM graph_entity_evidence
                WHERE evidence_id=? AND owner_id=? AND workspace_id=?""",
             (evidence_id, owner_id, workspace_id),
         ).fetchone()
@@ -344,7 +344,7 @@ def review_evidence(
         object_type = "entity_evidence"
         if row is None:
             row = conn.execute(
-                """SELECT evidence_id FROM graph_relationship_evidence
+                """SELECT evidence_id, data_id, source_version FROM graph_relationship_evidence
                    WHERE evidence_id=? AND owner_id=? AND workspace_id=?""",
                 (evidence_id, owner_id, workspace_id),
             ).fetchone()
@@ -352,6 +352,12 @@ def review_evidence(
             object_type = "relationship_evidence"
         if row is None:
             raise KeyError("Graph evidence not found")
+        if status == "approved":
+            source_record = _validate_scope(
+                row["data_id"], owner_id, workspace_id, actor_id
+            )
+            if int(source_record.get("version") or 1) != int(row["source_version"]):
+                raise ValueError("Source Data ID has a newer revision; re-extract graph evidence before approval")
         conn.execute(
             f"UPDATE {table} SET status=?, reviewed_at=?, reviewed_by=? WHERE evidence_id=? AND owner_id=? AND workspace_id=?",
             (status, now, actor_id, evidence_id, owner_id, workspace_id),
