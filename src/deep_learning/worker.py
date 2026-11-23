@@ -123,8 +123,12 @@ def _train_tabular(prepared: dict[str, Any], review: dict[str, Any], device: str
     if device == "cuda":
         # The worker never silently moves a requested GPU run to CPU.
         import torch
+        import xgboost
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA became unavailable before training began")
+        raw_cuda_flag = xgboost.build_info().get("USE_CUDA", False)
+        if not (raw_cuda_flag is True or str(raw_cuda_flag).strip().lower() in {"1", "true", "on", "yes"}):
+            raise RuntimeError("Installed XGBoost build does not support CUDA")
         free_bytes, _total_bytes = torch.cuda.mem_get_info()
         minimum_vram = int(os.getenv("EVA_DL_MIN_FREE_VRAM_MB", "1024"))
         if free_bytes < minimum_vram * 1024 * 1024:
