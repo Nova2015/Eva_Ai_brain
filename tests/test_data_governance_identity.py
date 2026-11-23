@@ -6,6 +6,7 @@ import pytest
 from src.data_governance import (
     get_record,
     list_records,
+    list_audit_events,
     list_versions,
     record_revision,
     register_import,
