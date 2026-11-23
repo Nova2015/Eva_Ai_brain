@@ -114,6 +114,9 @@ def _extract_pdf(path: Path, warnings: list[str], assets_dir: Path | None = None
     try:
         import fitz
         document = fitz.open(str(path))
+        if not pages:
+            pages = [{"page": index+1, "text": "", "extraction": "empty"}
+                     for index in range(min(len(document), MAX_PDF_PAGES))]
         if any(not item["text"] for item in pages):
             try:
                 from PIL import Image
