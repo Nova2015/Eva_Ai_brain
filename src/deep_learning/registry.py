@@ -184,11 +184,25 @@ class DeepLearningRegistry:
     def claim_job(self, job_id: str, *, owner_id: str, workspace_id: str) -> bool:
         """Atomically claim a queued job so duplicate dispatchers cannot train twice."""
         with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            active = conn.execute(
+                "SELECT job_id FROM dl_training_jobs WHERE status='running' AND job_id<>? LIMIT 1",
+                (job_id,),
+            ).fetchone()
+            if active is not None:
+                return False
             cursor = conn.execute("""UPDATE dl_training_jobs
                 SET status='running', stage='validating', progress=2, updated_at=?
                 WHERE job_id=? AND owner_id=? AND workspace_id=? AND status='queued'""",
                 (_now(), job_id, owner_id, workspace_id))
             return cursor.rowcount == 1
+
+    def get_next_queued_job(self) -> Optional[dict[str, str]]:
+        """Return the oldest queued job's dispatch identity (worker-internal use)."""
+        with self.connect() as conn:
+            row = conn.execute("""SELECT job_id,owner_id,workspace_id FROM dl_training_jobs
+                WHERE status='queued' ORDER BY created_at ASC LIMIT 1""").fetchone()
+        return dict(row) if row else None
 
     def update_job(self, job_id: str, *, owner_id: str, workspace_id: str,
                    status: str, stage: str, progress: float,
