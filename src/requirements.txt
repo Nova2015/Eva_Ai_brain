@@ -40,3 +40,4 @@ chromadb
 sentence-transformers
 PyMuPDF
 pytesseract
+scikit-learn
