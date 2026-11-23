@@ -58,9 +58,9 @@ except ImportError:
     )
 
 try:
-    from ..data_governance import approve_content_revision, get_record, record_governance_event, register_import, recover_location, sha256_file
+    from ..data_governance import approve_content_revision, get_record, list_audit_events, record_governance_event, register_import, recover_location, sha256_file
 except ImportError:
-    from data_governance import approve_content_revision, get_record, record_governance_event, register_import, recover_location, sha256_file
+    from data_governance import approve_content_revision, get_record, list_audit_events, record_governance_event, register_import, recover_location, sha256_file
 
 try:
     import upload_policy
@@ -692,6 +692,27 @@ async def rag_reconciliation_repair(
         "warnings": result.get("warnings", []),
         "source_file_deleted": False,
         "governance_record_changed": False,
+    }
+
+
+@router.get("/documents/{data_id}/audit")
+async def rag_governed_document_audit(
+    data_id: str,
+    workspace_id: Optional[str] = None,
+    user_id: str = Depends(get_user_id),
+):
+    """Return the audit history only to the owning user in the selected workspace."""
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to view data audit history")
+    namespace = effective_workspace_id(workspace_id, user_id)
+    record = get_record(data_id)
+    if not record or record.get("owner_id") != user_id or record.get("workspace_id") != namespace:
+        raise HTTPException(status_code=404, detail="Governed data item not found")
+    return {
+        "ok": True,
+        "data_id": data_id,
+        "workspace_id": namespace,
+        "events": list_audit_events(data_id),
     }
 
 
