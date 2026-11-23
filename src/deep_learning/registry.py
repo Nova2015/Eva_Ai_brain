@@ -212,6 +212,15 @@ class DeepLearningRegistry:
                                (job_id, owner_id, workspace_id)).fetchone()
             if row is None:
                 raise KeyError("Training job not found")
+            allowed_transitions = {
+                "queued": {"running"},
+                "running": {"running", "completed", "failed"},
+            }
+            current_status = row["status"]
+            if status not in allowed_transitions.get(current_status, set()):
+                raise ValueError(
+                    f"Invalid training job transition: {current_status} -> {status}"
+                )
             current = json.loads(row["metadata_json"] or "{}")
             current.update(metadata or {})
             conn.execute("""UPDATE dl_training_jobs SET status=?,stage=?,progress=?,error_code=?,
