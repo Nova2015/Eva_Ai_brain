@@ -58,9 +58,9 @@ except ImportError:
     )
 
 try:
-    from ..data_governance import get_record, register_import, recover_location, sha256_file
+    from ..data_governance import approve_content_revision, get_record, register_import, recover_location, sha256_file
 except ImportError:
-    from data_governance import get_record, register_import, recover_location, sha256_file
+    from data_governance import approve_content_revision, get_record, register_import, recover_location, sha256_file
 
 try:
     import upload_policy
@@ -211,6 +211,13 @@ def effective_workspace_id(workspace_id: Optional[str], user_id: Optional[str]) 
         return requested
     user_namespace = (user_id or "").strip()
     return user_namespace if user_namespace and user_namespace != "anonymous" else "default"
+
+
+class ContentRevisionApprovalRequest(BaseModel):
+    data_id: str
+    expected_sha256: str
+    approved: bool = False
+    workspace_id: Optional[str] = None
 
 
 class DataLocationRecoveryRequest(BaseModel):
@@ -516,6 +523,43 @@ async def rag_retry_upload_job(job_id: str, user_id: str = Depends(get_user_id))
         "workspace_id": workspace_id,
         "async_jobs": True,
         "message": "Retry accepted. The existing governed source and Data ID will be reused.",
+    }
+
+
+@router.post("/reconciliation/approve-revision")
+async def rag_reconciliation_approve_revision(
+    req: ContentRevisionApprovalRequest,
+    user_id: str = Depends(get_user_id),
+):
+    """Approve changed governed bytes as a new version after explicit confirmation."""
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required for revision approval")
+    if req.approved is not True:
+        raise HTTPException(status_code=400, detail="Explicit approval is required before revision recording")
+
+    workspace_id = effective_workspace_id(req.workspace_id, user_id)
+    try:
+        result = approve_content_revision(
+            req.data_id,
+            owner_id=user_id,
+            workspace_id=workspace_id,
+            actor_id=user_id,
+            expected_sha256=req.expected_sha256,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Governed data item not found")
+    except FileNotFoundError:
+        raise HTTPException(status_code=409, detail="Governed source file is missing; recover its location first")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    return {
+        "ok": True,
+        "action": "approve_revision",
+        "approved": True,
+        **result,
+        "workspace_id": workspace_id,
+        "audit_recorded": bool(result.get("changed")),
     }
 
 
