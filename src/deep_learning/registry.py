@@ -181,6 +181,15 @@ class DeepLearningRegistry:
             updated = conn.execute("SELECT * FROM dl_datasets WHERE dataset_id=?", (dataset_id,)).fetchone()
         return self._public_dataset(dict(updated))
 
+    def claim_job(self, job_id: str, *, owner_id: str, workspace_id: str) -> bool:
+        """Atomically claim a queued job so duplicate dispatchers cannot train twice."""
+        with self.connect() as conn:
+            cursor = conn.execute("""UPDATE dl_training_jobs
+                SET status='running', stage='validating', progress=2, updated_at=?
+                WHERE job_id=? AND owner_id=? AND workspace_id=? AND status='queued'""",
+                (_now(), job_id, owner_id, workspace_id))
+            return cursor.rowcount == 1
+
     def update_job(self, job_id: str, *, owner_id: str, workspace_id: str,
                    status: str, stage: str, progress: float,
                    error_code: str | None = None, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
