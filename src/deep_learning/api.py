@@ -180,6 +180,17 @@ def build_router(auth_dependency) -> APIRouter:
         dataset = registry.get_dataset(dataset_id, owner_id=user_id, workspace_id=workspace_id)
         if dataset is None:
             raise HTTPException(status_code=404, detail="Dataset not found")
+        governed = get_record(dataset["data_id"])
+        if not governed or governed.get("owner_id") != user_id or governed.get("workspace_id") != workspace_id:
+            raise HTTPException(status_code=404, detail="Governed dataset not found")
+        if governed.get("sha256") != dataset["sha256"] or int(governed.get("version", 0)) != int(dataset["source_version"]):
+            raise HTTPException(status_code=409, detail="Dataset source revision changed; prepare it again")
+        source_path = Path(dataset["file_path"])
+        if not source_path.is_file():
+            raise HTTPException(status_code=409, detail="Dataset source file is missing")
+        from .processor import sha256_file
+        if sha256_file(source_path) != dataset["sha256"]:
+            raise HTTPException(status_code=409, detail="Dataset source integrity check failed")
         metadata = json.loads(dataset.get("metadata_json") or "{}")
         if metadata.get("preparation_status") != "completed":
             raise HTTPException(status_code=409, detail="Prepare the dataset before reviewing labels")
@@ -190,6 +201,8 @@ def build_router(auth_dependency) -> APIRouter:
         if not prepared_path.is_file():
             raise HTTPException(status_code=409, detail="Prepared dataset artifact is missing")
         prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
+        if prepared.get("source_sha256") != dataset["sha256"]:
+            raise HTTPException(status_code=409, detail="Prepared artifact is stale; prepare the dataset again")
         tables = prepared.get("tables") or []
         table = tables[0] if tables else []
         if len(table) == 1 and isinstance(table[0], dict) and "rows" in table[0]:
@@ -205,7 +218,7 @@ def build_router(auth_dependency) -> APIRouter:
         if target_column in features or not features or any(name not in headers for name in features):
             raise HTTPException(status_code=422, detail="Feature columns are invalid")
         target_index = headers.index(target_column)
-        labelled_rows = sum(1 for row in table[1:] if target_index < len(row) and row[target_index] not in (None, ""))
+        labelled_rows = sum(1 for row in table[1:] if target_index < len(row) and row[target_index] is not None and str(row[target_index]).strip() != "")
         if labelled_rows < 10:
             raise HTTPException(status_code=422, detail="At least 10 non-empty target rows are required")
         try:
@@ -264,7 +277,7 @@ def build_router(auth_dependency) -> APIRouter:
             "ok": True, "dataset_id": dataset_id, "data_id": dataset["data_id"],
             "training_approval": approval.get("training_approval", "approved"),
             "job": job, "policy": policy,
-            "note": "Dataset approved and automatically queued. A compatible training worker must be available to execute the queued job.",
+            "note": "Dataset approved and dispatched to the local background training worker. Check the job status endpoint for its result.",
         }
 
     @router.post("/training/start")
