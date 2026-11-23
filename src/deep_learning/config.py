@@ -71,10 +71,21 @@ def get_runtime_policy() -> dict[str, Any]:
     except Exception:
         pass
 
+    # The first executable worker uses XGBoost. Do not select CUDA for that
+    # adapter unless both the CUDA runtime and this XGBoost build support it.
+    xgboost_cuda_available = False
+    try:
+        import xgboost
+        build_info = xgboost.build_info()
+        xgboost_cuda_available = bool(build_info.get("USE_CUDA", False))
+    except Exception:
+        pass
+    worker_cuda_available = cuda_available and xgboost_cuda_available
+
     min_vram = int(os.getenv("EVA_DL_MIN_FREE_VRAM_MB", "1024"))
     min_ram = int(os.getenv("EVA_DL_MIN_AVAILABLE_RAM_MB", "2048"))
     device, selection_reason = choose_compute_device(
-        compute, cuda_available=cuda_available, free_vram_mb=free_vram_mb,
+        compute, cuda_available=worker_cuda_available, free_vram_mb=free_vram_mb,
         available_ram_mb=available_ram_mb, min_free_vram_mb=min_vram,
         min_available_ram_mb=min_ram,
     )
@@ -85,6 +96,8 @@ def get_runtime_policy() -> dict[str, Any]:
         "selected_device": device,
         "selection_reason": selection_reason,
         "cuda_available": cuda_available,
+        "xgboost_cuda_available": xgboost_cuda_available,
+        "worker_cuda_available": worker_cuda_available,
         "free_vram_mb": free_vram_mb,
         "available_ram_mb": available_ram_mb,
         "min_free_vram_mb": min_vram,
