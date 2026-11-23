@@ -77,7 +77,8 @@ def get_runtime_policy() -> dict[str, Any]:
     try:
         import xgboost
         build_info = xgboost.build_info()
-        xgboost_cuda_available = bool(build_info.get("USE_CUDA", False))
+        raw_cuda_flag = build_info.get("USE_CUDA", False)
+        xgboost_cuda_available = raw_cuda_flag is True or str(raw_cuda_flag).strip().lower() in {"1", "true", "on", "yes"}
     except Exception:
         pass
     worker_cuda_available = cuda_available and xgboost_cuda_available
