@@ -194,3 +194,82 @@ def test_reconciliation_reports_orphans_missing_files_and_hash_mismatches(tmp_pa
     assert report["hash_mismatches"][0]["data_id"] == changed_record["data_id"]
     assert report["actions_taken"] == []
     assert not missing_file_path.exists()
+
+
+
+def test_approved_reconciliation_repair_reindexes_same_governed_data_id(tmp_path, monkeypatch):
+    import asyncio
+    from src.rag import rag_routes_v2 as routes
+
+    source = tmp_path / "repair.txt"
+    source.write_text("unchanged governed content", encoding="utf-8")
+    record = {
+        "data_id": "EVA-DATA-REPAIR-1",
+        "owner_id": "user-a",
+        "workspace_id": "cad",
+        "file_path": str(source),
+        "file_name": "repair.txt",
+        "sha256": "expected-hash",
+        "classification": "restricted",
+    }
+    captured = {}
+
+    monkeypatch.setattr(routes, "get_record", lambda data_id: record)
+    monkeypatch.setattr(
+        routes,
+        "reconcile_data_sources",
+        lambda user_id, workspace_id=None: {
+            "missing_from_index": [{"data_id": record["data_id"]}]
+        },
+    )
+    monkeypatch.setattr(routes, "sha256_file", lambda path: "expected-hash")
+    monkeypatch.setattr(routes, "_extract_text", lambda path, ext: "recovered document text")
+    monkeypatch.setattr(routes, "chunk_text", lambda text: ["recovered document text"])
+    monkeypatch.setattr(routes.upload_policy, "validate_upload_size", lambda size: None)
+    monkeypatch.setattr(routes.upload_policy, "validate_chunk_count", lambda count: None)
+
+    def fake_index_document(**kwargs):
+        captured.update(kwargs)
+        return {
+            "ok": True,
+            "chunks": 1,
+            "vector_indexed": False,
+            "vectorless_indexed": True,
+            "warnings": [],
+        }
+
+    monkeypatch.setattr(routes, "index_document", fake_index_document)
+
+    request = routes.ReconciliationRepairRequest(
+        data_id=record["data_id"],
+        action="reindex_missing",
+        approved=True,
+        workspace_id="cad",
+    )
+    result = asyncio.run(routes.rag_reconciliation_repair(request, user_id="user-a"))
+
+    assert result["ok"] is True
+    assert result["data_id"] == record["data_id"]
+    assert result["source_file_deleted"] is False
+    assert result["governance_record_changed"] is False
+    assert captured["metadata"]["data_id"] == record["data_id"]
+    assert captured["user_id"] == "user-a"
+    assert captured["workspace_id"] == "cad"
+
+
+def test_reconciliation_repair_requires_explicit_approval():
+    import asyncio
+    from fastapi import HTTPException
+    from src.rag import rag_routes_v2 as routes
+
+    request = routes.ReconciliationRepairRequest(
+        data_id="EVA-DATA-REPAIR-2",
+        action="reindex_missing",
+        approved=False,
+        workspace_id="cad",
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(routes.rag_reconciliation_repair(request, user_id="user-a"))
+
+    assert error.value.status_code == 400
+    assert "approval" in error.value.detail.lower()
