@@ -170,6 +170,7 @@ def test_reconciliation_reports_orphans_missing_files_and_hash_mismatches(tmp_pa
     changed_path.write_text("modified bytes", encoding="utf-8")
 
     monkeypatch.setattr(rag, "_chroma_chunks_for_user", lambda *args, **kwargs: [])
+    monkeypatch.setattr(rag, "_get_chroma", lambda: (None, None))
     monkeypatch.setattr(
         rag,
         "_vectorless_chunks_for_user",
