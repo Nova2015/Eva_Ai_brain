@@ -38,3 +38,5 @@ python-pptx
 bcrypt==4.0.1
 chromadb
 sentence-transformers
+PyMuPDF
+pytesseract
