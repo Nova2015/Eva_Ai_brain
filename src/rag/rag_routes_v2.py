@@ -56,9 +56,9 @@ except ImportError:
     )
 
 try:
-    from ..data_governance import register_import
+    from ..data_governance import get_record, register_import
 except ImportError:
-    from data_governance import register_import
+    from data_governance import get_record, register_import
 
 try:
     import upload_policy
@@ -81,7 +81,7 @@ PERSISTENT_DOCUMENT_DIR = Path(
 SUPPORTED_EXTS = {".pdf", ".txt", ".md", ".docx", ".csv", ".json", ".py", ".js", ".ts", ".html"}
 
 
-def _run_upload_job(job_id: str, filename: str, tmp_file: str, size_bytes: int, user_id: str, workspace_id: Optional[str], ext: str):
+def _run_upload_job(job_id: str, filename: str, tmp_file: str, size_bytes: int, user_id: str, workspace_id: Optional[str], ext: str, existing_data_id: Optional[str] = None, existing_document_path: Optional[str] = None):
     tmp_path = Path(tmp_file)
     try:
         jm.cleanup_finished_jobs()
@@ -110,23 +110,38 @@ def _run_upload_job(job_id: str, filename: str, tmp_file: str, size_bytes: int, 
 
         jm.update_job(job_id, status=jm.EMBEDDING, progress=55, current_step="Creating embeddings", chunk_count=len(chunks))
 
-        # Keep a durable local copy before indexing; the request staging file is
-        # deleted in finally and must never be the governance record's location.
-        PERSISTENT_DOCUMENT_DIR.mkdir(parents=True, exist_ok=True)
-        stored_path = PERSISTENT_DOCUMENT_DIR / f"{uuid.uuid4().hex}{ext}"
-        shutil.copy2(tmp_path, stored_path)
-        try:
-            data_record = register_import(
-                stored_path,
-                source="rag_upload",
-                owner_id=user_id or "anonymous",
-                workspace_id=effective_workspace_id(workspace_id, user_id),
-                actor_id=user_id or "anonymous",
-                classification=os.getenv("EVA_RAG_DEFAULT_CLASSIFICATION", "restricted"),
-            )
-        except Exception:
-            stored_path.unlink(missing_ok=True)
-            raise
+        # Initial uploads get a new governed copy and Data ID. Retries reuse
+        # the existing governed record; the staging copy is disposable only.
+        if existing_data_id:
+            if not existing_document_path:
+                raise ValueError("Retry source path is missing")
+            stored_path = Path(existing_document_path).expanduser().resolve(strict=True)
+            if not stored_path.is_file():
+                raise FileNotFoundError("Governed source file is missing; retry cannot proceed")
+            data_record = get_record(existing_data_id)
+            if not data_record:
+                raise ValueError("Governance record for retry source was not found")
+            expected_workspace = effective_workspace_id(workspace_id, user_id)
+            if data_record.get("owner_id") != user_id or data_record.get("workspace_id") != expected_workspace:
+                raise PermissionError("Retry source ownership or workspace mismatch")
+            if Path(data_record.get("file_path", "")).resolve() != stored_path:
+                raise ValueError("Retry source path does not match its governance record")
+        else:
+            PERSISTENT_DOCUMENT_DIR.mkdir(parents=True, exist_ok=True)
+            stored_path = PERSISTENT_DOCUMENT_DIR / f"{uuid.uuid4().hex}{ext}"
+            shutil.copy2(tmp_path, stored_path)
+            try:
+                data_record = register_import(
+                    stored_path,
+                    source="rag_upload",
+                    owner_id=user_id or "anonymous",
+                    workspace_id=effective_workspace_id(workspace_id, user_id),
+                    actor_id=user_id or "anonymous",
+                    classification=os.getenv("EVA_RAG_DEFAULT_CLASSIFICATION", "restricted"),
+                )
+            except Exception:
+                stored_path.unlink(missing_ok=True)
+                raise
 
         # Persist the governed source reference before indexing so a restart
         # never loses the Data ID or the retained local document location.
@@ -421,6 +436,71 @@ async def rag_job_status(job_id: str, user_id: str = Depends(get_user_id)):
     if job.get("status") == "NOT_FOUND":
         raise HTTPException(status_code=404, detail=job["error"])
     return job
+
+
+@router.post("/jobs/{job_id}/retry")
+async def rag_retry_upload_job(job_id: str, user_id: str = Depends(get_user_id)):
+    """Retry a failed upload using its retained, owner-authorized governed source."""
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to retry upload jobs")
+    original = jm.get_job_internal(job_id, owner_id=user_id)
+    if not original:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if original.get("status") != jm.FAILED:
+        raise HTTPException(status_code=409, detail="Only failed upload jobs can be retried")
+    data_id = original.get("data_id")
+    document_path = original.get("document_path")
+    if not data_id or not document_path:
+        raise HTTPException(status_code=409, detail="This job has no retained governed source; upload the file again")
+    data_record = get_record(data_id)
+    if not data_record or data_record.get("owner_id") != user_id:
+        raise HTTPException(status_code=404, detail="Governed retry source not found")
+    workspace_id = original.get("workspace_id") or "default"
+    if data_record.get("workspace_id") != workspace_id:
+        raise HTTPException(status_code=404, detail="Governed retry source not found")
+    source_path = Path(document_path).expanduser()
+    if not source_path.is_file() or source_path.resolve() != Path(data_record["file_path"]).resolve():
+        raise HTTPException(status_code=409, detail="Governed source file is unavailable or has moved; reconcile its Data ID first")
+    ext = source_path.suffix.lower()
+    if ext not in SUPPORTED_EXTS:
+        raise HTTPException(status_code=409, detail=f"Unsupported retained source type: {ext}")
+    size_bytes = source_path.stat().st_size
+    size_error = upload_policy.validate_upload_size(size_bytes)
+    if size_error:
+        raise HTTPException(status_code=413, detail=size_error["detail"])
+
+    retry_tmp = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
+    try:
+        shutil.copy2(source_path, retry_tmp)
+    except Exception as exc:
+        retry_tmp.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"Could not stage retry source: {exc}")
+
+    retry_job_id = uuid.uuid4().hex[:12]
+    filename = original.get("filename") or source_path.name
+    jm.create_job(
+        retry_job_id,
+        filename=filename,
+        owner_id=user_id,
+        workspace_id=workspace_id,
+        retry_of=job_id,
+    )
+    thread = threading.Thread(
+        target=_run_upload_job,
+        args=(retry_job_id, filename, str(retry_tmp), size_bytes, user_id, workspace_id, ext, data_id, str(source_path)),
+        daemon=True,
+    )
+    thread.start()
+    return {
+        "ok": True,
+        "job_id": retry_job_id,
+        "retry_of": job_id,
+        "data_id": data_id,
+        "status": jm.QUEUED,
+        "workspace_id": workspace_id,
+        "async_jobs": True,
+        "message": "Retry accepted. The existing governed source and Data ID will be reused.",
+    }
 
 
 @router.get("/documents")
