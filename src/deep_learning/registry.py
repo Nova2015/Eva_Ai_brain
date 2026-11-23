@@ -129,7 +129,7 @@ class DeepLearningRegistry:
                 (dataset_id, owner_id, workspace_id)).fetchone()
             if row is None:
                 raise KeyError("Dataset not found")
-            if row["status"] not in {"awaiting_training_approval", "approved"}:
+            if row["status"] not in {"awaiting_training_approval", "prepared", "approved"}:
                 raise ValueError("Dataset is not eligible for training")
             conn.execute("UPDATE dl_datasets SET status='approved' WHERE dataset_id=?", (dataset_id,))
             existing = conn.execute("""SELECT * FROM dl_training_jobs
