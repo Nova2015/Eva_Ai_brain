@@ -257,17 +257,17 @@ def rag_runtime_status() -> Dict[str, Any]:
 
 
 def _chunk_user_matches(chunk: Dict[str, Any], user_id: str, workspace_id: Optional[str] = None) -> bool:
-    if user_id in {"default", "anonymous"}:
-        user_matches = True
-    else:
-        metadata = chunk.get("metadata") or {}
-        user_matches = chunk.get("user_id") == user_id or metadata.get("user_id") == user_id
-    if not user_matches:
+    """Require an exact owner match; anonymous/default are not wildcard identities."""
+    if not isinstance(user_id, str) or not user_id.strip():
         return False
-    if not workspace_id:
-        return True
     metadata = chunk.get("metadata") or {}
-    return metadata.get("workspace_id") == workspace_id or chunk.get("workspace_id") == workspace_id
+    chunk_owner = chunk.get("user_id") or metadata.get("user_id")
+    if chunk_owner != user_id:
+        return False
+    if workspace_id is None:
+        return True
+    chunk_workspace = chunk.get("workspace_id") or metadata.get("workspace_id")
+    return chunk_workspace == workspace_id
 
 
 def _index_vectorless_chunks(chunks: List[str], source: str, user_id: str, metadata: Optional[Dict]) -> int:
@@ -322,8 +322,8 @@ def _chroma_chunks_for_user(user_id: str, limit: int = 2000, workspace_id: Optio
     _, collection = _get_chroma()
     if collection is None or collection.count() == 0:
         return []
-    where = {"user_id": user_id} if user_id not in {"default", "anonymous"} else None
-    data = collection.get(where=where, limit=limit, include=["documents", "metadatas"])
+    # Never use an unfiltered collection read for default/anonymous callers.
+    data = collection.get(where={"user_id": user_id}, limit=limit, include=["documents", "metadatas"])
     texts = data.get("documents") or []
     metas = data.get("metadatas") or []
     ids = data.get("ids") or []
@@ -758,7 +758,7 @@ def _vector_search(query: str, user_id: str, top_k: int = 8, workspace_id: Optio
         results = collection.query(
             query_embeddings=q_embed,
             n_results=requested_results,
-            where={"user_id": user_id} if user_id != "default" else None,
+            where={"user_id": user_id},
             include=["documents", "metadatas", "distances"],
         )
         hits = []
