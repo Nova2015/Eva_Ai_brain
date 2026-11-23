@@ -59,12 +59,12 @@ def _load(job_id):
         return value if isinstance(value,dict) else None
     except (TypeError,ValueError): return None
 
-def create_job(job_id: str, filename: str="", *, owner_id: str="anonymous", workspace_id: str="default"):
+def create_job(job_id: str, filename: str="", *, owner_id: str="anonymous", workspace_id: str="default", retry_of: Optional[str]=None):
     now=time.time()
     job={"job_id":job_id,"filename":filename,"owner_id":owner_id,"workspace_id":workspace_id,
          "status":QUEUED,"stage":QUEUED,"progress":0,"current_step":"Queued","message":"Queued",
          "created_at":now,"updated_at":now,"chunk_count":0,"error":None,"result":None,
-         "data_id":None,"document_path":None,"cancel":False}
+         "data_id":None,"document_path":None,"retry_of":retry_of,"cancel":False}
     with _LOCK:
         _persist(job); _JOBS[job_id]=job
     return _public(job)
@@ -88,6 +88,17 @@ def update_job(job_id: str, *, status: Optional[str]=None, progress: Optional[in
         if document_path is not None: job["document_path"]=document_path
         job["updated_at"]=time.time(); _persist(job); _JOBS[job_id]=job
         return _public(job)
+
+def get_job_internal(job_id: str, *, owner_id: str):
+    """Return an owner-scoped internal record, including private recovery fields."""
+    with _LOCK:
+        job=_JOBS.get(job_id)
+        if job is None:
+            job=_load(job_id)
+            if job is not None: _JOBS[job_id]=job
+        if not job or job.get("owner_id","anonymous") != owner_id:
+            return None
+        return dict(job)
 
 def get_job(job_id: str, *, owner_id: Optional[str]=None):
     with _LOCK:
@@ -139,7 +150,8 @@ def _public(job):
             "current_step":job.get("current_step"),"message":job.get("message") or job.get("current_step"),
             "created_at":job.get("created_at"),"updated_at":job.get("updated_at"),
             "chunk_count":job.get("chunk_count",0),"error":job.get("error"),
-            "result":job.get("result"),"data_id":job.get("data_id")}
+            "result":job.get("result"),"data_id":job.get("data_id"),
+            "retry_of":job.get("retry_of")}
 
 def _reset_for_tests():
     with _LOCK: _JOBS.clear()
