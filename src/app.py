@@ -3172,6 +3172,16 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_
         raise HTTPException(status_code=401, detail="Invalid token payload")
     return username
 
+
+# EVA Deep Learning Engine is an independent subsystem. It uses the existing
+# authenticated user dependency and does not alter the Chat or Vector RAG routes.
+try:
+    from src.deep_learning.api import build_router as _build_deep_learning_router
+except ImportError:
+    from deep_learning.api import build_router as _build_deep_learning_router
+app.include_router(_build_deep_learning_router(get_current_user), prefix="/api")
+
+
 def get_optional_user(credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))) -> str:
     """Optional authentication; invalid credentials remain anonymous."""
     if credentials is None:
