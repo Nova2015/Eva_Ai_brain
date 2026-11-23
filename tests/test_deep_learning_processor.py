@@ -32,3 +32,19 @@ def test_json_records_become_tabular_data(tmp_path):
     assert result["profile"]["table_count"] == 1
     assert result["profile"]["tables"][0]["rows"] == 2
     assert result["profile"]["tables"][0]["columns"] == 2
+
+
+def test_xlsx_datetime_cells_are_json_serializable(tmp_path):
+    import json
+    from datetime import datetime
+    from openpyxl import Workbook
+
+    source = tmp_path / "inspection.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["part", "inspected_at"])
+    sheet.append(["A-1", datetime(2026, 11, 23, 10, 30)])
+    workbook.save(source)
+    result = process_dataset(source)
+    encoded = json.dumps(result, ensure_ascii=False)
+    assert "2026-11-23T10:30:00" in encoded
