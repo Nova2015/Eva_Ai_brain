@@ -367,6 +367,21 @@ def review_evidence(
     return {"evidence_id": evidence_id, "status": status, "reviewed_by": actor_id}
 
 
+def _evidence_matches_current_revision(data_id: str, owner_id: str, workspace_id: str, source_version: int) -> bool:
+    """Hide approved graph evidence when its governed source has advanced."""
+    try:
+        from ..data_governance import get_record
+    except ImportError:
+        from data_governance import get_record
+    record = get_record(data_id)
+    return bool(
+        record
+        and record.get("owner_id") == owner_id
+        and record.get("workspace_id") == workspace_id
+        and int(record.get("version") or 1) == int(source_version)
+    )
+
+
 def search_entities(
     query: str,
     *,
@@ -383,15 +398,32 @@ def search_entities(
     term = "%" + _normalize(query) + "%"
     with _connection() as conn:
         rows = conn.execute(
-            """SELECT DISTINCT n.entity_id, n.entity_type, n.canonical_name
+            """SELECT DISTINCT n.entity_id, n.entity_type, n.canonical_name,
+                      e.data_id, e.source_version
                FROM graph_entities n
                JOIN graph_entity_evidence e ON e.entity_id=n.entity_id
                WHERE n.owner_id=? AND n.workspace_id=? AND e.owner_id=? AND e.workspace_id=?
                  AND e.status='approved' AND n.normalized_name LIKE ?
                ORDER BY n.canonical_name LIMIT ?""",
-            (owner_id, workspace_id, owner_id, workspace_id, term, safe_limit),
+            (owner_id, workspace_id, owner_id, workspace_id, term, safe_limit * 5),
         ).fetchall()
-    return [dict(row) for row in rows]
+    current = {}
+    results = {}
+    for row in rows:
+        data_id = row["data_id"]
+        if data_id not in current:
+            current[data_id] = _evidence_matches_current_revision(
+                data_id, owner_id, workspace_id, row["source_version"]
+            )
+        if current[data_id]:
+            results[row["entity_id"]] = {
+                "entity_id": row["entity_id"],
+                "entity_type": row["entity_type"],
+                "canonical_name": row["canonical_name"],
+            }
+            if len(results) >= safe_limit:
+                break
+    return list(results.values())
 
 
 def traverse_verified_relationships(
@@ -446,7 +478,17 @@ def traverse_verified_relationships(
                 if len(found) >= safe_limit:
                     break
             frontier = next_frontier
-    return list(found.values())
+    current = {}
+    verified = []
+    for item in found.values():
+        data_id = item["data_id"]
+        if data_id not in current:
+            current[data_id] = _evidence_matches_current_revision(
+                data_id, owner_id, workspace_id, item["source_version"]
+            )
+        if current[data_id]:
+            verified.append(item)
+    return verified
 
 
 def list_graph_audit(
