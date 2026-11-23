@@ -564,6 +564,76 @@ def delete_indexed_document(doc_id: str, user_id: str = "default", workspace_id:
     return {"ok": True, "deleted": doc_id, "deleted_chunks": deleted_vectorless + deleted_vector}
 
 
+def delete_orphaned_data_id(
+    data_id: str,
+    *,
+    user_id: str,
+    workspace_id: str,
+) -> Dict[str, Any]:
+    """Delete only chunks for one exact orphan Data ID in one owner/workspace scope."""
+    global _vectorless_chunks
+    if not all(isinstance(value, str) and value.strip() for value in
+               (data_id, user_id, workspace_id)):
+        raise ValueError("data_id, user_id and workspace_id are required")
+    if user_id == "anonymous":
+        raise PermissionError("Authenticated owner is required")
+
+    _, collection = _get_chroma()
+    vector_ids = []
+    if collection is not None and collection.count() > 0:
+        page_size = 2000
+        offset = 0
+        where = {"user_id": user_id}
+        while True:
+            page = collection.get(
+                where=where,
+                limit=page_size,
+                offset=offset,
+                include=["metadatas"],
+            )
+            ids = page.get("ids") or []
+            metadatas = page.get("metadatas") or []
+            for index, item_id in enumerate(ids):
+                meta = metadatas[index] if index < len(metadatas) and metadatas[index] else {}
+                if (meta.get("user_id") == user_id
+                        and meta.get("workspace_id") == workspace_id
+                        and str(meta.get("data_id") or "") == data_id):
+                    vector_ids.append(item_id)
+            if len(ids) < page_size:
+                break
+            offset += len(ids)
+
+    vectorless_matches = [
+        chunk for chunk in _vectorless_chunks
+        if (
+            _chunk_user_matches(chunk, user_id, workspace_id)
+            and (chunk.get("metadata") or {}).get("user_id") == user_id
+            and (chunk.get("metadata") or {}).get("workspace_id") == workspace_id
+            and str((chunk.get("metadata") or {}).get("data_id") or "") == data_id
+        )
+    ]
+
+    # Delete persistent vectors first. If Chroma raises, keep vectorless memory
+    # intact so the operation cannot silently report a partial success.
+    if vector_ids:
+        if collection is None:
+            raise RuntimeError("Vector collection is unavailable; cleanup was not completed")
+        collection.delete(ids=vector_ids)
+
+    before = len(_vectorless_chunks)
+    _vectorless_chunks = [
+        chunk for chunk in _vectorless_chunks
+        if chunk not in vectorless_matches
+    ]
+    return {
+        "ok": True,
+        "data_id": data_id,
+        "deleted_vector_chunks": len(vector_ids),
+        "deleted_vectorless_chunks": before - len(_vectorless_chunks),
+        "deleted_chunks": len(vector_ids) + before - len(_vectorless_chunks),
+    }
+
+
 def _keyword_search_chunks(query: str, chunks: List[Dict[str, Any]], top_k: int = 8) -> List[Dict[str, Any]]:
     query_terms = set(tokenize(query))
     if not query_terms:
