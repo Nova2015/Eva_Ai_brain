@@ -436,24 +436,24 @@ def reconcile_data_sources(user_id: str, workspace_id: Optional[str] = None) -> 
                 "file_name": record["file_name"],
                 "status": "missing_file",
             })
-            continue
-        try:
-            actual_hash = sha256_file(path)
-        except OSError:
-            missing_files.append({
-                "data_id": data_id,
-                "file_name": record["file_name"],
-                "status": "unreadable_file",
-            })
-            continue
-        if actual_hash != record["sha256"]:
-            hash_mismatches.append({
-                "data_id": data_id,
-                "file_name": record["file_name"],
-                "expected_sha256": record["sha256"],
-                "actual_sha256": actual_hash,
-                "status": "content_changed_since_governance_revision",
-            })
+        else:
+            try:
+                actual_hash = sha256_file(path)
+            except OSError:
+                missing_files.append({
+                    "data_id": data_id,
+                    "file_name": record["file_name"],
+                    "status": "unreadable_file",
+                })
+            else:
+                if actual_hash != record["sha256"]:
+                    hash_mismatches.append({
+                        "data_id": data_id,
+                        "file_name": record["file_name"],
+                        "expected_sha256": record["sha256"],
+                        "actual_sha256": actual_hash,
+                        "status": "content_changed_since_governance_revision",
+                    })
         if data_id not in indexed_ids:
             missing_from_index.append({
                 "data_id": data_id,
