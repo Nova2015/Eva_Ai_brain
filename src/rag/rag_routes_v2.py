@@ -143,7 +143,6 @@ def _run_upload_job(job_id: str, filename: str, tmp_file: str, size_bytes: int, 
             },
         )
         result["data_id"] = data_record["data_id"]
-        result["stored_file"] = str(stored_path)
         if not result.get("ok"):
             raise RuntimeError(result.get("error", "Indexing failed"))
 
