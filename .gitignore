@@ -94,3 +94,6 @@ data/marathi_triplets_audit/
 
 # Persistent local RAG uploads (user/project data)
 data/rag_documents/
+
+# Persistent local Deep Learning datasets and derived artifacts (private user data)
+data/deep_learning/
