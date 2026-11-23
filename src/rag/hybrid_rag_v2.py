@@ -397,6 +397,95 @@ def list_indexed_documents(user_id: str = "default", workspace_id: Optional[str]
     return {"documents": docs, "total": len(docs), "workspace_id": workspace_id}
 
 
+def reconcile_data_sources(user_id: str, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+    """Read-only comparison of Governance records, local files and RAG chunks.
+
+    This diagnostic never deletes or modifies source files, governance records,
+    or index entries. File paths are deliberately omitted from its output.
+    """
+    if not user_id or user_id == "anonymous":
+        raise ValueError("An authenticated user_id is required")
+    try:
+        from ..data_governance import list_records, sha256_file
+    except ImportError:
+        from data_governance import list_records, sha256_file
+
+    records = list_records(owner_id=user_id, workspace_id=workspace_id)
+    chunks = (
+        _chroma_chunks_for_user(user_id, workspace_id=workspace_id)
+        + _vectorless_chunks_for_user(user_id, workspace_id=workspace_id)
+    )
+    indexed_ids = set()
+    for chunk in chunks:
+        meta = chunk.get("metadata") or {}
+        data_id = meta.get("data_id")
+        if data_id:
+            indexed_ids.add(str(data_id))
+
+    governance_by_id = {str(record["data_id"]): record for record in records}
+    governance_ids = set(governance_by_id)
+    missing_from_index = []
+    missing_files = []
+    hash_mismatches = []
+
+    for data_id, record in governance_by_id.items():
+        path = Path(record["file_path"])
+        if not path.is_file():
+            missing_files.append({
+                "data_id": data_id,
+                "file_name": record["file_name"],
+                "status": "missing_file",
+            })
+            continue
+        try:
+            actual_hash = sha256_file(path)
+        except OSError:
+            missing_files.append({
+                "data_id": data_id,
+                "file_name": record["file_name"],
+                "status": "unreadable_file",
+            })
+            continue
+        if actual_hash != record["sha256"]:
+            hash_mismatches.append({
+                "data_id": data_id,
+                "file_name": record["file_name"],
+                "expected_sha256": record["sha256"],
+                "actual_sha256": actual_hash,
+                "status": "content_changed_since_governance_revision",
+            })
+        if data_id not in indexed_ids:
+            missing_from_index.append({
+                "data_id": data_id,
+                "file_name": record["file_name"],
+                "status": "not_found_in_rag_index",
+            })
+
+    index_without_governance = [
+        {"data_id": data_id, "status": "governance_record_not_found"}
+        for data_id in sorted(indexed_ids - governance_ids)
+    ]
+    return {
+        "ok": True,
+        "read_only": True,
+        "owner_id": user_id,
+        "workspace_id": workspace_id,
+        "summary": {
+            "governance_records": len(records),
+            "indexed_data_ids": len(indexed_ids),
+            "missing_from_index": len(missing_from_index),
+            "index_without_governance": len(index_without_governance),
+            "missing_files": len(missing_files),
+            "hash_mismatches": len(hash_mismatches),
+        },
+        "missing_from_index": missing_from_index,
+        "index_without_governance": index_without_governance,
+        "missing_files": missing_files,
+        "hash_mismatches": hash_mismatches,
+        "actions_taken": [],
+    }
+
+
 def rag_stats_snapshot(user_id: str = "default", workspace_id: Optional[str] = None) -> Dict[str, Any]:
     status = rag_runtime_status()
     documents = list_indexed_documents(user_id, workspace_id=workspace_id).get("documents", [])
