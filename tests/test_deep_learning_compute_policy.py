@@ -135,3 +135,54 @@ def test_runtime_policy_rejects_gpu_when_xgboost_cuda_build_is_unavailable(monke
 
     with pytest.raises(RuntimeError, match="CUDA is unavailable"):
         config.get_runtime_policy()
+
+
+def test_dataset_root_uses_environment_override(monkeypatch, tmp_path):
+    from src.deep_learning.config import get_dataset_root
+
+    expected = tmp_path / "custom_datasets"
+    monkeypatch.setenv("EVA_DL_DATASET_DIR", str(expected))
+
+    assert get_dataset_root() == expected
+
+
+def test_registry_db_path_uses_environment_override(monkeypatch, tmp_path):
+    from src.deep_learning.config import get_registry_db_path
+
+    expected = tmp_path / "custom_registry.sqlite3"
+    monkeypatch.setenv("EVA_DL_REGISTRY_DB", str(expected))
+
+    assert get_registry_db_path() == expected
+
+
+def test_storage_paths_use_local_app_data_default(monkeypatch, tmp_path):
+    from src.deep_learning.config import (
+        get_deep_learning_storage_root,
+        get_dataset_root,
+        get_registry_db_path,
+    )
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.delenv("EVA_DL_DATASET_DIR", raising=False)
+    monkeypatch.delenv("EVA_DL_REGISTRY_DB", raising=False)
+
+    storage_root = tmp_path / "EVA" / "DeepLearning"
+
+    assert get_deep_learning_storage_root() == storage_root
+    assert get_dataset_root() == storage_root / "datasets"
+    assert get_registry_db_path() == (
+        storage_root / "registry" / "eva_deep_learning.db"
+    )
+
+
+def test_storage_path_helpers_do_not_create_directories(monkeypatch, tmp_path):
+    from src.deep_learning.config import get_dataset_root, get_registry_db_path
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.delenv("EVA_DL_DATASET_DIR", raising=False)
+    monkeypatch.delenv("EVA_DL_REGISTRY_DB", raising=False)
+
+    get_dataset_root()
+    get_registry_db_path()
+
+    assert list(tmp_path.iterdir()) == []

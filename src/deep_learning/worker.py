@@ -17,6 +17,7 @@ import numpy as np
 
 from .processor import sha256_file
 from .registry import registry
+from .config import get_dataset_root
 
 
 class _WorkerHeartbeat:
@@ -333,10 +334,7 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
             raise ValueError("Dataset labels and target columns have not been reviewed")
 
         artifact_dir = (
-            Path(os.getenv(
-                "EVA_DL_DATASET_DIR",
-                str(Path(__file__).resolve().parents[2] / "data" / "deep_learning" / "datasets"),
-            ))
+            get_dataset_root()
             / "processed"
             / dataset["dataset_id"]
         )
@@ -371,6 +369,15 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
 
         artifact_dir.mkdir(parents=True, exist_ok=True)
         artifact_path = artifact_dir / f"{model_id}_v{version}.json"
+        registry.record_artifact_intent(
+            job_id,
+            owner_id=owner_id,
+            workspace_id=workspace_id,
+            dataset_id=dataset["dataset_id"],
+            model_id=model_id,
+            version=version,
+            artifact_path=str(artifact_path),
+        )
         model.save_model(str(artifact_path))
 
         registry.update_job(
@@ -406,25 +413,34 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
         )
 
     except Exception as exc:
-        cleanup_error = None
-        if artifact_path is not None and not model_registered:
-            try:
-                artifact_path.unlink(missing_ok=True)
-            except OSError as cleanup_exc:
-                cleanup_error = type(cleanup_exc).__name__
-
         failure_message = str(exc)[:450]
-        if cleanup_error:
-            failure_message = (
-                f"{failure_message} (artifact cleanup failed: {cleanup_error})"
-            )
+        failure_metadata = {"failure_message": failure_message}
+
+        # Persist failure first. Cleanup is then coordinated by the registry's
+        # atomic claim, never by a direct worker-side unlink().
+        if artifact_path is not None:
+            failure_metadata["artifact_cleanup"] = {
+                "status": "pending",
+                "created_at": __import__("datetime").datetime.now(
+                    __import__("datetime").timezone.utc
+                ).isoformat(),
+            }
 
         registry.update_job(
             job_id, owner_id=owner_id, workspace_id=workspace_id,
             status="failed", stage="failed", progress=0,
             error_code=type(exc).__name__,
-            metadata={"failure_message": failure_message},
+            metadata=failure_metadata,
         )
+
+        if artifact_path is not None:
+            cleanup = getattr(registry, "cleanup_failed_job_artifact", None)
+            if callable(cleanup):
+                try:
+                    cleanup(job_id, require_verified_recovery=False)
+                except Exception:
+                    # Preserve and re-raise the original training exception.
+                    pass
         raise
     finally:
         if heartbeat:

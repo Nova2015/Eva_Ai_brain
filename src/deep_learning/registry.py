@@ -10,13 +10,40 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Optional
+from .config import get_dataset_root, get_registry_db_path
 
-_ROOT = Path(__file__).resolve().parents[2]
-_DEFAULT_DB = _ROOT / "data" / "eva_deep_learning.db"
+
+
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _is_valid_eva_id(value: Any, prefix: str) -> bool:
+    """Validate EVA IDs with a fixed prefix and 32 uppercase hex characters."""
+    return (
+        isinstance(value, str)
+        and len(value) == len(prefix) + 32
+        and value.startswith(prefix)
+        and all(c in "0123456789ABCDEF" for c in value[len(prefix):])
+    )
+
+
+def _is_unsafe_path_entry(path: Path) -> bool:
+    """Return True for symlinks, junctions, or paths that cannot be safely checked."""
+    try:
+        if path.is_symlink():
+            return True
+
+        is_junction = getattr(path, "is_junction", None)
+        if is_junction is not None and is_junction():
+            return True
+
+        return False
+    except (OSError, RuntimeError, ValueError):
+        # Fail closed: an uncheckable filesystem entry must never be deleted.
+        return True
 
 
 def _process_start_time(pid: int) -> float | None:
@@ -58,7 +85,9 @@ def _parse_utc(value: str) -> datetime | None:
 
 class DeepLearningRegistry:
     def __init__(self, db_path: str | os.PathLike[str] | None = None):
-        self.db_path = Path(db_path or os.getenv("EVA_DL_REGISTRY_DB", str(_DEFAULT_DB))).expanduser()
+        self.db_path = Path(
+            db_path if db_path is not None else get_registry_db_path()
+            ).expanduser()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
 
@@ -113,6 +142,18 @@ class DeepLearningRegistry:
                     artifact_path TEXT NOT NULL, metrics_json TEXT NOT NULL,
                     preprocessing_json TEXT NOT NULL, status TEXT NOT NULL,
                     created_at TEXT NOT NULL, PRIMARY KEY(model_id, version)
+                );
+                CREATE TABLE IF NOT EXISTS dl_artifact_cleanup_claims (
+                    model_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    job_id TEXT NOT NULL,
+                    dataset_id TEXT NOT NULL,
+                    artifact_path TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'claimed',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    last_error TEXT,
+                    PRIMARY KEY(model_id, version)
                 );
             """)
             # Additive, idempotent migration for databases created by older builds.
@@ -298,6 +339,332 @@ class DeepLearningRegistry:
             )
             return cursor.rowcount == 1
 
+
+    def record_artifact_intent(
+        self, job_id: str, *, owner_id: str, workspace_id: str,
+        dataset_id: str, model_id: str, version: int, artifact_path: str,
+    ) -> None:
+        """Persist the exact artifact target atomically before the worker writes it."""
+        if not _is_valid_eva_id(model_id, "EVA-MODEL-"):
+            raise ValueError("Invalid model ID for artifact intent")
+        if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+            raise ValueError("Artifact version must be a positive integer")
+        if not _is_valid_eva_id(dataset_id, "EVA-DSET-"):
+            raise ValueError("Invalid dataset ID for artifact intent")
+        if not isinstance(artifact_path, str) or not artifact_path:
+            raise ValueError("Invalid artifact path")
+
+        expected_name = f"{model_id}_v{version}.json"
+        try:
+            supplied = Path(artifact_path).expanduser().resolve(strict=False)
+            root = get_dataset_root().resolve(strict=False)
+            expected = (
+                root / "processed" / dataset_id / expected_name
+            ).resolve(strict=False)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ValueError("Unable to validate artifact path") from exc
+
+        if supplied != expected:
+            raise ValueError(
+                "Artifact path does not match the expected dataset artifact location"
+            )
+
+        with self.connect() as conn:
+            # Serialize intent recording against stale-job recovery.
+            conn.execute("BEGIN IMMEDIATE")
+
+            row = conn.execute(
+                """SELECT dataset_id, metadata_json, status
+                   FROM dl_training_jobs
+                   WHERE job_id=? AND owner_id=? AND workspace_id=?""",
+                (job_id, owner_id, workspace_id),
+            ).fetchone()
+
+            if row is None:
+                raise KeyError("Training job not found")
+
+            if row["status"] != "running" or row["dataset_id"] != dataset_id:
+                raise ValueError("Artifact intent does not match the running job")
+
+            metadata = json.loads(row["metadata_json"] or "{}")
+            metadata["artifact_intent"] = {
+                "model_id": model_id,
+                "version": version,
+                "dataset_id": dataset_id,
+                "artifact_path": str(supplied),
+            }
+
+            cursor = conn.execute(
+                """UPDATE dl_training_jobs
+                   SET metadata_json=?, updated_at=?
+                   WHERE job_id=? AND owner_id=? AND workspace_id=?
+                     AND status='running' AND dataset_id=?""",
+                (
+                    json.dumps(metadata, sort_keys=True),
+                    _now(),
+                    job_id,
+                    owner_id,
+                    workspace_id,
+                    dataset_id,
+                ),
+            )
+
+            if cursor.rowcount != 1:
+                raise RuntimeError(
+                    "Artifact intent could not be persisted; refusing artifact creation"
+                )
+
+
+    def _set_artifact_cleanup_state(
+        self, job_id: str, state: str, *, error: str | None = None,
+    ) -> None:
+        now = _now()
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM dl_training_jobs WHERE job_id=? AND status='failed'",
+                (job_id,),
+            ).fetchone()
+            if row is None:
+                return
+
+            metadata = json.loads(row["metadata_json"] or "{}")
+            cleanup = metadata.get("artifact_cleanup") or {}
+            cleanup["status"] = state
+            cleanup["updated_at"] = now
+            if error:
+                cleanup["last_error"] = error
+            else:
+                cleanup.pop("last_error", None)
+            metadata["artifact_cleanup"] = cleanup
+
+            conn.execute(
+                """UPDATE dl_training_jobs
+                   SET metadata_json=?, updated_at=?
+                   WHERE job_id=? AND status='failed'""",
+                (json.dumps(metadata, sort_keys=True), now, job_id),
+            )
+            conn.execute(
+                """UPDATE dl_artifact_cleanup_claims
+                   SET status=?, updated_at=?, last_error=?
+                   WHERE job_id=?""",
+                (state, now, error, job_id),
+            )
+
+    def cleanup_failed_job_artifact(
+        self, job_id: str, *, require_verified_recovery: bool = False,
+    ) -> str:
+        """Safely clean one failed job's exact artifact using an atomic DB claim.
+
+        A durable claim serializes cleanup against create_model(). Filesystem
+        deletion happens after the claim transaction commits. A failed unlink
+        leaves the claim in place so only this same job can retry it.
+        """
+        with self.connect() as conn:
+            row = conn.execute(
+                """SELECT job_id, dataset_id, status, error_code, metadata_json
+                   FROM dl_training_jobs WHERE job_id=?""",
+                (job_id,),
+            ).fetchone()
+
+        if row is None or row["status"] != "failed":
+            return "not_eligible"
+
+        metadata = json.loads(row["metadata_json"] or "{}")
+        recovery = metadata.get("recovery") or {}
+        intent = metadata.get("artifact_intent") or {}
+        cleanup = metadata.get("artifact_cleanup") or {}
+
+        if require_verified_recovery:
+            if (
+                row["error_code"] != "WorkerProcessLost"
+                or recovery.get("reason") != "verified_worker_process_not_alive"
+            ):
+                return "not_eligible"
+
+        if cleanup.get("status") not in {"pending", "retry"}:
+            return str(cleanup.get("status") or "not_pending")
+
+        model_id = intent.get("model_id")
+        version = intent.get("version")
+        dataset_id = intent.get("dataset_id")
+        recorded_path = intent.get("artifact_path")
+
+        if (
+            not _is_valid_eva_id(model_id, "EVA-MODEL-")
+            or isinstance(version, bool)
+            or not isinstance(version, int)
+            or version < 1
+            or not _is_valid_eva_id(dataset_id, "EVA-DSET-")
+            or dataset_id != row["dataset_id"]
+            or not isinstance(recorded_path, str)
+            or not recorded_path
+        ):
+            self._set_artifact_cleanup_state(job_id, "blocked_invalid_intent")
+            return "blocked_invalid_intent"
+
+        # Resolve the exact permitted target and reject symlinked path components.
+        try:
+            root = get_dataset_root().resolve(strict=False)
+
+            processed_dir = root / "processed"
+            dataset_dir = processed_dir / dataset_id
+            expected = dataset_dir / f"{model_id}_v{version}.json"
+
+            if (
+                _is_unsafe_path_entry(processed_dir)
+                or _is_unsafe_path_entry(dataset_dir)
+                or _is_unsafe_path_entry(expected)
+            ):
+                self._set_artifact_cleanup_state(job_id, "blocked_unsafe_path")
+                return "blocked_unsafe_path"
+
+            expected_resolved = expected.resolve(strict=False)
+            dataset_resolved = dataset_dir.resolve(strict=False)
+            recorded_resolved = Path(recorded_path).expanduser().resolve(strict=False)
+
+            if (
+                recorded_resolved != expected_resolved
+                or expected_resolved.parent != dataset_resolved
+                or expected_resolved.name != f"{model_id}_v{version}.json"
+            ):
+                self._set_artifact_cleanup_state(job_id, "blocked_unsafe_path")
+                return "blocked_unsafe_path"
+        except (OSError, RuntimeError, ValueError):
+            self._set_artifact_cleanup_state(job_id, "blocked_unsafe_path")
+            return "blocked_unsafe_path"
+
+        now = _now()
+
+        # Atomic serialization point: create_model() uses the same write lock.
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            current = conn.execute(
+                """SELECT dataset_id, status, error_code, metadata_json
+                   FROM dl_training_jobs WHERE job_id=?""",
+                (job_id,),
+            ).fetchone()
+
+            if current is None or current["status"] != "failed":
+                return "not_eligible"
+
+            current_metadata = json.loads(current["metadata_json"] or "{}")
+            current_intent = current_metadata.get("artifact_intent") or {}
+            current_cleanup = current_metadata.get("artifact_cleanup") or {}
+
+            if (
+                current["dataset_id"] != dataset_id
+                or current_intent != intent
+                or current_cleanup.get("status") not in {"pending", "retry"}
+            ):
+                return "intent_changed"
+
+            if require_verified_recovery:
+                current_recovery = current_metadata.get("recovery") or {}
+                if (
+                    current["error_code"] != "WorkerProcessLost"
+                    or current_recovery.get("reason")
+                    != "verified_worker_process_not_alive"
+                ):
+                    return "not_eligible"
+
+            registered = conn.execute(
+                """SELECT 1 FROM dl_models
+                   WHERE model_id=? AND version=? LIMIT 1""",
+                (model_id, version),
+            ).fetchone()
+
+            if registered:
+                # A registered artifact is never removed.
+                current_cleanup["status"] = "skipped_registered"
+                current_cleanup["updated_at"] = now
+                current_metadata["artifact_cleanup"] = current_cleanup
+                conn.execute(
+                    """UPDATE dl_training_jobs
+                       SET metadata_json=?, updated_at=?
+                       WHERE job_id=? AND status='failed'""",
+                    (json.dumps(current_metadata, sort_keys=True), now, job_id),
+                )
+                return "skipped_registered"
+
+            existing_claim = conn.execute(
+                """SELECT job_id, dataset_id, artifact_path
+                   FROM dl_artifact_cleanup_claims
+                   WHERE model_id=? AND version=?""",
+                (model_id, version),
+            ).fetchone()
+
+            if existing_claim:
+                if (
+                    existing_claim["job_id"] != job_id
+                    or existing_claim["dataset_id"] != dataset_id
+                    or existing_claim["artifact_path"] != str(expected_resolved)
+                ):
+                    current_cleanup["status"] = "blocked_existing_claim"
+                    current_cleanup["updated_at"] = now
+                    current_metadata["artifact_cleanup"] = current_cleanup
+                    conn.execute(
+                        """UPDATE dl_training_jobs
+                           SET metadata_json=?, updated_at=?
+                           WHERE job_id=? AND status='failed'""",
+                        (json.dumps(current_metadata, sort_keys=True), now, job_id),
+                    )
+                    return "blocked_existing_claim"
+            else:
+                conn.execute(
+                    """INSERT INTO dl_artifact_cleanup_claims
+                       (model_id, version, job_id, dataset_id, artifact_path,
+                        status, created_at, updated_at, last_error)
+                       VALUES (?, ?, ?, ?, ?, 'claimed', ?, ?, NULL)""",
+                    (
+                        model_id, version, job_id, dataset_id,
+                        str(expected_resolved), now, now,
+                    ),
+                )
+
+        # The durable claim is committed. Recheck symlink state immediately
+        # before unlinking; do not hold a SQLite transaction during I/O.
+        try:
+            if (
+                _is_unsafe_path_entry(processed_dir)
+                or _is_unsafe_path_entry(dataset_dir)
+                or _is_unsafe_path_entry(expected)
+            ):
+                self._set_artifact_cleanup_state(job_id, "blocked_unsafe_path")
+                return "blocked_unsafe_path"
+
+            artifact_existed = expected.exists()
+            expected.unlink(missing_ok=True)
+            state = "removed" if artifact_existed else "removed_or_missing"
+            self._set_artifact_cleanup_state(job_id, state)
+            return state
+
+        except (RuntimeError, ValueError):
+            self._set_artifact_cleanup_state(job_id, "blocked_unsafe_path")
+            return "blocked_unsafe_path"
+        except OSError as exc:
+            self._set_artifact_cleanup_state(
+                job_id, "pending", error=type(exc).__name__
+            )
+            return "pending"
+
+    def cleanup_pending_artifacts(self) -> None:
+        """Retry cleanup only for recovered jobs with verified dead processes."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT job_id
+                   FROM dl_training_jobs
+                   WHERE status='failed' AND error_code='WorkerProcessLost'"""
+            ).fetchall()
+
+        for row in rows:
+            try:
+                self.cleanup_failed_job_artifact(
+                    row["job_id"], require_verified_recovery=True
+                )
+            except Exception:
+                # One damaged row or transient DB error must not stop other jobs.
+                continue
+
     def recover_stale_jobs(self, *, stale_after_seconds: float = 60.0) -> list[str]:
         """Fail only stale jobs whose recorded local OS process is proven dead.
 
@@ -345,6 +712,11 @@ class DeepLearningRegistry:
                         "last_heartbeat_at": row["heartbeat_at"],
                     },
                 })
+                if metadata.get("artifact_intent"):
+                    metadata["artifact_cleanup"] = {
+                        "status": "pending",
+                        "created_at": _now(),
+                    }
                 cursor = conn.execute(
                     """UPDATE dl_training_jobs
                        SET status='failed', stage='failed', progress=0,
@@ -355,6 +727,9 @@ class DeepLearningRegistry:
                 )
                 if cursor.rowcount == 1:
                     recovered.append(row["job_id"])
+        # The SQLite recovery transaction has committed before filesystem cleanup.
+        # Also retries any earlier cleanup that remained pending.
+        self.cleanup_pending_artifacts()
         return recovered
 
     def get_next_queued_job(self) -> Optional[dict[str, str]]:
@@ -401,6 +776,17 @@ class DeepLearningRegistry:
                 "preprocessing_json": json.dumps(preprocessing, sort_keys=True),
                 "status": status, "created_at": _now()}
         with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            claim = conn.execute(
+                """SELECT job_id FROM dl_artifact_cleanup_claims
+                   WHERE model_id=? AND version=? LIMIT 1""",
+                (model_id, item["version"]),
+            ).fetchone()
+            if claim:
+                raise RuntimeError(
+                    "Model artifact cleanup has claimed this model identity; "
+                    "registration is blocked."
+                )
             conn.execute("""INSERT INTO dl_models
                 (model_id,version,dataset_id,data_id,owner_id,workspace_id,model_family,task_type,
                  artifact_path,metrics_json,preprocessing_json,status,created_at)

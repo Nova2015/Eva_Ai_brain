@@ -155,3 +155,213 @@ def test_public_job_payload_does_not_expose_worker_lease_token(tmp_path):
         job["dataset_id"], owner_id="owner", workspace_id="workspace", device="cpu"
     )
     assert "worker_token" not in repeated_approval
+
+def test_recovery_cleans_only_the_orphan_artifact_for_the_dead_job(
+    tmp_path, monkeypatch
+):
+    registry, dataset, job = _running_job(tmp_path)
+    _make_heartbeat_stale(registry, job["job_id"])
+    monkeypatch.setattr(
+        registry_module, "_is_recorded_process_alive", lambda *_: False
+    )
+
+    data_root = tmp_path / "dataset-root"
+    monkeypatch.setenv("EVA_DL_DATASET_DIR", str(data_root))
+    artifact_dir = data_root / "processed" / dataset["dataset_id"]
+    artifact_dir.mkdir(parents=True)
+
+    model_id = "EVA-MODEL-" + "A" * 32
+    artifact = artifact_dir / f"{model_id}_v1.json"
+    artifact.write_text('{"synthetic": true}', encoding="utf-8")
+
+    registry.record_artifact_intent(
+        job["job_id"],
+        owner_id="owner",
+        workspace_id="workspace",
+        dataset_id=dataset["dataset_id"],
+        model_id=model_id,
+        version=1,
+        artifact_path=str(artifact),
+    )
+
+    assert artifact.exists()
+    assert registry.recover_stale_jobs(stale_after_seconds=1) == [job["job_id"]]
+    assert not artifact.exists()
+
+    recovered = registry.get_job(
+        job["job_id"], owner_id="owner", workspace_id="workspace"
+    )
+    with registry.connect() as conn:
+        row = conn.execute(
+            "SELECT metadata_json FROM dl_training_jobs WHERE job_id=?",
+            (job["job_id"],),
+        ).fetchone()
+    metadata = json.loads(row["metadata_json"])
+    assert recovered["status"] == "failed"
+    assert metadata["artifact_cleanup"]["status"] in {
+        "removed", "removed_or_missing"
+    }
+
+    # A repeated recovery call is harmless and does not change the outcome.
+    assert registry.recover_stale_jobs(stale_after_seconds=1) == []
+    assert not artifact.exists()
+
+
+def test_recovery_never_deletes_a_registered_model_artifact(
+    tmp_path, monkeypatch
+):
+    registry, dataset, job = _running_job(tmp_path)
+    _make_heartbeat_stale(registry, job["job_id"])
+    monkeypatch.setattr(
+        registry_module, "_is_recorded_process_alive", lambda *_: False
+    )
+
+    data_root = tmp_path / "dataset-root"
+    monkeypatch.setenv("EVA_DL_DATASET_DIR", str(data_root))
+    artifact_dir = data_root / "processed" / dataset["dataset_id"]
+    artifact_dir.mkdir(parents=True)
+
+    model_id = "EVA-MODEL-" + "B" * 32
+    artifact = artifact_dir / f"{model_id}_v1.json"
+    artifact.write_text('{"registered": true}', encoding="utf-8")
+
+    registry.record_artifact_intent(
+        job["job_id"],
+        owner_id="owner",
+        workspace_id="workspace",
+        dataset_id=dataset["dataset_id"],
+        model_id=model_id,
+        version=1,
+        artifact_path=str(artifact),
+    )
+    registry.create_model(
+        model_id=model_id,
+        version=1,
+        dataset_id=dataset["dataset_id"],
+        data_id=dataset["data_id"],
+        owner_id="owner",
+        workspace_id="workspace",
+        model_family="synthetic",
+        task_type="classification",
+        artifact_path=str(artifact),
+        metrics={"accuracy": 1.0},
+        preprocessing={},
+    )
+
+    assert registry.recover_stale_jobs(stale_after_seconds=1) == [job["job_id"]]
+    assert artifact.exists()
+
+    with registry.connect() as conn:
+        row = conn.execute(
+            "SELECT metadata_json FROM dl_training_jobs WHERE job_id=?",
+            (job["job_id"],),
+        ).fetchone()
+    metadata = json.loads(row["metadata_json"])
+    assert metadata["artifact_cleanup"]["status"] == "skipped_registered"
+
+
+def test_unsafe_path_entry_detects_junction(tmp_path, monkeypatch):
+    path = tmp_path / "junction-entry"
+
+    monkeypatch.setattr(Path, "is_symlink", lambda self: False)
+
+    def fake_is_junction(self):
+        return self == path
+
+    monkeypatch.setattr(
+        Path, "is_junction", fake_is_junction, raising=False
+    )
+
+    assert registry_module._is_unsafe_path_entry(path)
+
+
+def test_unsafe_path_entry_fails_closed_on_check_error(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "uncheckable-entry"
+
+    def raise_permission_error(self):
+        raise PermissionError("synthetic access denied")
+
+    monkeypatch.setattr(Path, "is_symlink", raise_permission_error)
+
+    assert registry_module._is_unsafe_path_entry(path)
+
+
+import pytest
+
+
+def test_cleanup_blocks_real_windows_junction_without_deleting_target(
+    tmp_path, monkeypatch
+):
+    if os.name != "nt":
+        pytest.skip("Real Windows junction test")
+
+    registry, dataset, job = _running_job(tmp_path)
+
+    data_root = tmp_path / "dataset-root"
+    monkeypatch.setenv("EVA_DL_DATASET_DIR", str(data_root))
+
+    processed_dir = data_root / "processed"
+    dataset_dir = processed_dir / dataset["dataset_id"]
+    processed_dir.mkdir(parents=True)
+    dataset_dir.mkdir()
+
+    model_id = "EVA-MODEL-" + "C" * 32
+    artifact_name = f"{model_id}_v1.json"
+    artifact = dataset_dir / artifact_name
+
+    registry.record_artifact_intent(
+        job["job_id"],
+        owner_id="owner",
+        workspace_id="workspace",
+        dataset_id=dataset["dataset_id"],
+        model_id=model_id,
+        version=1,
+        artifact_path=str(artifact),
+    )
+
+    # Replace the permitted dataset directory with a real junction.
+    dataset_dir.rmdir()
+
+    external_dir = tmp_path / "external-target"
+    external_dir.mkdir()
+    external_artifact = external_dir / artifact_name
+    external_artifact.write_text(
+        '{"must_not_be_deleted": true}', encoding="utf-8"
+    )
+
+    import subprocess
+
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(dataset_dir), str(external_dir)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert dataset_dir.is_junction()
+
+    # Mark the job failed and cleanup pending, preserving the recorded intent.
+    with registry.connect() as conn:
+        row = conn.execute(
+            "SELECT metadata_json FROM dl_training_jobs WHERE job_id=?",
+            (job["job_id"],),
+        ).fetchone()
+        metadata = json.loads(row["metadata_json"] or "{}")
+        metadata["artifact_cleanup"] = {"status": "pending"}
+        conn.execute(
+            """UPDATE dl_training_jobs
+               SET status='failed', error_code='SyntheticFailure',
+                   metadata_json=?
+               WHERE job_id=?""",
+            (json.dumps(metadata, sort_keys=True), job["job_id"]),
+        )
+
+    cleanup_result = registry.cleanup_failed_job_artifact(job["job_id"])
+
+    assert cleanup_result == "blocked_unsafe_path"
+    assert external_artifact.exists()
+    assert external_artifact.read_text(encoding="utf-8") == (
+        '{"must_not_be_deleted": true}'
+    )

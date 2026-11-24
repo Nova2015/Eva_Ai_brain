@@ -6,6 +6,40 @@ adapter is configured. Private governed data is never sent to a cloud worker.
 from __future__ import annotations
 
 import os
+
+from pathlib import Path
+
+
+def get_deep_learning_storage_root() -> Path:
+    """Return the default private local storage root for Deep Learning."""
+    local_app_data = os.getenv("LOCALAPPDATA")
+
+    if local_app_data:
+        return Path(local_app_data).expanduser() / "EVA" / "DeepLearning"
+
+    if os.name == "nt":
+        return Path.home() / "AppData" / "Local" / "EVA" / "DeepLearning"
+
+    xdg_data_home = os.getenv("XDG_DATA_HOME")
+    base = Path(xdg_data_home).expanduser() if xdg_data_home else Path.home() / ".local" / "share"
+    return base / "EVA" / "DeepLearning"
+
+
+def get_dataset_root() -> Path:
+    """Resolve the dataset root, honoring an explicit deployment override."""
+    configured = os.getenv("EVA_DL_DATASET_DIR")
+    if configured and configured.strip():
+        return Path(configured).expanduser()
+    return get_deep_learning_storage_root() / "datasets"
+
+
+def get_registry_db_path() -> Path:
+    """Resolve the registry database path, honoring an explicit override."""
+    configured = os.getenv("EVA_DL_REGISTRY_DB")
+    if configured and configured.strip():
+        return Path(configured).expanduser()
+    return get_deep_learning_storage_root() / "registry" / "eva_deep_learning.db"
+
 from typing import Any
 
 

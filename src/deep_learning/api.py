@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 
-from .config import get_runtime_policy
+from .config import get_dataset_root, get_runtime_policy
 from .registry import registry
 
 try:
@@ -23,7 +23,7 @@ ALLOWED_EXTENSIONS = {
     ".csv", ".xlsx", ".xls", ".txt", ".md", ".docx", ".pptx", ".json", ".jsonl"
 }
 ROOT = Path(__file__).resolve().parents[2]
-DATASET_ROOT = Path(os.getenv("EVA_DL_DATASET_DIR", str(ROOT / "data" / "deep_learning" / "datasets"))).expanduser()
+DATASET_ROOT = get_dataset_root()
 
 
 def build_router(auth_dependency) -> APIRouter:
