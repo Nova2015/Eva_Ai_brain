@@ -652,6 +652,8 @@ def engineering_build_freecad_macro(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {
