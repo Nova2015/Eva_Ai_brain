@@ -238,6 +238,7 @@ def analyze_injection_molding_dfm(
         actor_id=actor_id,
         action="dfm_analysis_completed",
         details={
+            "ruleset_version": "eva-injection-molding-dfm-0.1",
             "status": status,
             "finding_codes": [finding["code"] for finding in findings],
             "rules": thresholds,
