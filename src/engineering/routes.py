@@ -5,13 +5,13 @@ These routes configure and inspect tools. They do not execute tools or start mac
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 try:
     from ..rag.rag_routes_v2 import get_user_id
 except ImportError:
     from rag.rag_routes_v2 import get_user_id
-from . import tool_registry
+from . import job_manager, tool_registry
 
 
 router = APIRouter(prefix="/engineering", tags=["Engineering Suite"])
@@ -43,6 +43,35 @@ class ToolRegistrationRequest(BaseModel):
     capabilities: list[str]
     notes: str = ""
     executable_candidates: list[str] = []
+
+
+class EngineeringJobRequest(BaseModel):
+    job_type: str
+    tool_id: str
+    workspace_id: str
+    machine_id: str
+    input_manifest: dict[str, Any] = Field(default_factory=dict)
+    data_id: Optional[str] = None
+    classification: str = "private"
+    workflow_id: Optional[str] = None
+    step_id: Optional[str] = None
+    requires_approval: bool = True
+
+
+class JobApprovalRequest(BaseModel):
+    approved: bool
+
+
+class JobClaimRequest(BaseModel):
+    machine_id: str
+
+
+class JobCompletionRequest(BaseModel):
+    output_manifest: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobFailureRequest(BaseModel):
+    error: str
 
 
 @router.get("/tools")
@@ -134,3 +163,133 @@ def engineering_enable_tool(
         "execution_performed": False,
         "machine_started": False,
     }
+
+
+@router.post("/jobs")
+def engineering_create_job(
+    req: EngineeringJobRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        job = job_manager.create_job(
+            **req.dict(), owner_id=actor_id, actor_id=actor_id
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "job": job, "execution_performed": False}
+
+
+@router.get("/jobs")
+def engineering_list_jobs(
+    workspace_id: str,
+    status: Optional[str] = None,
+    user_id: str = Depends(get_user_id),
+):
+    owner_id = _authenticated(user_id)
+    return {
+        "ok": True,
+        "jobs": job_manager.list_jobs(
+            owner_id=owner_id, workspace_id=workspace_id, status=status
+        ),
+    }
+
+
+@router.get("/jobs/{job_id}")
+def engineering_get_job(
+    job_id: str,
+    workspace_id: str,
+    user_id: str = Depends(get_user_id),
+):
+    owner_id = _authenticated(user_id)
+    job = job_manager.get_job(job_id, owner_id=owner_id, workspace_id=workspace_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Engineering job not found")
+    return {"ok": True, "job": job}
+
+
+@router.post("/jobs/{job_id}/approve")
+def engineering_approve_job(
+    job_id: str,
+    workspace_id: str,
+    req: JobApprovalRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        job = job_manager.approve_job(
+            job_id, owner_id=actor_id, workspace_id=workspace_id,
+            actor_id=actor_id, approved=req.approved,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Engineering job not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "job": job, "execution_performed": False}
+
+
+@router.post("/jobs/{job_id}/claim")
+def engineering_claim_job(
+    job_id: str,
+    workspace_id: str,
+    req: JobClaimRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        job = job_manager.claim_job(
+            job_id, owner_id=actor_id, workspace_id=workspace_id,
+            machine_id=req.machine_id, actor_id=actor_id,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Engineering job not found")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {
+        "ok": True, "job": job, "execution_performed": False,
+        "machine_started": False, "machine_failover": False,
+    }
+
+
+@router.post("/jobs/{job_id}/complete")
+def engineering_complete_job(
+    job_id: str,
+    workspace_id: str,
+    req: JobCompletionRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        job = job_manager.complete_job(
+            job_id, owner_id=actor_id, workspace_id=workspace_id,
+            actor_id=actor_id, output_manifest=req.output_manifest,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Engineering job not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "job": job, "execution_performed": False}
+
+
+@router.post("/jobs/{job_id}/fail")
+def engineering_fail_job(
+    job_id: str,
+    workspace_id: str,
+    req: JobFailureRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        job = job_manager.fail_job(
+            job_id, owner_id=actor_id, workspace_id=workspace_id,
+            actor_id=actor_id, error=req.error,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Engineering job not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "job": job, "execution_performed": False}
