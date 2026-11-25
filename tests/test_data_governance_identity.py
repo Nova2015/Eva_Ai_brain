@@ -294,3 +294,48 @@ def test_reconciliation_audit_supports_orphan_without_governance_record(tmp_path
         owner_id="other-user", workspace_id="workspace-1",
         data_id="ORPHAN-DATA-ID",
     ) == []
+
+
+
+def test_data_item_reads_and_mutations_reject_wrong_owner_or_workspace(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "scoped.txt"
+    source.write_text("owner-scoped data", encoding="utf-8")
+    record = _register(source)
+    data_id = record["data_id"]
+
+    wrong_scope = {"owner_id": "other-user", "workspace_id": "workspace-1"}
+    with pytest.raises(KeyError):
+        get_record(data_id, **wrong_scope)
+    with pytest.raises(KeyError):
+        update_location(
+            data_id, source, **wrong_scope, actor_id="other-user"
+        )
+    with pytest.raises(KeyError):
+        record_revision(
+            data_id, **wrong_scope, actor_id="other-user"
+        )
+    with pytest.raises(KeyError):
+        set_classification(
+            data_id, "restricted", **wrong_scope, actor_id="other-user"
+        )
+    with pytest.raises(KeyError):
+        set_permissions(
+            data_id, {"read": ["other-user"]}, **wrong_scope,
+            actor_id="other-user",
+        )
+    with pytest.raises(KeyError):
+        set_training_approval(
+            data_id, "approved", **wrong_scope, actor_id="other-user"
+        )
+    with pytest.raises(KeyError):
+        list_versions(data_id, **wrong_scope)
+    with pytest.raises(KeyError):
+        list_audit_events(data_id, **wrong_scope)
+
+    # A different workspace under the same owner is also isolated.
+    wrong_workspace = {"owner_id": "user-1", "workspace_id": "other-workspace"}
+    with pytest.raises(KeyError):
+        get_record(data_id, **wrong_workspace)
+    with pytest.raises(KeyError):
+        list_audit_events(data_id, **wrong_workspace)
