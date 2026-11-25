@@ -17,7 +17,10 @@ from typing import Any
 
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _SAFE_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,100}$")
-_ALLOWED_OPERATIONS = {"create_box", "create_cylinder", "boolean_cut", "export_step", "save_document"}
+_ALLOWED_OPERATIONS = {
+    "create_box", "create_cylinder", "create_sphere", "create_cone",
+    "boolean_cut", "boolean_fuse", "boolean_common", "export_step", "save_document",
+}
 
 
 def _identifier(value: Any, field: str) -> str:
@@ -155,6 +158,75 @@ def build_freecad_macro(
                 "height_mm": height, "position_mm": coordinates,
             })
 
+        elif op == "create_sphere":
+            name = _identifier(operation.get("name"), f"operation_{index}.name")
+            if name in known_objects:
+                raise ValueError(f"Duplicate CAD object name: {name}")
+            radius = _positive_number(operation.get("radius_mm"), f"{name}.radius_mm")
+            center = operation.get("center_mm", [0, 0, 0])
+            if not isinstance(center, (list, tuple)) or len(center) != 3:
+                raise ValueError(f"{name}.center_mm must contain three coordinates")
+            coordinates = []
+            for axis, value in zip("xyz", center):
+                if isinstance(value, bool):
+                    raise ValueError(f"{name}.center_mm.{axis} must be numeric")
+                try:
+                    coordinate = float(value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"{name}.center_mm.{axis} must be numeric") from exc
+                if not math.isfinite(coordinate):
+                    raise ValueError(f"{name}.center_mm.{axis} must be finite")
+                coordinates.append(coordinate)
+            lines.extend([
+                f"{name} = doc.addObject('Part::Feature', {json.dumps(name)})",
+                f"{name}.Shape = Part.makeSphere({radius!r}, App.Vector({coordinates[0]!r}, {coordinates[1]!r}, {coordinates[2]!r}))",
+                "doc.recompute()",
+            ])
+            known_objects.add(name)
+            manifest_operations.append({
+                "op": op, "name": name, "radius_mm": radius, "center_mm": coordinates,
+            })
+
+        elif op == "create_cone":
+            name = _identifier(operation.get("name"), f"operation_{index}.name")
+            if name in known_objects:
+                raise ValueError(f"Duplicate CAD object name: {name}")
+            radius1 = _positive_number(operation.get("radius1_mm"), f"{name}.radius1_mm")
+            radius2_value = operation.get("radius2_mm", 0)
+            if isinstance(radius2_value, bool):
+                raise ValueError(f"{name}.radius2_mm must be numeric")
+            try:
+                radius2 = float(radius2_value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{name}.radius2_mm must be numeric") from exc
+            if not math.isfinite(radius2) or radius2 < 0:
+                raise ValueError(f"{name}.radius2_mm must be finite and non-negative")
+            height = _positive_number(operation.get("height_mm"), f"{name}.height_mm")
+            position = operation.get("position_mm", [0, 0, 0])
+            if not isinstance(position, (list, tuple)) or len(position) != 3:
+                raise ValueError(f"{name}.position_mm must contain three coordinates")
+            coordinates = []
+            for axis, value in zip("xyz", position):
+                if isinstance(value, bool):
+                    raise ValueError(f"{name}.position_mm.{axis} must be numeric")
+                try:
+                    coordinate = float(value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"{name}.position_mm.{axis} must be numeric") from exc
+                if not math.isfinite(coordinate):
+                    raise ValueError(f"{name}.position_mm.{axis} must be finite")
+                coordinates.append(coordinate)
+            lines.extend([
+                f"{name} = doc.addObject('Part::Feature', {json.dumps(name)})",
+                f"{name}.Shape = Part.makeCone({radius1!r}, {radius2!r}, {height!r}, App.Vector({coordinates[0]!r}, {coordinates[1]!r}, {coordinates[2]!r}))",
+                "doc.recompute()",
+            ])
+            known_objects.add(name)
+            manifest_operations.append({
+                "op": op, "name": name, "radius1_mm": radius1,
+                "radius2_mm": radius2, "height_mm": height, "position_mm": coordinates,
+            })
+
         elif op == "boolean_cut":
             name = _identifier(operation.get("name"), f"operation_{index}.name")
             base = _identifier(operation.get("base"), f"{name}.base")
@@ -165,6 +237,26 @@ def build_freecad_macro(
                 raise ValueError("Boolean cut base and tool must reference earlier objects")
             lines.extend([
                 f"{name} = doc.addObject('Part::Cut', {json.dumps(name)})",
+                f"{name}.Base = doc.getObject({json.dumps(base)})",
+                f"{name}.Tool = doc.getObject({json.dumps(tool)})",
+                "doc.recompute()",
+                f"doc.getObject({json.dumps(base)}).Visibility = False",
+                f"doc.getObject({json.dumps(tool)}).Visibility = False",
+            ])
+            known_objects.add(name)
+            manifest_operations.append({"op": op, "name": name, "base": base, "tool": tool})
+
+        elif op in {"boolean_fuse", "boolean_common"}:
+            name = _identifier(operation.get("name"), f"operation_{index}.name")
+            base = _identifier(operation.get("base"), f"{name}.base")
+            tool = _identifier(operation.get("tool"), f"{name}.tool")
+            if name in known_objects:
+                raise ValueError(f"Duplicate CAD object name: {name}")
+            if base not in known_objects or tool not in known_objects:
+                raise ValueError("Boolean operation base and tool must reference earlier objects")
+            feature = "Part::Fuse" if op == "boolean_fuse" else "Part::Common"
+            lines.extend([
+                f"{name} = doc.addObject({json.dumps(feature)}, {json.dumps(name)})",
                 f"{name}.Base = doc.getObject({json.dumps(base)})",
                 f"{name}.Tool = doc.getObject({json.dumps(tool)})",
                 "doc.recompute()",
