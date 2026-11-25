@@ -14,6 +14,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from ..data_governance import record_governance_event, register_import
+
 
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _SAFE_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,100}$")
@@ -70,12 +72,18 @@ def build_freecad_macro(
     operations: list[dict[str, Any]],
     *,
     document_name: str = "EVA_Engineering_Model",
+    owner_id: str,
+    workspace_id: str,
     actor_id: str,
     approved: bool,
 ) -> dict[str, Any]:
     """Generate a reviewed FreeCAD macro from safe structured operations."""
     if not isinstance(actor_id, str) or not actor_id.strip():
         raise ValueError("actor_id is required")
+    if not isinstance(owner_id, str) or not owner_id.strip() or actor_id != owner_id:
+        raise PermissionError("Only the authenticated owner may register the generated CAD macro")
+    if not isinstance(workspace_id, str) or not workspace_id.strip():
+        raise ValueError("workspace_id is required")
     if approved is not True:
         raise PermissionError("Explicit approval is required to generate a FreeCAD macro")
     document_name = _identifier(document_name, "document_name")
@@ -299,8 +307,18 @@ def build_freecad_macro(
     manifest_path = macro_dir / f"{macro_id}.json"
     macro_path.write_text(macro_text, encoding="utf-8")
     digest = hashlib.sha256(macro_text.encode("utf-8")).hexdigest()
+    try:
+        generated_record = register_import(
+            macro_path, source="engineering_generated:freecad_macro",
+            owner_id=owner_id, workspace_id=workspace_id, actor_id=actor_id,
+            classification="ip",
+        )
+    except Exception:
+        macro_path.unlink(missing_ok=True)
+        raise
     manifest = {
         "macro_id": macro_id,
+        "macro_data_id": generated_record["data_id"],
         "macro_path": str(macro_path.resolve()),
         "sha256": digest,
         "document_name": document_name,
@@ -311,5 +329,16 @@ def build_freecad_macro(
         "execution_performed": False,
         "machine_start_allowed": False,
     }
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    try:
+        with manifest_path.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(manifest, indent=2, sort_keys=True))
+        record_governance_event(
+            generated_record["data_id"], "freecad_macro_prepared",
+            owner_id=owner_id, workspace_id=workspace_id, actor_id=actor_id,
+            details={"macro_id": macro_id, "sha256": digest},
+        )
+    except Exception:
+        manifest_path.unlink(missing_ok=True)
+        macro_path.unlink(missing_ok=True)
+        raise
     return manifest
