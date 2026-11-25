@@ -150,3 +150,46 @@ def test_gmsh_msh2_validator_checks_declared_counts_and_node_references(tmp_path
     rejected = domain_validation.validate_gmsh_msh_file(invalid)
     assert rejected["ok"] is False
     assert rejected["missing_node_references"] == [4]
+
+
+
+@pytest.mark.parametrize(
+    "node_rows,element_header,element_row,expected_issue",
+    [
+        ("1, 0, 0, 0\n1, 1, 0, 0\n2, 0, 1, 0\n3, 0, 0, 1\n",
+         "*ELEMENT, TYPE=C3D4", "1, 1, 2, 3, 4", "duplicate node ID"),
+        ("1, 0, 0, 0\n2, 1, 0, 0\n3, 0, 1, 0\n4, 0, 0, 1\n",
+         "*ELEMENT, TYPE=C3D4", "1, 1, 2, 3", "requires 4 node IDs"),
+        ("1, 0, 0, 0\n2, 1, 0, 0\n3, 0, 1, 0\n4, 0, 0, 1\n",
+         "*ELEMENT, TYPE=UNKNOWN", "1, 1, 2, 3, 4", "unsupported or missing"),
+    ],
+)
+def test_calculix_validator_rejects_duplicate_or_invalid_element_topology(
+    tmp_path, node_rows, element_header, element_row, expected_issue
+):
+    path = tmp_path / "invalid-topology.inp"
+    path.write_text(
+        "*NODE\n" + node_rows + element_header + "\n" + element_row + "\n"
+        "*STEP\n*STATIC\n*CLOAD\n1, 1, 100\n"
+        "*BOUNDARY\n1, 1, 3\n*END STEP\n",
+        encoding="utf-8",
+    )
+    result = domain_validation.validate_calculix_input(path)
+    assert result["ok"] is False
+    assert any(expected_issue in issue for issue in result["issues"])
+
+
+def test_calculix_validator_rejects_duplicate_element_ids_and_unbalanced_steps(tmp_path):
+    path = tmp_path / "duplicate-elements.inp"
+    path.write_text(
+        "*NODE\n"
+        "1, 0, 0, 0\n2, 1, 0, 0\n3, 0, 1, 0\n4, 0, 0, 1\n"
+        "*ELEMENT, TYPE=C3D4\n1, 1, 2, 3, 4\n1, 1, 2, 3, 4\n"
+        "*STEP\n*STATIC\n*CLOAD\n1, 1, 100\n"
+        "*BOUNDARY\n1, 1, 3\n",
+        encoding="utf-8",
+    )
+    result = domain_validation.validate_calculix_input(path)
+    assert result["ok"] is False
+    assert any("duplicate element ID" in issue for issue in result["issues"])
+    assert any("complete *STEP" in issue for issue in result["issues"])
