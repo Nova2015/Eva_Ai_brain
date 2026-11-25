@@ -58,6 +58,8 @@ def _safe_output_path(root: Path, filename: str, extension: str) -> Path:
         destination.relative_to(root)
     except ValueError as exc:
         raise ValueError("Output path must remain inside the engineering output directory") from exc
+    if destination.exists():
+        raise FileExistsError("Output file already exists; EVA will not overwrite it")
     return destination
 
 
