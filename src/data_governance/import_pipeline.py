@@ -256,6 +256,35 @@ def list_quarantined(
     return results
 
 
+def list_quarantine_audit(
+    quarantine_id: str, *, owner_id: str, workspace_id: str
+) -> list[dict[str, Any]]:
+    """Read immutable quarantine history within the owning workspace."""
+    for field, value in (("quarantine_id", quarantine_id), ("owner_id", owner_id),
+                         ("workspace_id", workspace_id)):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field} is required")
+    with _connect() as conn:
+        item = conn.execute(
+            """SELECT 1 FROM quarantine_items
+               WHERE quarantine_id=? AND owner_id=? AND workspace_id=?""",
+            (quarantine_id, owner_id, workspace_id),
+        ).fetchone()
+        if item is None:
+            raise KeyError(f"Quarantine item not found: {quarantine_id}")
+        rows = conn.execute(
+            """SELECT * FROM quarantine_audit WHERE quarantine_id=?
+               ORDER BY audit_id""",
+            (quarantine_id,),
+        ).fetchall()
+    events = []
+    for row in rows:
+        event = dict(row)
+        event["details"] = json.loads(event.pop("details_json"))
+        events.append(event)
+    return events
+
+
 def release_quarantined(
     quarantine_id: str,
     *,
