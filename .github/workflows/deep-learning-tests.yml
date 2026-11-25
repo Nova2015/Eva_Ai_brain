@@ -10,6 +10,7 @@ on:
       - "src/rag/**"
       - "tests/test_deep_learning_*.py"
       - "tests/test_data_governance_identity.py"
+      - "tests/test_data_governance_import_pipeline.py"
       - "tests/test_rag_upload_job_flow.py"
       - "tests/test_graph_rag_store.py"
       - ".github/workflows/deep-learning-tests.yml"
@@ -23,6 +24,7 @@ on:
       - "src/rag/**"
       - "tests/test_deep_learning_*.py"
       - "tests/test_data_governance_identity.py"
+      - "tests/test_data_governance_import_pipeline.py"
       - "tests/test_rag_upload_job_flow.py"
       - "tests/test_graph_rag_store.py"
       - ".github/workflows/deep-learning-tests.yml"
@@ -40,4 +42,4 @@ jobs:
       - name: Install focused test dependencies
         run: python -m pip install --upgrade pip pytest numpy openpyxl fastapi python-multipart python-jose[cryptography] xgboost scikit-learn
       - name: Run Deep Learning, Data Governance and RAG tests
-        run: python -m pytest -q tests/test_deep_learning_*.py tests/test_data_governance_identity.py tests/test_rag_upload_job_flow.py tests/test_graph_rag_store.py
+        run: python -m pytest -q tests/test_deep_learning_*.py tests/test_data_governance_identity.py tests/test_data_governance_import_pipeline.py tests/test_rag_upload_job_flow.py tests/test_graph_rag_store.py
