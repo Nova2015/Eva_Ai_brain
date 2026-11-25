@@ -107,12 +107,14 @@ def validate_stl_file(file_path: str | Path) -> dict[str, Any]:
     mins = [min(point[axis] for point in all_points) for axis in range(3)]
     maxs = [max(point[axis] for point in all_points) for axis in range(3)]
     issues = []
+    warnings = []
     if degenerate:
         issues.append(f"STL contains {degenerate} degenerate triangle(s)")
     if any(maxs[i] - mins[i] <= 1e-12 for i in range(3)):
-        issues.append("STL has a zero-thickness bounding-box axis")
+        warnings.append("STL has a zero-thickness bounding-box axis; review thin or planar geometry")
     return _result(
         not issues, "stl_mesh", issues,
+        warnings=warnings,
         triangle_count=len(triangles),
         degenerate_triangle_count=degenerate,
         bounding_box={"min": mins, "max": maxs},
