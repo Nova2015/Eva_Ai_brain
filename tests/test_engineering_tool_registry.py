@@ -11,7 +11,7 @@ def test_registry_seeds_approved_engineering_candidates_disabled_by_default(tmp_
     by_id = {item["tool_id"]: item for item in tools}
 
     for tool_id in ("freecad", "blender", "gmsh", "calculix", "openfoam",
-                    "linuxcnc", "freecad_mcp", "blender_mcp", "autodesk_moldflow"):
+                    "linuxcnc", "freecad_mcp", "blender_mcp", "autodesk_moldflow", "python_reporting", "gcode_validator"):
         assert tool_id in by_id
         assert by_id[tool_id]["enabled"] is False
         assert by_id[tool_id]["validation_status"] == "not_checked"
