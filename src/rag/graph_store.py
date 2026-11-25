@@ -152,9 +152,13 @@ def _validate_scope(data_id: str, owner_id: str, workspace_id: str, actor_id: st
                (data_id, owner_id, workspace_id, actor_id)):
         raise ValueError("data_id, owner_id, workspace_id and actor_id are required")
     try:
-        from ..data_governance import get_record
+        from ..data_governance import authorize_data_action, get_record
     except ImportError:
-        from data_governance import get_record
+        from data_governance import authorize_data_action, get_record
+    if not authorize_data_action(
+        data_id, actor_id=actor_id, workspace_id=workspace_id, action="write"
+    ):
+        raise PermissionError("Write permission is required for this governed source")
     record = get_record(data_id, owner_id=owner_id, workspace_id=workspace_id)
     if not record:
         raise PermissionError("Source Data ID is not available in this owner/workspace")
@@ -352,10 +356,10 @@ def review_evidence(
             object_type = "relationship_evidence"
         if row is None:
             raise KeyError("Graph evidence not found")
+        source_record = _validate_scope(
+            row["data_id"], owner_id, workspace_id, actor_id
+        )
         if status == "approved":
-            source_record = _validate_scope(
-                row["data_id"], owner_id, workspace_id, actor_id
-            )
             if int(source_record.get("version") or 1) != int(row["source_version"]):
                 raise ValueError("Source Data ID has a newer revision; re-extract graph evidence before approval")
         conn.execute(
