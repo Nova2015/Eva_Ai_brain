@@ -49,6 +49,11 @@ def test_injection_molding_dfm_reports_configurable_screening_findings(tmp_path,
     assert result["status"] == "review_required"
     assert result["advisory_only"] is True
     assert result["engineering_approval"] == "not_granted"
+    events = materials.list_material_audit(
+        material["material_id"], owner_id="owner-1", workspace_id="cad"
+    )
+    assert events[-1]["action"] == "dfm_analysis_completed"
+    assert events[-1]["details"]["status"] == "review_required"
 
 
 def test_injection_molding_dfm_preliminary_pass_is_not_engineering_approval(tmp_path, monkeypatch):
