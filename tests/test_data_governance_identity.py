@@ -610,3 +610,15 @@ def test_audit_tables_are_append_only_even_for_direct_sql(tmp_path, monkeypatch)
         conn.rollback()
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize("classification", ["public", "private", "sensitive", "ip"])
+def test_canonical_governance_classifications_are_supported(tmp_path, monkeypatch, classification):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / f"{classification}.txt"
+    source.write_text("classified engineering content", encoding="utf-8")
+    record = register_import(
+        source, source="test", owner_id="user-1", workspace_id="workspace-1",
+        actor_id="user-1", classification=classification,
+    )
+    assert record["classification"] == classification
