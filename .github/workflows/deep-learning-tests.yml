@@ -1,4 +1,4 @@
-name: EVA Deep Learning Tests
+name: EVA Deep Learning and Governance Tests
 
 on:
   push:
@@ -7,8 +7,11 @@ on:
     paths:
       - "src/deep_learning/**"
       - "src/data_governance/**"
+      - "src/rag/**"
       - "tests/test_deep_learning_*.py"
       - "tests/test_data_governance_identity.py"
+      - "tests/test_rag_upload_job_flow.py"
+      - "tests/test_graph_rag_store.py"
       - ".github/workflows/deep-learning-tests.yml"
   pull_request:
     branches:
@@ -17,8 +20,11 @@ on:
     paths:
       - "src/deep_learning/**"
       - "src/data_governance/**"
+      - "src/rag/**"
       - "tests/test_deep_learning_*.py"
       - "tests/test_data_governance_identity.py"
+      - "tests/test_rag_upload_job_flow.py"
+      - "tests/test_graph_rag_store.py"
       - ".github/workflows/deep-learning-tests.yml"
 
 jobs:
@@ -33,5 +39,5 @@ jobs:
           cache: pip
       - name: Install focused test dependencies
         run: python -m pip install --upgrade pip pytest numpy openpyxl fastapi python-multipart xgboost scikit-learn
-      - name: Run Deep Learning and Data Governance tests
-        run: python -m pytest -q tests/test_deep_learning_*.py tests/test_data_governance_identity.py
+      - name: Run Deep Learning, Data Governance and RAG tests
+        run: python -m pytest -q tests/test_deep_learning_*.py tests/test_data_governance_identity.py tests/test_rag_upload_job_flow.py tests/test_graph_rag_store.py
