@@ -17,16 +17,23 @@ _DEFAULT_RULES = {
 }
 
 
-def _positive_number(value: Any, field: str, *, allow_zero: bool = False) -> float:
+def _finite_number(value: Any, field: str) -> float:
     if isinstance(value, bool):
         raise ValueError(f"{field} must be numeric")
     try:
         number = float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{field} must be numeric") from exc
-    if not math.isfinite(number) or (number < 0 if allow_zero else number <= 0):
+    if not math.isfinite(number):
+        raise ValueError(f"{field} must be finite")
+    return number
+
+
+def _positive_number(value: Any, field: str, *, allow_zero: bool = False) -> float:
+    number = _finite_number(value, field)
+    if number < 0 if allow_zero else number <= 0:
         qualifier = "non-negative" if allow_zero else "positive"
-        raise ValueError(f"{field} must be finite and {qualifier}")
+        raise ValueError(f"{field} must be {qualifier}")
     return number
 
 
@@ -96,6 +103,8 @@ def analyze_injection_molding_dfm(
         })
 
     variation = max(sample_values) / min(sample_values)
+    if not math.isfinite(variation):
+        raise ValueError("Wall thickness variation ratio overflowed")
     if variation > thresholds["max_wall_thickness_variation_ratio"]:
         add(
             "WALL_THICKNESS_VARIATION", "warning",
@@ -104,9 +113,13 @@ def analyze_injection_molding_dfm(
             ratio=variation, limit=thresholds["max_wall_thickness_variation_ratio"],
         )
 
-    draft_angles = _number_list(
-        analysis.get("draft_angles_deg", []), "draft_angles_deg", allow_zero=True
-    )
+    raw_draft_angles = analysis.get("draft_angles_deg", [])
+    if not isinstance(raw_draft_angles, list):
+        raise ValueError("draft_angles_deg must be a list")
+    draft_angles = [
+        _finite_number(angle, f"draft_angles_deg[{index}]")
+        for index, angle in enumerate(raw_draft_angles)
+    ]
     if not draft_angles:
         add("DRAFT_DATA_MISSING", "review", "No draft-angle measurements were supplied")
     else:
@@ -131,6 +144,8 @@ def analyze_injection_molding_dfm(
         height = _positive_number(rib.get("height_mm"), f"{name}.height_mm")
         thickness_ratio = thickness / wall
         height_ratio = height / wall
+        if not math.isfinite(thickness_ratio) or not math.isfinite(height_ratio):
+            raise ValueError(f"{name} rib ratios overflowed")
         if thickness_ratio > thresholds["max_rib_wall_ratio"]:
             add(
                 "RIB_TOO_THICK", "warning",
@@ -155,6 +170,8 @@ def analyze_injection_molding_dfm(
             raise ValueError(f"bosses[{index}].name must be a non-empty string")
         thickness = _positive_number(boss.get("wall_thickness_mm"), f"{name}.wall_thickness_mm")
         ratio = thickness / wall
+        if not math.isfinite(ratio):
+            raise ValueError(f"{name} boss ratio overflowed")
         if ratio > thresholds["max_boss_wall_ratio"]:
             add(
                 "BOSS_TOO_THICK", "warning",
