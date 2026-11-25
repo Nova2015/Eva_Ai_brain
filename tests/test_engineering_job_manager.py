@@ -241,3 +241,33 @@ def test_engineering_analysis_requires_approved_material_record(tmp_path, monkey
         requires_approval=False,
     )
     assert job["status"] == "queued"
+
+
+
+def test_job_creation_rejects_malformed_workflow_metadata_and_classification(tmp_path, monkeypatch):
+    _enable_tool(tmp_path, monkeypatch)
+    base = dict(
+        job_type="analysis", tool_id="freecad", owner_id="owner-1",
+        workspace_id="cad", machine_id="machine-b", actor_id="owner-1",
+        input_manifest={"operation": "geometry_check"}, requires_approval=False,
+    )
+    with pytest.raises(ValueError, match="depends_on must be a list"):
+        job_manager.create_job(**base, depends_on=())
+    with pytest.raises(ValueError, match="workflow_id must be a non-empty string"):
+        job_manager.create_job(**base, workflow_id=42)
+    with pytest.raises(ValueError, match="step_id must be a non-empty string"):
+        job_manager.create_job(**base, workflow_id="workflow-1", step_id=42)
+    with pytest.raises(ValueError, match="unsupported data classification"):
+        job_manager.create_job(**base, classification=[])
+    with pytest.raises(ValueError, match="material_id must be a non-empty string"):
+        job_manager.create_job(**dict(base, input_manifest={"material_id": []}))
+
+
+def test_job_creation_blocks_case_insensitive_machine_start(tmp_path, monkeypatch):
+    _enable_tool(tmp_path, monkeypatch)
+    with pytest.raises(PermissionError, match="does not automatically start"):
+        job_manager.create_job(
+            job_type="Machine_Start", tool_id="freecad", owner_id="owner-1",
+            workspace_id="cad", machine_id="machine-b", actor_id="owner-1",
+            input_manifest={}, requires_approval=True,
+        )
