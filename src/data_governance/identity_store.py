@@ -648,6 +648,8 @@ def set_permissions(
 ) -> dict[str, Any]:
     _require_scope(data_id, owner_id, workspace_id)
     _require_actor(actor_id)
+    if actor_id != owner_id:
+        raise PermissionError("Only the data owner may change permissions")
     normalized_permissions = _normalize_permissions(permissions)
     with _connect() as conn:
         row = conn.execute(
