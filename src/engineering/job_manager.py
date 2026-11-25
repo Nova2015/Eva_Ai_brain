@@ -166,6 +166,15 @@ def create_job(
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"{field} is required")
     if actor_id != owner_id:
+        if data_id:
+            try:
+                from ..data_governance import authorize_data_action
+            except ImportError:
+                from data_governance import authorize_data_action
+            if not authorize_data_action(
+                data_id, actor_id=actor_id, workspace_id=workspace_id, action="execute"
+            ):
+                raise PermissionError("Execute permission is required for the governed source")
         raise PermissionError("Only the authenticated owner may create jobs in this scope")
     if job_type == "machine_start":
         raise PermissionError("EVA does not automatically start CNC machines")
