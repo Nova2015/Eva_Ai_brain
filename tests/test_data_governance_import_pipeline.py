@@ -6,6 +6,7 @@ import pytest
 from src.data_governance.import_pipeline import (
     list_quarantined,
     quarantine_candidate,
+    release_quarantined,
     validate_and_register_import,
     validate_import_candidate,
 )
@@ -139,3 +140,37 @@ def test_format_validation_rejects_corrupt_json_and_accepts_valid_json(tmp_path)
     valid.write_text('{"part": "door-trim"}', encoding="utf-8")
     accepted = validate_import_candidate(valid, malware_scanner=lambda path: True)
     assert accepted["ok"] is True
+
+
+def test_quarantine_release_requires_approval_and_fresh_clean_scan(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    monkeypatch.setenv("EVA_DATA_QUARANTINE_DIR", str(tmp_path / "quarantine"))
+    source = tmp_path / "held.txt"
+    source.write_text("held engineering document", encoding="utf-8")
+    quarantined = validate_and_register_import(
+        source, source="test", owner_id="owner-1", workspace_id="cad",
+        actor_id="owner-1", malware_scanner=lambda path: False,
+    )
+    quarantine_id = quarantined["quarantine"]["quarantine_id"]
+
+    with pytest.raises(ValueError, match="Explicit quarantine release approval"):
+        release_quarantined(
+            quarantine_id, owner_id="owner-1", workspace_id="cad",
+            actor_id="owner-1", approved=False,
+        )
+    with pytest.raises(ValueError, match="configured malware scanner"):
+        release_quarantined(
+            quarantine_id, owner_id="owner-1", workspace_id="cad",
+            actor_id="owner-1", approved=True,
+        )
+
+    released = release_quarantined(
+        quarantine_id, owner_id="owner-1", workspace_id="cad",
+        actor_id="owner-1", approved=True,
+        malware_scanner=lambda path: True,
+    )
+    assert released["status"] == "released"
+    assert released["record"]["data_id"] == released["data_id"]
+    assert released["quarantine_file_retained"] is True
+    assert source.exists()
+    assert list_quarantined(owner_id="owner-1", workspace_id="cad") == []
