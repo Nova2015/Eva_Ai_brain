@@ -193,3 +193,26 @@ def test_quarantine_release_requires_approval_and_fresh_clean_scan(tmp_path, mon
         "file_quarantined", "release_started", "release_failed",
         "release_started", "released",
     ]
+
+
+def test_import_pipeline_quarantines_invalid_gcode_and_flags_operator_review(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    monkeypatch.setenv("EVA_DATA_QUARANTINE_DIR", str(tmp_path / "quarantine"))
+    invalid = tmp_path / "unsafe.nc"
+    invalid.write_text("G65 P1000\nG1 X10\n", encoding="utf-8")
+    rejected = validate_and_register_import(
+        invalid, source="test", owner_id="owner-1", workspace_id="cad",
+        actor_id="owner-1",
+    )
+    assert rejected["status"] == "quarantined"
+    assert any("unsupported G-code" in issue for issue in rejected["validation"]["issues"])
+
+    valid = tmp_path / "operator-review.nc"
+    valid.write_text("G21\nG0 X0 Y0\nM3 S1200\nM30\n", encoding="utf-8")
+    accepted = validate_and_register_import(
+        valid, source="test", owner_id="owner-1", workspace_id="cad",
+        actor_id="owner-1",
+    )
+    assert accepted["status"] == "registered"
+    assert accepted["validation"]["domain_validation"]["operator_review_required"] is True
+    assert any("operator review" in warning for warning in accepted["validation"]["warnings"])
