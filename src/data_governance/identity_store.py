@@ -161,6 +161,45 @@ def _initialize(conn: sqlite3.Connection) -> None:
         BEGIN
             SELECT RAISE(ABORT, 'reconciliation_audit is append-only');
         END;
+
+        CREATE TABLE IF NOT EXISTS quarantine_items (
+            quarantine_id TEXT PRIMARY KEY,
+            original_path TEXT NOT NULL,
+            quarantine_path TEXT NOT NULL,
+            owner_id TEXT NOT NULL,
+            workspace_id TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+            status TEXT NOT NULL DEFAULT 'quarantined',
+            validation_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_quarantine_scope
+            ON quarantine_items(owner_id, workspace_id, status);
+
+        CREATE TABLE IF NOT EXISTS quarantine_audit (
+            audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            quarantine_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            details_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TRIGGER IF NOT EXISTS trg_quarantine_audit_no_update
+        BEFORE UPDATE ON quarantine_audit
+        BEGIN
+            SELECT RAISE(ABORT, 'quarantine_audit is append-only');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_quarantine_audit_no_delete
+        BEFORE DELETE ON quarantine_audit
+        BEGIN
+            SELECT RAISE(ABORT, 'quarantine_audit is append-only');
+        END;
         """
     )
 
