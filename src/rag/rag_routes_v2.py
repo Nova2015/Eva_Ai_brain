@@ -835,6 +835,9 @@ async def rag_ingest_url(req: IngestURLRequest, user_id: str = Depends(get_user_
         }
     except HTTPException:
         raise
+    except ValueError as exc:
+        logger.warning("URL ingest candidate quarantined or rejected: %s", exc)
+        raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
         logger.error("URL ingest failed: %s", exc)
         raise HTTPException(status_code=500, detail="URL ingestion failed")
