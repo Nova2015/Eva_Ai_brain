@@ -53,6 +53,8 @@ def _validate_rules(rules: dict[str, Any] | None) -> dict[str, float]:
         return result
     if not isinstance(rules, dict):
         raise ValueError("rules must be a dictionary")
+    if any(not isinstance(key, str) for key in rules):
+        raise ValueError("DFM rule names must be strings")
     unknown = set(rules) - set(_DEFAULT_RULES)
     if unknown:
         raise ValueError("Unsupported DFM rule overrides: " + ", ".join(sorted(unknown)))
