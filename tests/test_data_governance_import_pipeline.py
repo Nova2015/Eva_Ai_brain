@@ -145,6 +145,7 @@ def test_format_validation_rejects_corrupt_json_and_accepts_valid_json(tmp_path)
 def test_quarantine_release_requires_approval_and_fresh_clean_scan(tmp_path, monkeypatch):
     monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
     monkeypatch.setenv("EVA_DATA_QUARANTINE_DIR", str(tmp_path / "quarantine"))
+    monkeypatch.setenv("EVA_DATA_VALIDATED_DIR", str(tmp_path / "validated"))
     source = tmp_path / "held.txt"
     source.write_text("held engineering document", encoding="utf-8")
     quarantined = validate_and_register_import(
@@ -172,5 +173,8 @@ def test_quarantine_release_requires_approval_and_fresh_clean_scan(tmp_path, mon
     assert released["status"] == "released"
     assert released["record"]["data_id"] == released["data_id"]
     assert released["quarantine_file_retained"] is True
+    assert Path(released["validated_path"]).parent == tmp_path / "validated"
+    assert Path(released["validated_path"]).exists()
+    assert Path(released["record"]["file_path"]) == Path(released["validated_path"])
     assert source.exists()
     assert list_quarantined(owner_id="owner-1", workspace_id="cad") == []
