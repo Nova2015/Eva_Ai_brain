@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 
 from src.data_governance.import_pipeline import (
+    list_quarantined,
     quarantine_candidate,
     validate_and_register_import,
     validate_import_candidate,
@@ -9,6 +10,7 @@ from src.data_governance.import_pipeline import (
 
 
 def test_valid_text_import_is_registered_with_hash_and_scan_status(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
     monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
     monkeypatch.setenv("EVA_DATA_QUARANTINE_DIR", str(tmp_path / "quarantine"))
     source = tmp_path / "valid.txt"
@@ -28,6 +30,7 @@ def test_valid_text_import_is_registered_with_hash_and_scan_status(tmp_path, mon
 
 
 def test_invalid_pdf_is_quarantined_without_modifying_original(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
     monkeypatch.setenv("EVA_DATA_QUARANTINE_DIR", str(tmp_path / "quarantine"))
     source = tmp_path / "invalid.pdf"
     original_bytes = b"this is not a PDF file"
@@ -46,9 +49,14 @@ def test_invalid_pdf_is_quarantined_without_modifying_original(tmp_path, monkeyp
     assert quarantined_path.read_bytes() == original_bytes
     assert json.loads(manifest_path.read_text(encoding="utf-8"))["original_file_deleted"] is False
     assert source.read_bytes() == original_bytes
+    items = list_quarantined(owner_id="owner-1", workspace_id="cad")
+    assert len(items) == 1
+    assert items[0]["quarantine_id"] == result["quarantine"]["quarantine_id"]
+    assert list_quarantined(owner_id="owner-1", workspace_id="other-workspace") == []
 
 
 def test_size_limit_and_unsupported_extension_fail_closed_to_quarantine(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
     monkeypatch.setenv("EVA_DATA_QUARANTINE_DIR", str(tmp_path / "quarantine"))
     source = tmp_path / "large.unknown"
     source.write_text("123456789", encoding="utf-8")
@@ -64,6 +72,7 @@ def test_size_limit_and_unsupported_extension_fail_closed_to_quarantine(tmp_path
 
 
 def test_malware_scanner_rejection_is_quarantined(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
     monkeypatch.setenv("EVA_DATA_QUARANTINE_DIR", str(tmp_path / "quarantine"))
     source = tmp_path / "suspicious.txt"
     source.write_text("suspicious content", encoding="utf-8")
@@ -78,6 +87,7 @@ def test_malware_scanner_rejection_is_quarantined(tmp_path, monkeypatch):
 
 
 def test_malware_scanner_errors_fail_closed_to_quarantine(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
     monkeypatch.setenv("EVA_DATA_QUARANTINE_DIR", str(tmp_path / "quarantine"))
     source = tmp_path / "scan-error.txt"
     source.write_text("scan failure content", encoding="utf-8")
@@ -95,6 +105,7 @@ def test_malware_scanner_errors_fail_closed_to_quarantine(tmp_path, monkeypatch)
 
 
 def test_quarantine_copy_is_sha256_verified(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
     monkeypatch.setenv("EVA_DATA_QUARANTINE_DIR", str(tmp_path / "quarantine"))
     source = tmp_path / "candidate.txt"
     source.write_text("quarantine integrity", encoding="utf-8")
