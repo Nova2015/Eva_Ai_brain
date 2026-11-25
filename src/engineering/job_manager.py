@@ -212,6 +212,15 @@ def create_job(
     tool = tool_registry.resolve_tool(tool_id)
     if tool["machine_start_allowed"]:
         raise PermissionError("Tool is not permitted to start a machine")
+    material_id = input_manifest.get("material_id")
+    if material_id:
+        try:
+            from .materials import resolve_material_for_analysis
+        except ImportError:
+            from engineering.materials import resolve_material_for_analysis
+        resolve_material_for_analysis(
+            material_id, owner_id=owner_id, workspace_id=workspace_id
+        )
     if data_id:
         try:
             from ..data_governance import authorize_data_action
