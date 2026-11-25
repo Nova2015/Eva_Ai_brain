@@ -17,6 +17,8 @@ import pytest
 @pytest.fixture(autouse=True)
 def isolated_job_database(tmp_path, monkeypatch):
     monkeypatch.setenv("EVA_RAG_JOB_DB", str(tmp_path / "rag_jobs.sqlite3"))
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    monkeypatch.setenv("EVA_GRAPH_RAG_DB", str(tmp_path / "graph_rag.db"))
     jm._reset_for_tests()
     yield
     jm._reset_for_tests()
