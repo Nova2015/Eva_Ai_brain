@@ -941,3 +941,5 @@ def engineering_build_calculix_deck(
         "solver_execution_performed": False,
         "engineering_approval": "not_granted",
     }
+
+# Material registration requires an assigned independent reviewer before approval.
