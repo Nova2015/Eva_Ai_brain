@@ -107,3 +107,46 @@ def test_domain_validator_dispatches_by_extension(tmp_path):
     path.write_text("G0 X0\nM30\n", encoding="utf-8")
     result = domain_validation.validate_engineering_file(path)
     assert result["validator"] == "gcode_syntax"
+
+
+def test_obj_validator_checks_face_indices_and_triangle_quality(tmp_path):
+    valid = tmp_path / "part.obj"
+    valid.write_text(
+        "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n",
+        encoding="utf-8",
+    )
+    result = domain_validation.validate_obj_file(valid)
+    assert result["ok"] is True
+    assert result["vertex_count"] == 3
+    assert result["face_count"] == 1
+
+    invalid = tmp_path / "invalid.obj"
+    invalid.write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 4\n", encoding="utf-8")
+    rejected = domain_validation.validate_obj_file(invalid)
+    assert rejected["ok"] is False
+    assert any("missing vertex" in issue for issue in rejected["issues"])
+
+
+def test_gmsh_msh2_validator_checks_declared_counts_and_node_references(tmp_path):
+    valid = tmp_path / "valid.msh"
+    valid.write_text(
+        "$MeshFormat\n2.2 0 8\n$EndMeshFormat\n"
+        "$Nodes\n4\n1 0 0 0\n2 1 0 0\n3 0 1 0\n4 0 0 1\n$EndNodes\n"
+        "$Elements\n1\n1 4 2 1 1 1 2 3 4\n$EndElements\n",
+        encoding="utf-8",
+    )
+    result = domain_validation.validate_gmsh_msh_file(valid)
+    assert result["ok"] is True
+    assert result["node_count"] == 4
+    assert result["element_count"] == 1
+
+    invalid = tmp_path / "invalid.msh"
+    invalid.write_text(
+        "$MeshFormat\n2.2 0 8\n$EndMeshFormat\n"
+        "$Nodes\n3\n1 0 0 0\n2 1 0 0\n3 0 1 0\n$EndNodes\n"
+        "$Elements\n1\n1 4 2 1 1 1 2 3 4\n$EndElements\n",
+        encoding="utf-8",
+    )
+    rejected = domain_validation.validate_gmsh_msh_file(invalid)
+    assert rejected["ok"] is False
+    assert rejected["missing_node_references"] == [4]
