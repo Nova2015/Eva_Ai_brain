@@ -101,3 +101,22 @@ def test_freecad_macro_api_requires_authentication_and_approval(tmp_path, monkey
     assert result["macro"]["status"] == "prepared_for_review"
     assert result["execution_performed"] is False
     assert result["machine_started"] is False
+
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        {"op": {"unexpected": "mapping"}},
+        {"op": "create_box", "name": "BoolBox", "length_mm": True,
+         "width_mm": 1, "height_mm": 1},
+    ],
+)
+def test_freecad_macro_rejects_non_string_operations_and_boolean_dimensions(
+    tmp_path, monkeypatch, operation
+):
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
+    with pytest.raises(ValueError):
+        freecad_adapter.build_freecad_macro(
+            [operation], actor_id="owner-1", approved=True
+        )
