@@ -3,6 +3,12 @@ from pathlib import Path
 
 import pytest
 
+@pytest.fixture(autouse=True)
+def _governance_db(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+
+
+from src.data_governance import get_record, list_audit_events
 from src.engineering import blender_adapter
 
 
@@ -21,7 +27,7 @@ def test_blender_script_generation_is_approved_and_preserves_existing_scene(tmp_
 
     with pytest.raises(PermissionError, match="Explicit approval"):
         blender_adapter.build_blender_script(
-            operations, actor_id="owner-1", approved=False
+            operations, owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=False
         )
 
     manifest = blender_adapter.build_blender_script(
@@ -32,6 +38,14 @@ def test_blender_script_generation_is_approved_and_preserves_existing_scene(tmp_
     assert manifest["status"] == "prepared_for_review"
     assert manifest["execution_performed"] is False
     assert manifest["machine_start_allowed"] is False
+    governed_script = get_record(
+        manifest["script_data_id"], owner_id="owner-1", workspace_id="cad"
+    )
+    assert governed_script["sha256"] == manifest["sha256"]
+    events = list_audit_events(
+        manifest["script_data_id"], owner_id="owner-1", workspace_id="cad"
+    )
+    assert events[-1]["action"] == "blender_script_prepared"
     assert manifest["created_by"] == "owner-1"
     assert hashlib.sha256(script_text.encode("utf-8")).hexdigest() == manifest["sha256"]
     assert "primitive_cube_add" in script_text
