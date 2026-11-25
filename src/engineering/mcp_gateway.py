@@ -185,6 +185,15 @@ def set_mcp_tool_enabled(
         if server["integration_type"] not in _ALLOWED_INTEGRATIONS:
             raise PermissionError("Only approved local MCP adapters can be enabled")
     with _connect() as conn:
+        row = conn.execute(
+            """SELECT created_by, approved_by, source_reviewed
+               FROM mcp_tool_allowlist WHERE server_id=? AND tool_name=?""",
+            (server_id, tool_name),
+        ).fetchone()
+        if row is None or not row["source_reviewed"]:
+            raise KeyError(f"MCP tool is not reviewed or registered: {server_id}/{tool_name}")
+        if actor_id not in {row["created_by"], row["approved_by"]}:
+            raise PermissionError("Only the recorded MCP approver may change tool access")
         cursor = conn.execute(
             """UPDATE mcp_tool_allowlist SET enabled=?
                WHERE server_id=? AND tool_name=? AND source_reviewed=1""",
