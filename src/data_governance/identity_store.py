@@ -87,6 +87,7 @@ def _initialize(conn: sqlite3.Connection) -> None:
             project_id TEXT,
             component_id TEXT,
             training_approval TEXT NOT NULL DEFAULT 'pending',
+            lifecycle_status TEXT NOT NULL DEFAULT 'active',
             created_by TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -162,6 +163,17 @@ def _initialize(conn: sqlite3.Connection) -> None:
         END;
         """
     )
+
+
+    # Upgrade existing local databases without replacing or losing records.
+    columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(data_items)").fetchall()
+    }
+    if "lifecycle_status" not in columns:
+        conn.execute(
+            "ALTER TABLE data_items ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'active'"
+        )
+
 
 
 def _audit(
@@ -635,6 +647,110 @@ def set_training_approval(
             (data_id, workspace_id),
         ).fetchone()
     return _row_dict(updated)  # type: ignore[return-value]
+
+
+def _transition_lifecycle(
+    data_id: str,
+    *,
+    owner_id: str,
+    workspace_id: str,
+    actor_id: str,
+    action: str,
+    allowed_from: set[str],
+    target_status: str,
+    audit_action: str,
+    details: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    _require_scope(data_id, owner_id, workspace_id)
+    _require_actor(actor_id)
+    with _connect() as conn:
+        row = _authorized_record(conn, data_id, owner_id, workspace_id, action)
+        if row is None:
+            raise KeyError(f"Unknown governed Data ID: {data_id}")
+        current = row["lifecycle_status"]
+        if current not in allowed_from:
+            raise ValueError(
+                f"Cannot transition lifecycle from {current!r} to {target_status!r}"
+            )
+        conn.execute(
+            """UPDATE data_items SET lifecycle_status=?, updated_at=?
+               WHERE data_id=? AND workspace_id=?""",
+            (target_status, _now(), data_id, workspace_id),
+        )
+        audit_details = {
+            "from": current,
+            "to": target_status,
+            **(details or {}),
+        }
+        _audit(conn, data_id, audit_action, actor_id, audit_details)
+        updated = conn.execute(
+            "SELECT * FROM data_items WHERE data_id=? AND workspace_id=?",
+            (data_id, workspace_id),
+        ).fetchone()
+    return _row_dict(updated)  # type: ignore[return-value]
+
+
+def archive_record(
+    data_id: str, *, owner_id: str, workspace_id: str, actor_id: str
+) -> dict[str, Any]:
+    """Archive a governed record without moving or deleting its source file."""
+    return _transition_lifecycle(
+        data_id, owner_id=owner_id, workspace_id=workspace_id, actor_id=actor_id,
+        action="write", allowed_from={"active"}, target_status="archived",
+        audit_action="record_archived",
+    )
+
+
+def restore_record(
+    data_id: str, *, owner_id: str, workspace_id: str, actor_id: str
+) -> dict[str, Any]:
+    """Restore an archived record to the active governance zone."""
+    return _transition_lifecycle(
+        data_id, owner_id=owner_id, workspace_id=workspace_id, actor_id=actor_id,
+        action="write", allowed_from={"archived"}, target_status="active",
+        audit_action="record_restored",
+    )
+
+
+def request_deletion(
+    data_id: str,
+    *,
+    owner_id: str,
+    workspace_id: str,
+    actor_id: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Request deletion; this records intent only and never deletes source bytes."""
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("A deletion reason is required")
+    return _transition_lifecycle(
+        data_id, owner_id=owner_id, workspace_id=workspace_id, actor_id=actor_id,
+        action="delete", allowed_from={"active", "archived"},
+        target_status="pending_deletion", audit_action="deletion_requested",
+        details={"reason": reason.strip()},
+    )
+
+
+def approve_deletion(
+    data_id: str,
+    *,
+    owner_id: str,
+    workspace_id: str,
+    actor_id: str,
+    approved: bool,
+) -> dict[str, Any]:
+    """Create a deletion tombstone after explicit approval; source bytes remain untouched."""
+    if approved is not True:
+        raise ValueError("Explicit deletion approval is required")
+    record = _transition_lifecycle(
+        data_id, owner_id=owner_id, workspace_id=workspace_id, actor_id=actor_id,
+        action="delete", allowed_from={"pending_deletion"},
+        target_status="deleted", audit_action="deletion_approved",
+        details={"source_file_deleted": False, "physical_deletion_performed": False},
+    )
+    record["source_file_deleted"] = False
+    record["physical_deletion_performed"] = False
+    return record
 
 
 def list_versions(
