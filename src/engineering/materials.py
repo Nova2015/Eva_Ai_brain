@@ -190,6 +190,23 @@ def get_material(
     return _material_dict(row)
 
 
+def list_materials_for_reviewer(
+    *, reviewer_id: str, workspace_id: str, status: str = "pending_review"
+) -> list[dict[str, Any]]:
+    if not isinstance(reviewer_id, str) or not reviewer_id.strip():
+        raise ValueError("reviewer_id is required")
+    if not isinstance(workspace_id, str) or not workspace_id.strip():
+        raise ValueError("workspace_id is required")
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT * FROM engineering_materials
+               WHERE reviewer_id=? AND workspace_id=? AND status=?
+               ORDER BY created_at DESC""",
+            (reviewer_id, workspace_id, status),
+        ).fetchall()
+    return [_material_dict(row) for row in rows]  # type: ignore[list-item]
+
+
 def list_materials(
     *, owner_id: str, workspace_id: str, status: Optional[str] = None
 ) -> list[dict[str, Any]]:
