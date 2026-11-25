@@ -11,7 +11,7 @@ try:
     from ..rag.rag_routes_v2 import get_user_id
 except ImportError:
     from rag.rag_routes_v2 import get_user_id
-from . import blender_adapter, freecad_adapter, job_manager, manufacturing, mcp_gateway, tolerance_analysis, tool_registry, workflow_engine
+from . import blender_adapter, freecad_adapter, job_manager, manufacturing, materials, mcp_gateway, tolerance_analysis, tool_registry, workflow_engine
 
 
 router = APIRouter(prefix="/engineering", tags=["Engineering Suite"])
@@ -137,6 +137,15 @@ class BlenderScriptRequest(BaseModel):
     operations: list[dict[str, Any]]
     scene_name: str = "EVA_Engineering_Scene"
     approved: bool
+
+
+class MaterialRegistrationRequest(BaseModel):
+    name: str
+    family: str
+    grade: str
+    source_reference: str
+    properties: dict[str, Any]
+    manufacturer: str = ""
 
 
 @router.get("/tools")
@@ -639,3 +648,70 @@ def engineering_build_blender_script(
         "execution_performed": False,
         "machine_started": False,
     }
+
+
+@router.get("/materials")
+def engineering_materials(
+    workspace_id: str,
+    status: Optional[str] = None,
+    user_id: str = Depends(get_user_id),
+):
+    owner_id = _authenticated(user_id)
+    return {
+        "ok": True,
+        "materials": materials.list_materials(
+            owner_id=owner_id, workspace_id=workspace_id, status=status
+        ),
+    }
+
+
+@router.post("/materials")
+def engineering_register_material(
+    workspace_id: str,
+    req: MaterialRegistrationRequest,
+    user_id: str = Depends(get_user_id),
+):
+    owner_id = _authenticated(user_id)
+    try:
+        item = materials.register_material(
+            **_model_payload(req),
+            owner_id=owner_id,
+            workspace_id=workspace_id,
+            actor_id=owner_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "material": item, "status": "pending_review"}
+
+
+@router.get("/materials/{material_id}")
+def engineering_material_detail(
+    material_id: str,
+    workspace_id: str,
+    user_id: str = Depends(get_user_id),
+):
+    owner_id = _authenticated(user_id)
+    item = materials.get_material(
+        material_id, owner_id=owner_id, workspace_id=workspace_id
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Material not found")
+    return {"ok": True, "material": item}
+
+
+@router.get("/materials/{material_id}/audit")
+def engineering_material_audit(
+    material_id: str,
+    workspace_id: str,
+    user_id: str = Depends(get_user_id),
+):
+    owner_id = _authenticated(user_id)
+    try:
+        events = materials.list_material_audit(
+            material_id, owner_id=owner_id, workspace_id=workspace_id
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Material not found")
+    return {"ok": True, "material_id": material_id, "events": events}
