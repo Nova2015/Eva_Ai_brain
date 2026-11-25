@@ -120,3 +120,46 @@ def test_freecad_macro_rejects_non_string_operations_and_boolean_dimensions(
         freecad_adapter.build_freecad_macro(
             [operation], actor_id="owner-1", approved=True
         )
+
+
+
+def test_freecad_macro_supports_sphere_cone_and_boolean_combinations(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
+    manifest = freecad_adapter.build_freecad_macro(
+        [
+            {"op": "create_sphere", "name": "Ball", "radius_mm": 4,
+             "center_mm": [1, 2, 3]},
+            {"op": "create_cone", "name": "Taper", "radius1_mm": 5,
+             "radius2_mm": 2, "height_mm": 12},
+            {"op": "boolean_fuse", "name": "Union", "base": "Ball", "tool": "Taper"},
+            {"op": "boolean_common", "name": "Overlap", "base": "Ball", "tool": "Taper"},
+        ],
+        actor_id="owner-1", approved=True,
+    )
+    macro = Path(manifest["macro_path"]).read_text(encoding="utf-8")
+    assert "Part.makeSphere" in macro
+    assert "Part.makeCone" in macro
+    assert "Part::Fuse" in macro
+    assert "Part::Common" in macro
+    assert [item["op"] for item in manifest["operations"]] == [
+        "create_sphere", "create_cone", "boolean_fuse", "boolean_common",
+    ]
+
+
+def test_freecad_macro_rejects_negative_cone_radius_and_boolean_reference_errors(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
+    with pytest.raises(ValueError, match="non-negative"):
+        freecad_adapter.build_freecad_macro(
+            [{"op": "create_cone", "name": "Taper", "radius1_mm": 5,
+              "radius2_mm": -1, "height_mm": 10}],
+            actor_id="owner-1", approved=True,
+        )
+    with pytest.raises(ValueError, match="earlier objects"):
+        freecad_adapter.build_freecad_macro(
+            [
+                {"op": "create_box", "name": "Base", "length_mm": 2,
+                 "width_mm": 2, "height_mm": 2},
+                {"op": "boolean_fuse", "name": "Union", "base": "Base", "tool": "Missing"},
+            ],
+            actor_id="owner-1", approved=True,
+        )
