@@ -103,3 +103,44 @@ def test_registry_rejects_machine_start_capability(tmp_path, monkeypatch):
             actor_id="owner-1",
             machine_start_allowed=True,
         )
+
+
+def test_engineering_registry_api_requires_auth_and_keeps_execution_disabled(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from src.engineering import routes
+
+    monkeypatch.setenv("EVA_ENGINEERING_DB", str(tmp_path / "engineering.db"))
+    with pytest.raises(HTTPException) as error:
+        routes.engineering_tools(user_id="anonymous")
+    assert error.value.status_code == 401
+
+    registered = routes.engineering_register_tool(
+        routes.ToolRegistrationRequest(
+            tool_id="test-cad-adapter",
+            name="Test CAD Adapter",
+            category="cad",
+            integration_type="local_adapter",
+            license_type="open_source",
+            capabilities=["cad_read"],
+        ),
+        user_id="owner-1",
+    )
+    assert registered["tool"]["enabled"] is False
+
+    executable = tmp_path / "adapter.py"
+    executable.write_text("# local adapter placeholder", encoding="utf-8")
+    validated = routes.engineering_validate_tool(
+        "test-cad-adapter",
+        routes.ToolValidationRequest(executable_path=str(executable)),
+        user_id="owner-1",
+    )
+    assert validated["execution_performed"] is False
+
+    enabled = routes.engineering_enable_tool(
+        "test-cad-adapter",
+        routes.ToolEnableRequest(enabled=True, approved=True),
+        user_id="owner-1",
+    )
+    assert enabled["tool"]["enabled"] is True
+    assert enabled["execution_performed"] is False
+    assert enabled["machine_started"] is False
