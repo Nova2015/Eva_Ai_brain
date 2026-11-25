@@ -7,7 +7,10 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..rag.rag_routes_v2 import get_user_id
+try:
+    from ..rag.rag_routes_v2 import get_user_id
+except ImportError:
+    from rag.rag_routes_v2 import get_user_id
 from . import tool_registry
 
 
@@ -74,7 +77,7 @@ def engineering_register_tool(
     actor_id = _authenticated(user_id)
     try:
         tool = tool_registry.register_tool(
-            **req.model_dump(), actor_id=actor_id
+            **req.dict(), actor_id=actor_id
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
