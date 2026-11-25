@@ -381,6 +381,8 @@ def validate_gcode_file(
         if any(len(g_codes & group) > 1 for group in modal_groups):
             issues.append(f"Line {line_number}: conflicting modal G-codes appear on one line")
         m_codes = {code for letter, code in codes if letter == "M"}
+        if m_codes & {2, 30} and len(codes) > 1:
+            issues.append(f"Line {line_number}: program end M2/M30 must be on a separate block")
         m_conflict_groups = ({3, 4, 5}, {8, 9}, {2, 30})
         if any(len(m_codes & group) > 1 for group in m_conflict_groups):
             issues.append(f"Line {line_number}: conflicting modal M-codes appear on one line")
