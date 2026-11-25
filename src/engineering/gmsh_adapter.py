@@ -181,7 +181,6 @@ def build_gmsh_mesh_script(
             },
         )
     except Exception:
-        manifest_path.unlink(missing_ok=True)
-        script_path.unlink(missing_ok=True)
+        # Keep the registered script intact so its Data ID never points to a deleted file.
         raise
     return manifest
