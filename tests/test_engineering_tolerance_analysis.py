@@ -60,3 +60,26 @@ def test_hole_shaft_fit_returns_transition_clearance_limits():
 def test_tolerance_stack_rejects_invalid_inputs(dimensions, unit):
     with pytest.raises(ValueError):
         calculate_tolerance_stack(dimensions, unit=unit)
+
+
+def test_tolerance_analysis_api_is_authenticated_and_does_not_grant_approval():
+    from fastapi import HTTPException
+    from src.engineering import routes
+
+    with pytest.raises(HTTPException) as error:
+        routes.engineering_tolerance_stack(
+            routes.ToleranceStackRequest(
+                dimensions=[{"nominal": 10, "plus_tolerance": 0.1, "minus_tolerance": 0.1}]
+            ),
+            user_id="anonymous",
+        )
+    assert error.value.status_code == 401
+
+    result = routes.engineering_tolerance_stack(
+        routes.ToleranceStackRequest(
+            dimensions=[{"nominal": 10, "plus_tolerance": 0.1, "minus_tolerance": 0.1}]
+        ),
+        user_id="owner-1",
+    )
+    assert result["analysis"]["nominal_stack_mm"] == pytest.approx(10)
+    assert result["engineering_approval"] == "not_granted"
