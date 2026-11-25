@@ -173,6 +173,7 @@ def _initialize(conn: sqlite3.Connection) -> None:
             sha256 TEXT NOT NULL,
             size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
             status TEXT NOT NULL DEFAULT 'quarantined',
+            released_data_id TEXT,
             validation_json TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
@@ -212,6 +213,12 @@ def _initialize(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE data_items ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'active'"
         )
+
+    quarantine_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(quarantine_items)").fetchall()
+    }
+    if "released_data_id" not in quarantine_columns:
+        conn.execute("ALTER TABLE quarantine_items ADD COLUMN released_data_id TEXT")
 
 
 
