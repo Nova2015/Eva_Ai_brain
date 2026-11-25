@@ -302,10 +302,17 @@ def validate_gcode_file(
     review_codes: set[str] = set()
     motion_lines = 0
     has_end = False
+    program_ended = False
+    seen_line_numbers: set[int] = set()
     allowed_letters = set("NGMXYZABCUVWIJKRFSTPQL")
+    axis_letters = set("XYZABCUVWIJKRFSTPQL")
+    review_g_codes = {28, 41, 42, 43, 54, 55, 56, 57, 58, 59, 81, 82, 83, 84, 85, 86, 87, 88, 89, 92}
     for line_number, raw in enumerate(lines, 1):
         line = re.sub(r"\([^)]*\)", "", raw).split(";", 1)[0].strip().upper()
         if not line or line == "%":
+            continue
+        if program_ended:
+            issues.append(f"Line {line_number}: executable content appears after program end")
             continue
         if "#" in line or re.search(r"\bO\d+", line):
             issues.append(f"Line {line_number}: macro variables and subprogram labels require separate review")
@@ -316,6 +323,8 @@ def validate_gcode_file(
         if residue:
             issues.append(f"Line {line_number}: unrecognized G-code token(s): {residue[:40]}")
         codes = []
+        address_counts: dict[str, int] = {}
+        address_values: dict[str, list[float]] = {}
         for match in matches:
             letter = match.group(1)
             try:
@@ -329,6 +338,8 @@ def validate_gcode_file(
             if letter not in allowed_letters:
                 issues.append(f"Line {line_number}: unsupported address letter {letter}")
                 continue
+            address_counts[letter] = address_counts.get(letter, 0) + 1
+            address_values.setdefault(letter, []).append(value)
             if letter in {"G", "M"}:
                 if not value.is_integer():
                     issues.append(f"Line {line_number}: decimal {letter}-codes are not supported")
@@ -342,8 +353,32 @@ def validate_gcode_file(
                     codes.append((letter, code))
                     if letter == "M" and code in {3, 4, 6, 7, 8}:
                         review_codes.add(f"M{code}")
+                    if letter == "G" and code in review_g_codes:
+                        review_codes.add(f"G{code}")
                     if letter == "M" and code in {2, 30}:
                         has_end = True
+                        program_ended = True
+            elif letter == "N":
+                if not value.is_integer() or value <= 0:
+                    issues.append(f"Line {line_number}: N line number must be a positive integer")
+                elif int(value) in seen_line_numbers:
+                    issues.append(f"Line {line_number}: duplicate N line number {int(value)}")
+                else:
+                    seen_line_numbers.add(int(value))
+
+        duplicates = sorted(letter for letter, count in address_counts.items()
+                            if letter in axis_letters and count > 1)
+        if duplicates:
+            issues.append(
+                f"Line {line_number}: duplicate axis or modal address word(s): {', '.join(duplicates)}"
+            )
+        if any(letter == "M" and code in {3, 4} for letter, code in codes) and "S" not in address_values:
+            issues.append(f"Line {line_number}: spindle start requires an explicit S speed")
+        if any(letter == "M" and code == 6 for letter, code in codes) and "T" not in address_values:
+            issues.append(f"Line {line_number}: tool change M6 requires an explicit T tool number")
+        if any(letter == "G" and code in {2, 3} for letter, code in codes):
+            if not ({"I", "J", "K"} & set(address_values)) and "R" not in address_values:
+                issues.append(f"Line {line_number}: arc motion G2/G3 requires I/J/K offsets or R radius")
         if any(letter == "G" and code in {0, 1, 2, 3} for letter, code in codes):
             motion_lines += 1
     if motion_lines == 0:
