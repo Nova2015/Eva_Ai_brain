@@ -753,10 +753,10 @@ def test_rag_chat_rejects_anonymous_user():
 def test_jwt_without_user_identity_fails_closed(monkeypatch):
     from fastapi.security import HTTPAuthorizationCredentials
     from src.rag import rag_routes_v2 as routes
-    import jose
+    from jose import jwt
 
     monkeypatch.setenv("SECRET_KEY", "test-secret")
-    monkeypatch.setattr(jose.jwt, "decode", lambda *args, **kwargs: {})
+    monkeypatch.setattr(jwt, "decode", lambda *args, **kwargs: {})
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="signed-token")
     assert routes.get_user_id(credentials) == "anonymous"
 
