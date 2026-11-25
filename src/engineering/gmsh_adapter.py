@@ -14,7 +14,7 @@ from typing import Any
 
 from .domain_validation import validate_step_file
 from .tool_registry import _db_path
-from ..data_governance import authorize_data_action, get_record, sha256_file
+from ..data_governance import authorize_data_action, get_record, record_governance_event, sha256_file
 
 
 _ALLOWED_3D_ALGORITHMS = {1, 4, 7, 10}
@@ -154,7 +154,21 @@ def build_gmsh_mesh_script(
     try:
         with manifest_path.open("x", encoding="utf-8") as handle:
             handle.write(json.dumps(manifest, indent=2, sort_keys=True))
+        record_governance_event(
+            data_id,
+            "gmsh_mesh_script_prepared",
+            owner_id=owner_id,
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            details={
+                "script_id": script_id,
+                "script_sha256": digest_script,
+                "source_sha256": digest,
+                "mesh_output_path": str(mesh_path),
+            },
+        )
     except Exception:
+        manifest_path.unlink(missing_ok=True)
         script_path.unlink(missing_ok=True)
         raise
     return manifest
