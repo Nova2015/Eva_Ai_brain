@@ -7,6 +7,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.rag import job_manager as jm
 from src.rag import upload_policy
+from src.rag import graph_store
 from src.data_governance import register_import
 
 
@@ -463,7 +464,8 @@ def test_approved_reconciliation_repair_reindexes_same_governed_data_id(tmp_path
     }
     captured = {}
 
-    monkeypatch.setattr(routes, "get_record", lambda data_id: record)
+    monkeypatch.setattr(routes, "get_record", lambda data_id, **kwargs: record)
+    monkeypatch.setattr(routes, "authorize_data_action", lambda *args, **kwargs: True)
     monkeypatch.setattr(routes, "record_governance_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         routes,
@@ -542,7 +544,8 @@ def test_reconciliation_repair_blocks_modified_source_content(tmp_path, monkeypa
         "sha256": "old-hash",
         "classification": "restricted",
     }
-    monkeypatch.setattr(routes, "get_record", lambda data_id: record)
+    monkeypatch.setattr(routes, "get_record", lambda data_id, **kwargs: record)
+    monkeypatch.setattr(routes, "authorize_data_action", lambda *args, **kwargs: True)
     monkeypatch.setattr(
         routes,
         "reconcile_data_sources",
