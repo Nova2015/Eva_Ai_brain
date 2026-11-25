@@ -145,3 +145,28 @@ def test_material_rejection_requires_independent_reviewer(tmp_path, monkeypatch)
         materials.resolve_material_for_analysis(
             material["material_id"], owner_id="owner-1", workspace_id="cad"
         )
+
+
+def test_material_registry_api_is_authenticated_and_owner_scoped(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from src.engineering import routes
+
+    monkeypatch.setenv("EVA_ENGINEERING_DB", str(tmp_path / "engineering.db"))
+    with pytest.raises(HTTPException) as error:
+        routes.engineering_materials(workspace_id="cad", user_id="anonymous")
+    assert error.value.status_code == 401
+
+    created = routes.engineering_register_material(
+        workspace_id="cad",
+        req=routes.MaterialRegistrationRequest(
+            name="Example PET", family="thermoplastic", grade="PET-EXAMPLE",
+            source_reference="local://datasheet/pet-example",
+            properties={"density": {"value": 1.38, "unit": "g/cm3"}},
+        ),
+        user_id="owner-1",
+    )
+    assert created["material"]["status"] == "pending_review"
+    owner_list = routes.engineering_materials(workspace_id="cad", user_id="owner-1")
+    other_list = routes.engineering_materials(workspace_id="cad", user_id="other-user")
+    assert len(owner_list["materials"]) == 1
+    assert other_list["materials"] == []
