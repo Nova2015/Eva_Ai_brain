@@ -194,3 +194,15 @@ def test_engineering_job_api_is_authenticated_and_never_executes_tools(tmp_path,
     assert claimed["execution_performed"] is False
     assert claimed["machine_started"] is False
     assert claimed["machine_failover"] is False
+
+
+
+def test_job_creation_cannot_assign_another_user_as_owner(tmp_path, monkeypatch):
+    _enable_tool(tmp_path, monkeypatch)
+    with pytest.raises(PermissionError, match="authenticated owner"):
+        job_manager.create_job(
+            job_type="analysis", tool_id="freecad", owner_id="owner-1",
+            workspace_id="cad", machine_id="machine-b", actor_id="attacker",
+            input_manifest={"operation": "geometry_check"}, requires_approval=False,
+        )
+    assert job_manager.list_jobs(owner_id="owner-1", workspace_id="cad") == []
