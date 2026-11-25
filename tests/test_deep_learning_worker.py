@@ -154,7 +154,9 @@ def test_tabular_xgboost_worker_trains_native_cpu_multiclass_with_missing_values
 
 def test_tabular_xgboost_worker_records_actual_cuda_execution():
     import pytest
-    import torch
+    torch = pytest.importorskip(
+        "torch", reason="PyTorch is required only for the optional CUDA execution test"
+    )
     import xgboost as xgb
     from src.deep_learning.worker import _train_tabular
 
