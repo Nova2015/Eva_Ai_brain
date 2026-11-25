@@ -257,8 +257,18 @@ def test_graph_proposal_review_and_query_flow(tmp_path, monkeypatch):
     proposed = asyncio.run(rag_routes_v2.rag_graph_proposals(request, user_id="user-a"))
     assert proposed["approval_required"] is True
     assert proposed["status"] == "proposed"
-    relationship_evidence_id = proposed["relationships"][0]["evidence_id"]
 
+    # Both endpoint entities and the relationship require explicit review.
+    for entity in proposed["entities"]:
+        entity_review = asyncio.run(rag_routes_v2.rag_graph_review(
+            rag_routes_v2.GraphEvidenceReviewRequest(
+                evidence_id=entity["evidence_id"], status="approved", workspace_id="cad",
+            ),
+            user_id="user-a",
+        ))
+        assert entity_review["status"] == "approved"
+
+    relationship_evidence_id = proposed["relationships"][0]["evidence_id"]
     reviewed = asyncio.run(rag_routes_v2.rag_graph_review(
         rag_routes_v2.GraphEvidenceReviewRequest(
             evidence_id=relationship_evidence_id, status="approved", workspace_id="cad",
