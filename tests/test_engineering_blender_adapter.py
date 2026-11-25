@@ -107,3 +107,23 @@ def test_blender_script_api_requires_authentication_and_approval(tmp_path, monke
     assert result["script"]["status"] == "prepared_for_review"
     assert result["execution_performed"] is False
     assert result["machine_started"] is False
+
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        {"op": {"unexpected": "mapping"}},
+        {"op": "create_cube", "name": "BoolCube", "size": True},
+        {"op": "create_cube", "name": "Cube", "size": 2,
+         "location": [0, False, 0]},
+    ],
+)
+def test_blender_rejects_malformed_operation_and_boolean_numeric_values(
+    tmp_path, monkeypatch, operation
+):
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
+    with pytest.raises(ValueError):
+        blender_adapter.build_blender_script(
+            [operation], actor_id="owner-1", approved=True
+        )
