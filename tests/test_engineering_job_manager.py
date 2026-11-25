@@ -146,7 +146,7 @@ def test_job_creation_requires_execute_permission_for_governed_data(tmp_path, mo
     )
     with pytest.raises(PermissionError, match="Execute permission"):
         job_manager.create_job(
-            job_type="fea_solve", tool_id="freecad", owner_id="owner-1",
+            job_type="fea_solve", tool_id="freecad", owner_id="reviewer-1",
             workspace_id="cad", machine_id="machine-b", actor_id="reviewer-1",
             data_id=record["data_id"], input_manifest={"data_id": record["data_id"]},
             requires_approval=False,
