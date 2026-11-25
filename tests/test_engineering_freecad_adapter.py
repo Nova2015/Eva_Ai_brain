@@ -25,11 +25,11 @@ def test_freecad_macro_generation_is_structured_approved_and_not_executed(tmp_pa
 
     with pytest.raises(PermissionError, match="Explicit approval"):
         freecad_adapter.build_freecad_macro(
-            operations, owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=False
+            operations, owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=False
         )
 
     manifest = freecad_adapter.build_freecad_macro(
-        operations, document_name="Door_Trim", owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True
+        operations, document_name="Door_Trim", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True
     )
     macro_path = Path(manifest["macro_path"])
     macro_text = macro_path.read_text(encoding="utf-8")
@@ -71,7 +71,7 @@ def test_freecad_macro_rejects_untrusted_or_invalid_operations(tmp_path, monkeyp
     monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
     with pytest.raises(ValueError):
         freecad_adapter.build_freecad_macro(
-            [operation], owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True
+            [operation], owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True
         )
 
 
@@ -80,13 +80,13 @@ def test_freecad_boolean_cut_requires_existing_objects_and_limits_operation_coun
     with pytest.raises(ValueError, match="earlier objects"):
         freecad_adapter.build_freecad_macro(
             [{"op": "boolean_cut", "name": "Cut", "base": "Base", "tool": "Tool"}],
-            owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
+            owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
         )
     with pytest.raises(ValueError, match="at most 100"):
         freecad_adapter.build_freecad_macro(
             [{"op": "create_box", "name": f"Box{i}", "length_mm": 1,
               "width_mm": 1, "height_mm": 1} for i in range(101)],
-            owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
+            owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
         )
 
 
@@ -133,7 +133,7 @@ def test_freecad_macro_rejects_non_string_operations_and_boolean_dimensions(
     monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
     with pytest.raises(ValueError):
         freecad_adapter.build_freecad_macro(
-            [operation], owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True
+            [operation], owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True
         )
 
 
@@ -149,7 +149,7 @@ def test_freecad_macro_supports_sphere_cone_and_boolean_combinations(tmp_path, m
             {"op": "boolean_fuse", "name": "Union", "base": "Ball", "tool": "Taper"},
             {"op": "boolean_common", "name": "Overlap", "base": "Ball", "tool": "Taper"},
         ],
-        owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
+        owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
     )
     macro = Path(manifest["macro_path"]).read_text(encoding="utf-8")
     assert "Part.makeSphere" in macro
@@ -167,7 +167,7 @@ def test_freecad_macro_rejects_negative_cone_radius_and_boolean_reference_errors
         freecad_adapter.build_freecad_macro(
             [{"op": "create_cone", "name": "Taper", "radius1_mm": 5,
               "radius2_mm": -1, "height_mm": 10}],
-            owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
+            owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
         )
     with pytest.raises(ValueError, match="earlier objects"):
         freecad_adapter.build_freecad_macro(
@@ -176,5 +176,5 @@ def test_freecad_macro_rejects_negative_cone_radius_and_boolean_reference_errors
                  "width_mm": 2, "height_mm": 2},
                 {"op": "boolean_fuse", "name": "Union", "base": "Base", "tool": "Missing"},
             ],
-            owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
+            owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
         )
