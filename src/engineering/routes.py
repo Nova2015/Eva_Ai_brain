@@ -11,7 +11,7 @@ try:
     from ..rag.rag_routes_v2 import get_user_id
 except ImportError:
     from rag.rag_routes_v2 import get_user_id
-from . import blender_adapter, calculix_adapter, freecad_adapter, job_manager, manufacturing, materials, mcp_gateway, tolerance_analysis, tool_registry, workflow_engine
+from . import blender_adapter, calculix_adapter, freecad_adapter, gmsh_adapter, job_manager, manufacturing, materials, mcp_gateway, tolerance_analysis, tool_registry, workflow_engine
 
 
 router = APIRouter(prefix="/engineering", tags=["Engineering Suite"])
@@ -147,6 +147,16 @@ class MaterialRegistrationRequest(BaseModel):
     properties: dict[str, Any]
     reviewer_id: str
     manufacturer: str = ""
+
+
+class GmshMeshScriptRequest(BaseModel):
+    data_id: str
+    workspace_id: str
+    mesh_size_min_mm: float
+    mesh_size_max_mm: float
+    algorithm_3d: int = 10
+    element_order: int = 1
+    approved: bool
 
 
 class CalculixStaticDeckRequest(BaseModel):
@@ -802,6 +812,41 @@ def engineering_reject_material(
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     return {"ok": True, "material": result, "status": result["status"]}
+
+
+@router.post("/mesh/gmsh/script")
+def engineering_build_gmsh_mesh_script(
+    req: GmshMeshScriptRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        manifest = gmsh_adapter.build_gmsh_mesh_script(
+            data_id=req.data_id,
+            owner_id=actor_id,
+            workspace_id=req.workspace_id,
+            actor_id=actor_id,
+            mesh_size_min_mm=req.mesh_size_min_mm,
+            mesh_size_max_mm=req.mesh_size_max_mm,
+            algorithm_3d=req.algorithm_3d,
+            element_order=req.element_order,
+            approved=req.approved,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Governed STEP Data ID not found")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "ok": True,
+        "mesh_script": manifest,
+        "mesh_generation_performed": False,
+        "solver_execution_performed": False,
+        "engineering_approval": "not_granted",
+    }
 
 
 @router.post("/fea/calculix/input-deck")
