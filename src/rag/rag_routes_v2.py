@@ -64,9 +64,9 @@ except ImportError:
     )
 
 try:
-    from ..data_governance import approve_content_revision, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, sha256_file
+    from ..data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, request_deletion, restore_record, sha256_file
 except ImportError:
-    from data_governance import approve_content_revision, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, sha256_file
+    from data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, request_deletion, restore_record, sha256_file
 
 try:
     import upload_policy
@@ -342,6 +342,16 @@ class GraphExtractionRequest(BaseModel):
     data_id: str
     workspace_id: Optional[str] = None
     max_chunks: int = 12
+
+
+class DeletionRequest(BaseModel):
+    reason: str
+    workspace_id: Optional[str] = None
+
+
+class DeletionApprovalRequest(BaseModel):
+    approved: bool
+    workspace_id: Optional[str] = None
 
 
 class GraphEntityCandidate(BaseModel):
@@ -1165,6 +1175,93 @@ async def rag_governed_document_audit(
         "workspace_id": namespace,
         "events": list_audit_events(data_id, owner_id=user_id, workspace_id=namespace),
     }
+
+
+@router.post("/documents/{data_id}/archive")
+async def rag_archive_governed_document(
+    data_id: str,
+    workspace_id: Optional[str] = None,
+    user_id: str = Depends(get_user_id),
+):
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to archive governed data")
+    namespace = effective_workspace_id(workspace_id, user_id)
+    try:
+        record = archive_record(
+            data_id, owner_id=user_id, workspace_id=namespace, actor_id=user_id
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Governed data item not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "data_id": data_id, "workspace_id": namespace,
+            "lifecycle_status": record["lifecycle_status"], "source_file_deleted": False}
+
+
+@router.post("/documents/{data_id}/restore")
+async def rag_restore_governed_document(
+    data_id: str,
+    workspace_id: Optional[str] = None,
+    user_id: str = Depends(get_user_id),
+):
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to restore governed data")
+    namespace = effective_workspace_id(workspace_id, user_id)
+    try:
+        record = restore_record(
+            data_id, owner_id=user_id, workspace_id=namespace, actor_id=user_id
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Governed data item not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "data_id": data_id, "workspace_id": namespace,
+            "lifecycle_status": record["lifecycle_status"]}
+
+
+@router.post("/documents/{data_id}/deletion-request")
+async def rag_request_governed_deletion(
+    data_id: str,
+    req: DeletionRequest,
+    user_id: str = Depends(get_user_id),
+):
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to request deletion")
+    namespace = effective_workspace_id(req.workspace_id, user_id)
+    try:
+        record = request_deletion(
+            data_id, owner_id=user_id, workspace_id=namespace,
+            actor_id=user_id, reason=req.reason,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Governed data item not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "data_id": data_id, "workspace_id": namespace,
+            "lifecycle_status": record["lifecycle_status"], "source_file_deleted": False}
+
+
+@router.post("/documents/{data_id}/deletion-approval")
+async def rag_approve_governed_deletion(
+    data_id: str,
+    req: DeletionApprovalRequest,
+    user_id: str = Depends(get_user_id),
+):
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to approve deletion")
+    namespace = effective_workspace_id(req.workspace_id, user_id)
+    try:
+        record = approve_deletion(
+            data_id, owner_id=user_id, workspace_id=namespace,
+            actor_id=user_id, approved=req.approved,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Governed data item not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "data_id": data_id, "workspace_id": namespace,
+            "lifecycle_status": record["lifecycle_status"],
+            "source_file_deleted": False, "physical_deletion_performed": False}
 
 
 @router.get("/reconciliation")
