@@ -30,6 +30,8 @@ def _identifier(value: Any, field: str) -> str:
 
 
 def _finite(value: Any, field: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be numeric")
     try:
         number = float(value)
     except (TypeError, ValueError) as exc:
@@ -127,7 +129,7 @@ def build_blender_script(
         if not isinstance(operation, dict):
             raise ValueError(f"Operation {index} must be an object")
         op = operation.get("op")
-        if op not in _ALLOWED_OPERATIONS:
+        if not isinstance(op, str) or op not in _ALLOWED_OPERATIONS:
             raise ValueError(f"Operation {index} is not allowlisted: {op!r}")
 
         if op in {"create_cube", "create_uv_sphere", "create_cylinder"}:
