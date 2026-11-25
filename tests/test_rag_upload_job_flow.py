@@ -8,7 +8,7 @@ sys.path.insert(0, str(ROOT))
 from src.rag import job_manager as jm
 from src.rag import upload_policy
 from src.rag import graph_store
-from src.data_governance import register_import
+from src.data_governance import register_import, validate_and_register_import
 
 
 import pytest
@@ -898,3 +898,27 @@ def test_governed_document_lifecycle_routes_keep_source_file_and_audit(tmp_path)
         )
     )
     assert audit["events"][-1]["action"] == "deletion_approved"
+
+
+def test_quarantine_api_lists_only_owner_workspace_items(tmp_path, monkeypatch):
+    import asyncio
+    from src.rag import rag_routes_v2 as routes
+
+    monkeypatch.setenv("EVA_DATA_QUARANTINE_DIR", str(tmp_path / "quarantine"))
+    invalid = tmp_path / "invalid.pdf"
+    invalid.write_bytes(b"not a real PDF")
+    result = validate_and_register_import(
+        invalid, source="test", owner_id="user-a", workspace_id="cad",
+        actor_id="user-a",
+    )
+    assert result["status"] == "quarantined"
+
+    owner_items = asyncio.run(
+        routes.rag_list_quarantined(workspace_id="cad", user_id="user-a")
+    )
+    other_user_items = asyncio.run(
+        routes.rag_list_quarantined(workspace_id="cad", user_id="user-b")
+    )
+    assert len(owner_items["items"]) == 1
+    assert owner_items["items"][0]["quarantine_id"] == result["quarantine"]["quarantine_id"]
+    assert other_user_items["items"] == []
