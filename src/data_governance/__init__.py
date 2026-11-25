@@ -1,6 +1,7 @@
 from .import_pipeline import (
     list_quarantined,
     quarantine_candidate,
+    release_quarantined,
     validate_and_register_import,
     validate_import_candidate,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "approve_deletion",
     "list_quarantined",
     "quarantine_candidate",
+    "release_quarantined",
     "validate_and_register_import",
     "validate_import_candidate",
     "sha256_file",
