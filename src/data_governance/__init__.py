@@ -6,6 +6,7 @@ move, upload, expose, or delete user files.
 
 from .identity_store import (
     CLASSIFICATIONS,
+    authorize_data_action,
     sha256_file,
     register_import,
     recover_location,
@@ -26,6 +27,7 @@ from .identity_store import (
 
 __all__ = [
     "CLASSIFICATIONS",
+    "authorize_data_action",
     "sha256_file",
     "register_import",
     "recover_location",
