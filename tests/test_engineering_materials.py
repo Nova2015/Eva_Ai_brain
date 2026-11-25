@@ -28,6 +28,7 @@ def test_material_requires_source_and_independent_approval_before_analysis(tmp_p
         owner_id="owner-1",
         workspace_id="cad",
         actor_id="owner-1",
+        reviewer_id="reviewer-1",
     )
     assert material["status"] == "pending_review"
     with pytest.raises(PermissionError, match="Only independently reviewed"):
@@ -81,6 +82,7 @@ def test_material_registry_rejects_missing_source_and_invalid_properties(tmp_pat
         "owner_id": "owner-1",
         "workspace_id": "cad",
         "actor_id": "owner-1",
+        "reviewer_id": "reviewer-1",
     }
     missing_source = dict(base, source_reference="")
     with pytest.raises(ValueError, match="source_reference"):
@@ -110,6 +112,7 @@ def test_material_records_are_isolated_by_owner_and_workspace(tmp_path, monkeypa
         source_reference="local://test-fixture/aluminum-datasheet",
         properties={"density": {"value": 2.7, "unit": "g/cm3"}},
         owner_id="owner-1", workspace_id="cad", actor_id="owner-1",
+        reviewer_id="reviewer-1",
     )
     assert materials.get_material(
         material["material_id"], owner_id="other-user", workspace_id="cad"
@@ -126,6 +129,7 @@ def test_material_rejection_requires_independent_reviewer(tmp_path, monkeypatch)
         source_reference="local://test-fixture/nylon-datasheet",
         properties={"density": {"value": 1.14, "unit": "g/cm3"}},
         owner_id="owner-1", workspace_id="cad", actor_id="owner-1",
+        reviewer_id="reviewer-1",
     )
     with pytest.raises(PermissionError, match="different reviewer"):
         materials.reject_material(
