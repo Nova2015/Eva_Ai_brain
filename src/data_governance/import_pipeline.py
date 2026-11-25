@@ -18,6 +18,11 @@ from typing import Any, Callable, Optional
 
 from .identity_store import _connect, register_import, sha256_file
 
+try:
+    from ..engineering.domain_validation import validate_engineering_file
+except ImportError:
+    from engineering.domain_validation import validate_engineering_file
+
 
 SUPPORTED_EXTENSIONS = frozenset({
     ".txt", ".md", ".csv", ".json", ".jsonl", ".xml", ".yaml", ".yml",
@@ -113,12 +118,24 @@ def validate_import_candidate(
         issues.append(f"Unsupported file extension: {ext or '[none]'}")
 
     head = b""
+    domain_report: dict[str, Any] = {
+        "ok": True, "validator": "not_run", "issues": [],
+        "deep_validation": "pending_domain_validator",
+    }
     if not issues:
         with resolved.open("rb") as handle:
             head = handle.read(4096)
         format_issue = _format_check(resolved, head)
         if format_issue:
             issues.append(format_issue)
+        else:
+            domain_report = validate_engineering_file(resolved)
+            if not domain_report.get("ok", False):
+                issues.extend(domain_report.get("issues", ["Domain validation failed"]))
+            if domain_report.get("operator_review_required"):
+                warnings.append(
+                    "G-code contains spindle/tool/coolant commands; qualified operator review is required."
+                )
 
     malware_status = "not_configured"
     if malware_scanner is None:
@@ -148,7 +165,8 @@ def validate_import_candidate(
         "issues": issues,
         "warnings": warnings,
         "malware_scan": malware_status,
-        "deep_validation": "pending_domain_validator",
+        "domain_validation": domain_report,
+        "deep_validation": domain_report.get("deep_validation", "pending_domain_validator"),
     }
 
 
