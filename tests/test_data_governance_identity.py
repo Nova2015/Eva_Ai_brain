@@ -535,3 +535,28 @@ def test_update_location_rejects_replacement_content_with_different_hash(tmp_pat
     )
     assert current["file_path"] == str(original.resolve())
     assert current["sha256"] == record["sha256"]
+
+
+def test_audited_mutations_require_actor_identity(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "actor.txt"
+    source.write_text("actor attribution", encoding="utf-8")
+    record = _register(source)
+    scope = {"owner_id": "user-1", "workspace_id": "workspace-1"}
+
+    with pytest.raises(ValueError, match="actor_id"):
+        update_location(record["data_id"], source, **scope, actor_id="")
+    with pytest.raises(ValueError, match="actor_id"):
+        record_revision(record["data_id"], **scope, actor_id="")
+    with pytest.raises(ValueError, match="actor_id"):
+        set_classification(
+            record["data_id"], "confidential", **scope, actor_id=""
+        )
+    with pytest.raises(ValueError, match="actor_id"):
+        set_permissions(
+            record["data_id"], {"read": ["user-1"]}, **scope, actor_id=""
+        )
+    with pytest.raises(ValueError, match="actor_id"):
+        set_training_approval(
+            record["data_id"], "rejected", **scope, actor_id=""
+        )
