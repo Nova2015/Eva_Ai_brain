@@ -125,6 +125,30 @@ def _initialize(conn: sqlite3.Connection) -> None:
             details_json TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
+
+        CREATE TRIGGER IF NOT EXISTS trg_data_item_audit_no_update
+        BEFORE UPDATE ON data_item_audit
+        BEGIN
+            SELECT RAISE(ABORT, 'data_item_audit is append-only');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_data_item_audit_no_delete
+        BEFORE DELETE ON data_item_audit
+        BEGIN
+            SELECT RAISE(ABORT, 'data_item_audit is append-only');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_reconciliation_audit_no_update
+        BEFORE UPDATE ON reconciliation_audit
+        BEGIN
+            SELECT RAISE(ABORT, 'reconciliation_audit is append-only');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_reconciliation_audit_no_delete
+        BEFORE DELETE ON reconciliation_audit
+        BEGIN
+            SELECT RAISE(ABORT, 'reconciliation_audit is append-only');
+        END;
         """
     )
 
