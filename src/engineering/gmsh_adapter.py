@@ -132,14 +132,18 @@ def build_gmsh_mesh_script(
     with script_path.open("x", encoding="utf-8") as handle:
         handle.write(script)
     digest_script = hashlib.sha256(script.encode("utf-8")).hexdigest()
-    generated_record = register_import(
-        script_path,
-        source="engineering_generated:gmsh_script",
-        owner_id=owner_id,
-        workspace_id=workspace_id,
-        actor_id=actor_id,
-        classification="ip",
-    )
+    try:
+        generated_record = register_import(
+            script_path,
+            source="engineering_generated:gmsh_script",
+            owner_id=owner_id,
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            classification="ip",
+        )
+    except Exception:
+        script_path.unlink(missing_ok=True)
+        raise
     manifest = {
         "script_id": script_id,
         "script_path": str(script_path),
