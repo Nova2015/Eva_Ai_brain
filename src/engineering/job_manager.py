@@ -165,6 +165,8 @@ def create_job(
     ):
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"{field} is required")
+    if data_id is not None and (not isinstance(data_id, str) or not data_id.strip()):
+        raise ValueError("data_id must be a non-empty string when provided")
     if actor_id != owner_id:
         if data_id:
             try:
