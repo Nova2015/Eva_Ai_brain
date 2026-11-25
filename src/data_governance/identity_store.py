@@ -94,6 +94,13 @@ def _initialize(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_data_items_project
             ON data_items(project_id, component_id);
 
+        CREATE TRIGGER IF NOT EXISTS trg_data_item_identity_immutable
+        BEFORE UPDATE OF data_id ON data_items
+        WHEN NEW.data_id != OLD.data_id
+        BEGIN
+            SELECT RAISE(ABORT, 'data_id is immutable');
+        END;
+
         CREATE TABLE IF NOT EXISTS data_item_versions (
             version_id INTEGER PRIMARY KEY AUTOINCREMENT,
             data_id TEXT NOT NULL REFERENCES data_items(data_id) ON DELETE CASCADE,
