@@ -23,6 +23,11 @@ def _authenticated(user_id: str) -> str:
     return user_id
 
 
+def _model_payload(model: BaseModel) -> dict[str, Any]:
+    model_dump = getattr(model, "model_dump", None)
+    return model_dump() if callable(model_dump) else model.dict()
+
+
 class ToolValidationRequest(BaseModel):
     executable_path: str
     version: Optional[str] = None
@@ -42,7 +47,7 @@ class ToolRegistrationRequest(BaseModel):
     license_type: str
     capabilities: list[str]
     notes: str = ""
-    executable_candidates: list[str] = []
+    executable_candidates: list[str] = Field(default_factory=list)
 
 
 class EngineeringJobRequest(BaseModel):
@@ -139,7 +144,7 @@ def engineering_register_tool(
     actor_id = _authenticated(user_id)
     try:
         tool = tool_registry.register_tool(
-            **req.dict(), actor_id=actor_id
+            **_model_payload(req), actor_id=actor_id
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -206,7 +211,7 @@ def engineering_create_job(
     actor_id = _authenticated(user_id)
     try:
         job = job_manager.create_job(
-            **req.dict(), owner_id=actor_id, actor_id=actor_id
+            **_model_payload(req), owner_id=actor_id, actor_id=actor_id
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
