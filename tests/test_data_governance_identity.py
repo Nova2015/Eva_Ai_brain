@@ -685,6 +685,13 @@ def test_archive_restore_and_deletion_tombstone_require_explicit_approval(tmp_pa
         set_classification(
             record["data_id"], "sensitive", **scope, actor_id="user-1"
         )
+    with pytest.raises(KeyError):
+        set_permissions(
+            record["data_id"],
+            {"read": ["user-1"], "write": [], "execute": [], "delete": []},
+            **scope,
+            actor_id="user-1",
+        )
     with pytest.raises(ValueError, match="Explicit deletion approval"):
         approve_deletion(
             record["data_id"], **scope, actor_id="user-1", approved=False
