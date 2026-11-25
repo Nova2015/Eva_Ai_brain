@@ -234,14 +234,18 @@ def build_calculix_static_deck(
         raise ValueError("Generated CalculiX input failed structural validation: " +
                          "; ".join(validation["issues"]))
 
-    generated_record = register_import(
-        deck_path,
-        source="engineering_generated:calculix_deck",
-        owner_id=owner_id,
-        workspace_id=workspace_id,
-        actor_id=actor_id,
-        classification="ip",
-    )
+    try:
+        generated_record = register_import(
+            deck_path,
+            source="engineering_generated:calculix_deck",
+            owner_id=owner_id,
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            classification="ip",
+        )
+    except Exception:
+        deck_path.unlink(missing_ok=True)
+        raise
     digest = hashlib.sha256(deck_text.encode("utf-8")).hexdigest()
     manifest = {
         "deck_id": deck_id,
