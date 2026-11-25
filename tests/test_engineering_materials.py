@@ -111,6 +111,13 @@ def test_material_registry_rejects_missing_source_and_invalid_properties(tmp_pat
         materials.register_material(**invalid_poisson)
 
 
+    invalid_unit = dict(base, properties={
+        "elastic_modulus": {"value": 1500, "unit": "banana"}
+    })
+    with pytest.raises(ValueError, match="Unsupported unit"):
+        materials.register_material(**invalid_unit)
+
+
 def test_material_records_are_isolated_by_owner_and_workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("EVA_ENGINEERING_DB", str(tmp_path / "engineering.db"))
     material = materials.register_material(
