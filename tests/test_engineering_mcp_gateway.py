@@ -114,3 +114,39 @@ def test_mcp_gateway_rejects_non_local_server_types(tmp_path, monkeypatch):
             "freecad", "arbitrary_tool", actor_id="owner-1",
             source_reviewed=True, approved=True,
         )
+
+
+def test_authenticated_mcp_api_only_authorizes_and_never_invokes_server(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from src.engineering import routes
+
+    _enable_blender_mcp(tmp_path, monkeypatch)
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "api-part.txt"
+    source.write_text("MCP API governed part", encoding="utf-8")
+    record = register_import(
+        source, source="test", owner_id="owner-1", workspace_id="cad",
+        actor_id="owner-1",
+    )
+    mcp_gateway.register_mcp_tool(
+        "blender_mcp", "scene_read", actor_id="owner-1",
+        source_reviewed=True, approved=True,
+    )
+    mcp_gateway.set_mcp_tool_enabled(
+        "blender_mcp", "scene_read", enabled=True,
+        actor_id="owner-1", approved=True,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        routes.engineering_mcp_tools(user_id="anonymous")
+    assert error.value.status_code == 401
+
+    result = routes.engineering_authorize_mcp_call(
+        routes.MCPAuthorizationRequest(
+            server_id="blender_mcp", tool_name="scene_read",
+            workspace_id="cad", data_id=record["data_id"], action="read",
+        ),
+        user_id="owner-1",
+    )
+    assert result["authorization"]["authorized"] is True
+    assert result["execution_performed"] is False
