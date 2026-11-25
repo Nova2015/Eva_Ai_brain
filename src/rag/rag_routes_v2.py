@@ -64,9 +64,9 @@ except ImportError:
     )
 
 try:
-    from ..data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, recover_location, request_deletion, restore_record, sha256_file, validate_and_register_import, list_quarantined, release_quarantined
+    from ..data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, recover_location, request_deletion, restore_record, sha256_file, validate_and_register_import, list_quarantine_audit, list_quarantined, release_quarantined
 except ImportError:
-    from data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, recover_location, request_deletion, restore_record, sha256_file, validate_and_register_import, list_quarantined, release_quarantined
+    from data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, recover_location, request_deletion, restore_record, sha256_file, validate_and_register_import, list_quarantine_audit, list_quarantined, release_quarantined
 
 try:
     import upload_policy
@@ -1209,6 +1209,25 @@ async def rag_list_quarantined(
         "workspace_id": namespace,
         "items": list_quarantined(owner_id=user_id, workspace_id=namespace),
     }
+
+
+@router.get("/quarantine/{quarantine_id}/audit")
+async def rag_quarantine_audit(
+    quarantine_id: str,
+    workspace_id: Optional[str] = None,
+    user_id: str = Depends(get_user_id),
+):
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to view quarantine audit")
+    namespace = effective_workspace_id(workspace_id, user_id)
+    try:
+        events = list_quarantine_audit(
+            quarantine_id, owner_id=user_id, workspace_id=namespace
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Quarantine item not found")
+    return {"ok": True, "quarantine_id": quarantine_id,
+            "workspace_id": namespace, "events": events}
 
 
 @router.post("/quarantine/{quarantine_id}/release")
