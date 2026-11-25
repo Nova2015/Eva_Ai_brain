@@ -144,3 +144,32 @@ def test_engineering_registry_api_requires_auth_and_keeps_execution_disabled(tmp
     assert enabled["tool"]["enabled"] is True
     assert enabled["execution_performed"] is False
     assert enabled["machine_started"] is False
+
+
+
+def test_custom_tool_installation_and_enablement_are_bound_to_registrant(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_ENGINEERING_DB", str(tmp_path / "engineering.db"))
+    tool_registry.register_tool(
+        tool_id="owned-adapter", name="Owned Adapter", category="cad",
+        integration_type="local_adapter", license_type="open_source",
+        capabilities=["cad_read"], actor_id="owner-1",
+    )
+    executable = tmp_path / "owned-adapter.py"
+    executable.write_text("# local adapter", encoding="utf-8")
+
+    with pytest.raises(PermissionError, match="tool registrant"):
+        tool_registry.validate_tool_installation(
+            "owned-adapter", executable_path=str(executable), actor_id="other-user",
+        )
+    tool_registry.validate_tool_installation(
+        "owned-adapter", executable_path=str(executable), actor_id="owner-1",
+    )
+    with pytest.raises(PermissionError, match="tool registrant"):
+        tool_registry.set_tool_enabled(
+            "owned-adapter", enabled=True, actor_id="other-user", approved=True,
+        )
+    enabled = tool_registry.set_tool_enabled(
+        "owned-adapter", enabled=True, actor_id="owner-1", approved=True,
+    )
+    assert enabled["enabled"] is True
+    assert enabled["registered_by"] == "owner-1"
