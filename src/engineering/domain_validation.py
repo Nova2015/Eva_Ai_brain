@@ -133,6 +133,145 @@ _GCODE_M = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 30}
 _GCODE_TOKEN = re.compile(r"([A-Z])\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))")
 
 
+def validate_obj_file(file_path: str | Path) -> dict[str, Any]:
+    path = Path(file_path)
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        return _result(False, "obj_mesh", [f"Unable to read OBJ: {type(exc).__name__}"])
+    vertices: list[tuple[float, float, float]] = []
+    faces: list[list[int]] = []
+    issues: list[str] = []
+    for line_number, raw in enumerate(lines, 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if parts[0] == "v":
+            if len(parts) < 4:
+                issues.append(f"Line {line_number}: OBJ vertex requires three coordinates")
+                continue
+            try:
+                point = tuple(float(value) for value in parts[1:4])
+            except ValueError:
+                issues.append(f"Line {line_number}: invalid OBJ vertex coordinate")
+                continue
+            if any(not math.isfinite(value) for value in point):
+                issues.append(f"Line {line_number}: non-finite OBJ vertex coordinate")
+                continue
+            vertices.append(point)
+        elif parts[0] == "f":
+            if len(parts) < 4:
+                issues.append(f"Line {line_number}: OBJ face requires at least three vertices")
+                continue
+            indices = []
+            for token in parts[1:]:
+                try:
+                    raw_index = int(token.split("/", 1)[0])
+                except ValueError:
+                    issues.append(f"Line {line_number}: invalid OBJ face index")
+                    indices = []
+                    break
+                index = raw_index - 1 if raw_index > 0 else len(vertices) + raw_index
+                if index < 0 or index >= len(vertices):
+                    issues.append(f"Line {line_number}: OBJ face references a missing vertex")
+                    indices = []
+                    break
+                indices.append(index)
+            if indices:
+                faces.append(indices)
+    if not vertices:
+        issues.append("OBJ contains no vertices")
+    if not faces:
+        issues.append("OBJ contains no polygon faces")
+    degenerate_triangles = 0
+    for face in faces:
+        for index in range(1, len(face) - 1):
+            if _triangle_area(vertices[face[0]], vertices[face[index]], vertices[face[index + 1]]) <= 1e-12:
+                degenerate_triangles += 1
+    if degenerate_triangles:
+        issues.append(f"OBJ contains {degenerate_triangles} degenerate triangle(s)")
+    if vertices:
+        mins = [min(point[axis] for point in vertices) for axis in range(3)]
+        maxs = [max(point[axis] for point in vertices) for axis in range(3)]
+    else:
+        mins, maxs = [], []
+    return _result(
+        not issues, "obj_mesh", issues,
+        vertex_count=len(vertices), face_count=len(faces),
+        degenerate_triangle_count=degenerate_triangles,
+        bounding_box={"min": mins, "max": maxs} if vertices else None,
+        manifoldness="not_checked",
+    )
+
+
+def validate_gmsh_msh_file(file_path: str | Path) -> dict[str, Any]:
+    path = Path(file_path)
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        return _result(False, "gmsh_msh", [f"Unable to read ASCII Gmsh mesh: {type(exc).__name__}"])
+    try:
+        format_index = lines.index("$MeshFormat")
+        format_parts = lines[format_index + 1].split()
+        version = format_parts[0]
+        file_type = int(format_parts[1])
+    except (ValueError, IndexError):
+        return _result(False, "gmsh_msh", ["Gmsh $MeshFormat header is missing or invalid"])
+    if not version.startswith("2."):
+        return _result(False, "gmsh_msh", ["Only ASCII Gmsh MSH 2.x is currently validated; export as MSH2"])
+    if file_type != 0:
+        return _result(False, "gmsh_msh", ["Binary Gmsh meshes are not supported by this validator"])
+
+    issues: list[str] = []
+    nodes: set[int] = set()
+    elements: list[tuple[int, list[int]]] = []
+    try:
+        node_marker = lines.index("$Nodes")
+        node_count = int(lines[node_marker + 1])
+        for raw in lines[node_marker + 2:node_marker + 2 + node_count]:
+            parts = raw.split()
+            if len(parts) != 4:
+                raise ValueError("invalid node row")
+            node_id = int(parts[0])
+            coords = [float(value) for value in parts[1:4]]
+            if any(not math.isfinite(value) for value in coords):
+                raise ValueError("non-finite node coordinate")
+            nodes.add(node_id)
+        element_marker = lines.index("$Elements")
+        element_count = int(lines[element_marker + 1])
+        for raw in lines[element_marker + 2:element_marker + 2 + element_count]:
+            parts = [int(value) for value in raw.split()]
+            if len(parts) < 4:
+                raise ValueError("invalid element row")
+            element_id, element_type, tag_count = parts[:3]
+            node_ids = parts[3 + tag_count:]
+            if not node_ids:
+                raise ValueError("element has no node references")
+            elements.append((element_id, node_ids))
+    except (ValueError, IndexError) as exc:
+        return _result(False, "gmsh_msh", [f"Invalid MSH2 node/element section: {exc}"])
+
+    if not nodes:
+        issues.append("Gmsh mesh contains no nodes")
+    if not elements:
+        issues.append("Gmsh mesh contains no elements")
+    missing = sorted({
+        node_id for _, refs in elements for node_id in refs if node_id not in nodes
+    })
+    if missing:
+        issues.append(f"Gmsh elements reference missing nodes: {missing[:20]}")
+    if "$EndNodes" not in lines or "$EndElements" not in lines:
+        issues.append("Gmsh node/element end markers are missing")
+    return _result(
+        not issues, "gmsh_msh", issues,
+        node_count=len(nodes), element_count=len(elements),
+        missing_node_references=missing,
+        element_quality="connectivity_checked_only",
+        self_intersection="not_checked",
+    )
+
+
 def validate_gcode_file(
     file_path: str | Path, *, machine_start_requested: bool = False
 ) -> dict[str, Any]:
@@ -281,6 +420,10 @@ def validate_engineering_file(file_path: str | Path) -> dict[str, Any]:
         return validate_step_file(file_path)
     if ext == ".stl":
         return validate_stl_file(file_path)
+    if ext == ".obj":
+        return validate_obj_file(file_path)
+    if ext == ".msh":
+        return validate_gmsh_msh_file(file_path)
     if ext in {".gcode", ".nc", ".tap", ".ngc"}:
         return validate_gcode_file(file_path)
     if ext == ".inp":
