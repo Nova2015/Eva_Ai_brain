@@ -18,8 +18,9 @@ from typing import Any
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _SAFE_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,100}$")
 _ALLOWED_OPERATIONS = {
-    "create_cube", "create_uv_sphere", "create_cylinder",
-    "set_material", "add_bevel_modifier", "export_glb", "save_blend",
+    "create_cube", "create_uv_sphere", "create_cylinder", "create_plane", "create_torus",
+    "set_material", "add_bevel_modifier", "add_solidify_modifier",
+    "add_subdivision_modifier", "add_mirror_modifier", "export_glb", "save_blend",
 }
 
 
@@ -46,6 +47,14 @@ def _positive(value: Any, field: str) -> float:
     if number <= 0:
         raise ValueError(f"{field} must be positive")
     return number
+
+
+def _bounded_int(value: Any, field: str, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} must be an integer")
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{field} must be between {minimum} and {maximum}")
+    return value
 
 
 def _vector(value: Any, field: str, *, positive: bool = False) -> list[float]:
@@ -148,8 +157,8 @@ def build_blender_script(
                 details = {"op": op, "name": name, "size": size, "location": location}
             elif op == "create_uv_sphere":
                 radius = _positive(operation.get("radius"), f"{name}.radius")
-                segments = int(operation.get("segments", 32))
-                rings = int(operation.get("rings", 16))
+                segments = _bounded_int(operation.get("segments", 32), f"{name}.segments", 8, 256)
+                rings = _bounded_int(operation.get("rings", 16), f"{name}.rings", 4, 128)
                 if not 8 <= segments <= 256 or not 4 <= rings <= 128:
                     raise ValueError("Sphere segments/rings are outside safe limits")
                 lines.extend([
@@ -165,7 +174,7 @@ def build_blender_script(
             else:
                 radius = _positive(operation.get("radius"), f"{name}.radius")
                 depth = _positive(operation.get("depth"), f"{name}.depth")
-                vertices = int(operation.get("vertices", 32))
+                vertices = _bounded_int(operation.get("vertices", 32), f"{name}.vertices", 8, 256)
                 if not 8 <= vertices <= 256:
                     raise ValueError("Cylinder vertices must be between 8 and 256")
                 lines.extend([
@@ -177,6 +186,45 @@ def build_blender_script(
                 details = {
                     "op": op, "name": name, "radius": radius,
                     "depth": depth, "vertices": vertices, "location": location,
+                }
+            known_objects.add(name)
+            manifest_operations.append(details)
+
+        elif op in {"create_plane", "create_torus"}:
+            name = _identifier(operation.get("name"), f"operation_{index}.name")
+            if name in known_objects:
+                raise ValueError(f"Duplicate Blender object name: {name}")
+            location = _vector(operation.get("location", [0, 0, 0]), f"{name}.location")
+            if op == "create_plane":
+                size = _positive(operation.get("size"), f"{name}.size")
+                lines.extend([
+                    f"bpy.ops.mesh.primitive_plane_add(size={size!r}, location={tuple(location)!r})",
+                    "obj = bpy.context.object",
+                    f"obj.name = {json.dumps(name)}",
+                    "eva_link_object(obj)",
+                ])
+                details = {"op": op, "name": name, "size": size, "location": location}
+            else:
+                major_radius = _positive(operation.get("major_radius"), f"{name}.major_radius")
+                minor_radius = _positive(operation.get("minor_radius"), f"{name}.minor_radius")
+                if minor_radius >= major_radius:
+                    raise ValueError("Torus minor_radius must be smaller than major_radius")
+                major_segments = _bounded_int(
+                    operation.get("major_segments", 48), f"{name}.major_segments", 8, 256
+                )
+                minor_segments = _bounded_int(
+                    operation.get("minor_segments", 12), f"{name}.minor_segments", 3, 128
+                )
+                lines.extend([
+                    f"bpy.ops.mesh.primitive_torus_add(major_segments={major_segments}, minor_segments={minor_segments}, major_radius={major_radius!r}, minor_radius={minor_radius!r}, location={tuple(location)!r})",
+                    "obj = bpy.context.object",
+                    f"obj.name = {json.dumps(name)}",
+                    "eva_link_object(obj)",
+                ])
+                details = {
+                    "op": op, "name": name, "major_radius": major_radius,
+                    "minor_radius": minor_radius, "major_segments": major_segments,
+                    "minor_segments": minor_segments, "location": location,
                 }
             known_objects.add(name)
             manifest_operations.append(details)
@@ -219,7 +267,7 @@ def build_blender_script(
             if object_name not in known_objects:
                 raise ValueError("Bevel modifier references an unknown Blender object")
             width = _positive(operation.get("width"), f"{object_name}.bevel_width")
-            segments = int(operation.get("segments", 2))
+            segments = _bounded_int(operation.get("segments", 2), f"{object_name}.bevel_segments", 1, 12)
             if not 1 <= segments <= 12:
                 raise ValueError("Bevel segments must be between 1 and 12")
             lines.extend([
@@ -230,6 +278,66 @@ def build_blender_script(
             ])
             manifest_operations.append({
                 "op": op, "object": object_name, "width": width, "segments": segments,
+            })
+
+        elif op == "add_solidify_modifier":
+            object_name = _identifier(operation.get("object"), f"operation_{index}.object")
+            if object_name not in known_objects:
+                raise ValueError("Solidify modifier references an unknown Blender object")
+            thickness = _positive(operation.get("thickness"), f"{object_name}.solidify_thickness")
+            offset = _finite(operation.get("offset", -1.0), f"{object_name}.solidify_offset")
+            if not -1 <= offset <= 1:
+                raise ValueError("Solidify offset must be between -1 and 1")
+            lines.extend([
+                f"obj = bpy.data.objects[{json.dumps(object_name)}]",
+                "modifier = obj.modifiers.new(name='EVA_Solidify', type='SOLIDIFY')",
+                f"modifier.thickness = {thickness!r}",
+                f"modifier.offset = {offset!r}",
+            ])
+            manifest_operations.append({
+                "op": op, "object": object_name, "thickness": thickness, "offset": offset,
+            })
+
+        elif op == "add_subdivision_modifier":
+            object_name = _identifier(operation.get("object"), f"operation_{index}.object")
+            if object_name not in known_objects:
+                raise ValueError("Subdivision modifier references an unknown Blender object")
+            levels = _bounded_int(operation.get("levels", 2), f"{object_name}.subdivision_levels", 1, 6)
+            render_levels = _bounded_int(
+                operation.get("render_levels", levels), f"{object_name}.render_levels", 1, 6
+            )
+            lines.extend([
+                f"obj = bpy.data.objects[{json.dumps(object_name)}]",
+                "modifier = obj.modifiers.new(name='EVA_Subdivision', type='SUBSURF')",
+                f"modifier.levels = {levels}",
+                f"modifier.render_levels = {render_levels}",
+            ])
+            manifest_operations.append({
+                "op": op, "object": object_name, "levels": levels,
+                "render_levels": render_levels,
+            })
+
+        elif op == "add_mirror_modifier":
+            object_name = _identifier(operation.get("object"), f"operation_{index}.object")
+            if object_name not in known_objects:
+                raise ValueError("Mirror modifier references an unknown Blender object")
+            axes = operation.get("axes", ["x"])
+            if not isinstance(axes, list) or not axes or any(axis not in {"x", "y", "z"} for axis in axes):
+                raise ValueError("Mirror axes must be a non-empty list containing x, y or z")
+            if len(set(axes)) != len(axes):
+                raise ValueError("Mirror axes cannot contain duplicates")
+            use_clip = operation.get("use_clip", False)
+            if not isinstance(use_clip, bool):
+                raise ValueError("Mirror use_clip must be a boolean")
+            axis_flags = tuple(axis in axes for axis in ("x", "y", "z"))
+            lines.extend([
+                f"obj = bpy.data.objects[{json.dumps(object_name)}]",
+                "modifier = obj.modifiers.new(name='EVA_Mirror', type='MIRROR')",
+                f"modifier.use_axis = {axis_flags!r}",
+                f"modifier.use_clip = {use_clip!r}",
+            ])
+            manifest_operations.append({
+                "op": op, "object": object_name, "axes": axes, "use_clip": use_clip,
             })
 
         elif op == "export_glb":
