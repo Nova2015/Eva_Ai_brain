@@ -169,3 +169,29 @@ def test_calculix_deck_rejects_malformed_boundary_and_load_records(
     model[field] = value
     with pytest.raises(ValueError, match="must be an object"):
         calculix_adapter.build_calculix_static_deck(**model)
+
+
+
+def test_calculix_c3d8_deck_validates_hexahedral_sub_volumes(tmp_path, monkeypatch):
+    material = _approved_material(tmp_path, monkeypatch)
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering-output"))
+    model = _model(material["material_id"])
+    model["element_type"] = "C3D8"
+    model["nodes"] = [
+        {"id": 1, "x": 0, "y": 0, "z": 0},
+        {"id": 2, "x": 1, "y": 0, "z": 0},
+        {"id": 3, "x": 1, "y": 1, "z": 0},
+        {"id": 4, "x": 0, "y": 1, "z": 0},
+        {"id": 5, "x": 0, "y": 0, "z": 1},
+        {"id": 6, "x": 1, "y": 0, "z": 1},
+        {"id": 7, "x": 1, "y": 1, "z": 1},
+        {"id": 8, "x": 0, "y": 1, "z": 1},
+    ]
+    model["elements"] = [{"id": 1, "nodes": [1, 2, 3, 4, 5, 6, 7, 8]}]
+    manifest = calculix_adapter.build_calculix_static_deck(**model)
+    assert manifest["element_type"] == "C3D8"
+    assert manifest["validation"]["ok"] is True
+
+    model["elements"] = [{"id": 1, "nodes": [1, 4, 3, 2, 5, 8, 7, 6]}]
+    with pytest.raises(ValueError, match="inverted C3D8"):
+        calculix_adapter.build_calculix_static_deck(**model)
