@@ -220,6 +220,7 @@ def test_engineering_analysis_requires_approved_material_record(tmp_path, monkey
             "elastic_modulus": {"value": 2100, "unit": "MPa"},
         },
         owner_id="owner-1", workspace_id="cad", actor_id="owner-1",
+        reviewer_id="reviewer-1",
     )
     with pytest.raises(PermissionError, match="Only independently reviewed"):
         job_manager.create_job(
