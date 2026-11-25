@@ -174,7 +174,11 @@ def _run_upload_job(job_id: str, filename: str, tmp_file: str, size_bytes: int, 
             stored_path = Path(existing_document_path).expanduser().resolve(strict=True)
             if not stored_path.is_file():
                 raise FileNotFoundError("Governed source file is missing; retry cannot proceed")
-            data_record = get_record(existing_data_id)
+            data_record = get_record(
+                existing_data_id,
+                owner_id=user_id,
+                workspace_id=effective_workspace_id(workspace_id, user_id),
+            )
             if not data_record:
                 raise ValueError("Governance record for retry source was not found")
             expected_workspace = effective_workspace_id(workspace_id, user_id)
@@ -387,8 +391,8 @@ def _normalized_evidence_text(value: str) -> str:
 
 
 def _load_current_governed_text(data_id: str, user_id: str, workspace_id: str):
-    record = get_record(data_id)
-    if not record or record.get("owner_id") != user_id or record.get("workspace_id") != workspace_id:
+    record = get_record(data_id, owner_id=user_id, workspace_id=workspace_id)
+    if not record:
         raise HTTPException(status_code=404, detail="Governed source not found")
     source_path = Path(record.get("file_path") or "")
     if not source_path.is_file():
@@ -837,11 +841,9 @@ async def rag_retry_upload_job(job_id: str, user_id: str = Depends(get_user_id))
     document_path = original.get("document_path")
     if not data_id or not document_path:
         raise HTTPException(status_code=409, detail="This job has no retained governed source; upload the file again")
-    data_record = get_record(data_id)
-    if not data_record or data_record.get("owner_id") != user_id:
-        raise HTTPException(status_code=404, detail="Governed retry source not found")
     workspace_id = original.get("workspace_id") or "default"
-    if data_record.get("workspace_id") != workspace_id:
+    data_record = get_record(data_id, owner_id=user_id, workspace_id=workspace_id)
+    if not data_record:
         raise HTTPException(status_code=404, detail="Governed retry source not found")
     source_path = Path(document_path).expanduser()
     if not source_path.is_file() or source_path.resolve() != Path(data_record["file_path"]).resolve():
@@ -979,8 +981,8 @@ async def rag_reconciliation_repair(
         raise HTTPException(status_code=400, detail="Explicit approval is required before repair")
 
     workspace_id = effective_workspace_id(req.workspace_id, user_id)
-    record = get_record(req.data_id)
-    if not record or record.get("owner_id") != user_id or record.get("workspace_id") != workspace_id:
+    record = get_record(req.data_id, owner_id=user_id, workspace_id=workspace_id)
+    if not record:
         raise HTTPException(status_code=404, detail="Governed data item not found")
 
     report = reconcile_data_sources(user_id, workspace_id=workspace_id)
@@ -1146,14 +1148,14 @@ async def rag_governed_document_audit(
     if user_id == "anonymous":
         raise HTTPException(status_code=401, detail="Authentication required to view data audit history")
     namespace = effective_workspace_id(workspace_id, user_id)
-    record = get_record(data_id)
-    if not record or record.get("owner_id") != user_id or record.get("workspace_id") != namespace:
+    record = get_record(data_id, owner_id=user_id, workspace_id=namespace)
+    if not record:
         raise HTTPException(status_code=404, detail="Governed data item not found")
     return {
         "ok": True,
         "data_id": data_id,
         "workspace_id": namespace,
-        "events": list_audit_events(data_id),
+        "events": list_audit_events(data_id, owner_id=user_id, workspace_id=namespace),
     }
 
 
