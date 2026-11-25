@@ -35,10 +35,16 @@ def test_material_requires_source_and_independent_approval_before_analysis(tmp_p
         materials.resolve_material_for_analysis(
             material["material_id"], owner_id="owner-1", workspace_id="cad"
         )
-    with pytest.raises(PermissionError, match="different reviewer"):
+    with pytest.raises(PermissionError, match="assigned material reviewer"):
         materials.approve_material(
             material["material_id"], owner_id="owner-1", workspace_id="cad",
             actor_id="owner-1", approved=True,
+        )
+
+    with pytest.raises(PermissionError, match="assigned material reviewer"):
+        materials.approve_material(
+            material["material_id"], owner_id="owner-1", workspace_id="cad",
+            actor_id="unassigned-reviewer", approved=True,
         )
 
     approved = materials.approve_material(
@@ -131,7 +137,7 @@ def test_material_rejection_requires_independent_reviewer(tmp_path, monkeypatch)
         owner_id="owner-1", workspace_id="cad", actor_id="owner-1",
         reviewer_id="reviewer-1",
     )
-    with pytest.raises(PermissionError, match="different reviewer"):
+    with pytest.raises(PermissionError, match="assigned material reviewer"):
         materials.reject_material(
             material["material_id"], owner_id="owner-1", workspace_id="cad",
             actor_id="owner-1", reason="Missing traceable datasheet",
