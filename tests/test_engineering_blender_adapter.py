@@ -192,3 +192,6 @@ def test_blender_adapter_rejects_unsafe_mesh_parameters(tmp_path, monkeypatch, o
         blender_adapter.build_blender_script(
             operations, owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True
         )
+
+
+# Generated Blender artifacts are owner/workspace scoped and registered in Data Governance.
