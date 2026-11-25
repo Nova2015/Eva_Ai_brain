@@ -292,6 +292,6 @@ def build_calculix_static_deck(
         with manifest_path.open("x", encoding="utf-8") as handle:
             handle.write(json.dumps(manifest, indent=2, sort_keys=True))
     except Exception:
-        deck_path.unlink(missing_ok=True)
+        # Keep the registered deck intact so its Data ID never points to a deleted file.
         raise
     return manifest
