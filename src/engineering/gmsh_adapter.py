@@ -94,9 +94,13 @@ def build_gmsh_mesh_script(
     size_max = _positive(mesh_size_max_mm, "mesh_size_max_mm")
     if size_min > size_max:
         raise ValueError("mesh_size_min_mm cannot exceed mesh_size_max_mm")
-    if isinstance(algorithm_3d, bool) or algorithm_3d not in _ALLOWED_3D_ALGORITHMS:
+    if (
+        isinstance(algorithm_3d, bool)
+        or not isinstance(algorithm_3d, int)
+        or algorithm_3d not in _ALLOWED_3D_ALGORITHMS
+    ):
         raise ValueError("Unsupported 3D mesh algorithm; choose one of 1, 4, 7 or 10")
-    if isinstance(element_order, bool) or element_order not in {1, 2}:
+    if isinstance(element_order, bool) or not isinstance(element_order, int) or element_order not in {1, 2}:
         raise ValueError("element_order must be 1 or 2")
 
     output_dir = _output_dir()
@@ -124,7 +128,8 @@ def build_gmsh_mesh_script(
         "// No solver or physical machine is started by EVA.",
         "",
     ])
-    script_path.write_text(script, encoding="utf-8")
+    with script_path.open("x", encoding="utf-8") as handle:
+        handle.write(script)
     digest_script = hashlib.sha256(script.encode("utf-8")).hexdigest()
     manifest = {
         "script_id": script_id,
@@ -145,5 +150,10 @@ def build_gmsh_mesh_script(
         "engineering_approval": "not_granted",
     }
     manifest_path = output_dir / f"{script_id}.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    try:
+        with manifest_path.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(manifest, indent=2, sort_keys=True))
+    except Exception:
+        script_path.unlink(missing_ok=True)
+        raise
     return manifest
