@@ -64,6 +64,7 @@ def _initialize(conn: sqlite3.Connection) -> None:
             data_id TEXT,
             classification TEXT NOT NULL,
             input_manifest_json TEXT NOT NULL,
+            depends_on_json TEXT NOT NULL DEFAULT '[]',
             output_manifest_json TEXT,
             status TEXT NOT NULL,
             approval_required INTEGER NOT NULL,
@@ -102,6 +103,13 @@ def _initialize(conn: sqlite3.Connection) -> None:
         END;
         """
     )
+    columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(engineering_jobs)").fetchall()
+    }
+    if "depends_on_json" not in columns:
+        conn.execute(
+            "ALTER TABLE engineering_jobs ADD COLUMN depends_on_json TEXT NOT NULL DEFAULT '[]'"
+        )
     conn.commit()
 
 
@@ -125,6 +133,7 @@ def _job_dict(row: Optional[sqlite3.Row]) -> Optional[dict[str, Any]]:
         return None
     item = dict(row)
     item["input_manifest"] = json.loads(item.pop("input_manifest_json"))
+    item["depends_on"] = json.loads(item.pop("depends_on_json") or "[]")
     raw_output = item.pop("output_manifest_json")
     item["output_manifest"] = json.loads(raw_output) if raw_output else None
     item["approval_required"] = bool(item["approval_required"])
@@ -145,6 +154,7 @@ def create_job(
     workflow_id: Optional[str] = None,
     step_id: Optional[str] = None,
     requires_approval: bool = True,
+    depends_on: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     for field, value in (
         ("job_type", job_type), ("tool_id", tool_id), ("owner_id", owner_id),
@@ -156,6 +166,13 @@ def create_job(
         raise PermissionError("EVA does not automatically start CNC machines")
     if not isinstance(input_manifest, dict):
         raise ValueError("input_manifest must be a dictionary")
+    dependencies = depends_on or []
+    if not isinstance(dependencies, list) or any(
+        not isinstance(item, str) or not item.strip() for item in dependencies
+    ):
+        raise ValueError("depends_on must be a list of non-empty step IDs")
+    if len(set(dependencies)) != len(dependencies):
+        raise ValueError("depends_on cannot contain duplicate step IDs")
     try:
         manifest_json = json.dumps(input_manifest, sort_keys=True)
     except (TypeError, ValueError) as exc:
@@ -183,12 +200,12 @@ def create_job(
             """INSERT INTO engineering_jobs
                (job_id, workflow_id, step_id, job_type, tool_id, owner_id,
                 workspace_id, machine_id, data_id, classification,
-                input_manifest_json, status, approval_required, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                input_manifest_json, depends_on_json, status, approval_required, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 job_id, workflow_id, step_id, job_type, tool_id, owner_id,
                 workspace_id, machine_id, data_id, classification,
-                manifest_json, status, int(approval_required), created_at,
+                manifest_json, json.dumps(dependencies), status, int(approval_required), created_at,
             ),
         )
         _event(conn, job_id, "job_created", actor_id, {
@@ -256,6 +273,26 @@ def claim_job(
             )
         if row["status"] != "queued":
             raise ValueError(f"Job cannot be claimed from status {row['status']!r}")
+        dependencies = json.loads(row["depends_on_json"] or "[]")
+        if dependencies:
+            if not row["workflow_id"]:
+                raise ValueError("Dependent jobs must belong to a workflow")
+            completed_steps = {
+                item["step_id"]: item["status"]
+                for item in conn.execute(
+                    """SELECT step_id, status FROM engineering_jobs
+                       WHERE workflow_id=? AND owner_id=? AND workspace_id=?""",
+                    (row["workflow_id"], owner_id, workspace_id),
+                ).fetchall()
+            }
+            blocked = [
+                step_id for step_id in dependencies
+                if completed_steps.get(step_id) != "succeeded"
+            ]
+            if blocked:
+                raise ValueError(
+                    "Workflow dependencies are not complete: " + ", ".join(blocked)
+                )
         tool = tool_registry.resolve_tool(row["tool_id"])
         if tool["machine_start_allowed"]:
             raise PermissionError("Automatic machine start is prohibited")
