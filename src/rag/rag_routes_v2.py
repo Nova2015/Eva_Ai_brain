@@ -64,9 +64,9 @@ except ImportError:
     )
 
 try:
-    from ..data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, request_deletion, restore_record, sha256_file
+    from ..data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, recover_location, request_deletion, restore_record, sha256_file, validate_and_register_import
 except ImportError:
-    from data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, request_deletion, restore_record, sha256_file
+    from data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, recover_location, request_deletion, restore_record, sha256_file, validate_and_register_import
 
 try:
     import upload_policy
@@ -191,7 +191,7 @@ def _run_upload_job(job_id: str, filename: str, tmp_file: str, size_bytes: int, 
             stored_path = PERSISTENT_DOCUMENT_DIR / f"{uuid.uuid4().hex}{ext}"
             shutil.copy2(tmp_path, stored_path)
             try:
-                data_record = register_import(
+                data_record = _register_validated_import(
                     stored_path,
                     source="rag_upload",
                     owner_id=user_id or "anonymous",
@@ -398,6 +398,15 @@ class GraphQueryRequest(BaseModel):
 def _normalized_evidence_text(value: str) -> str:
     import re
     return re.sub(r"\\s+", " ", (value or "").strip()).casefold()
+
+
+def _register_validated_import(file_path: str | os.PathLike[str], **kwargs):
+    result = validate_and_register_import(file_path, **kwargs)
+    if not result.get("ok"):
+        quarantine_id = result.get("quarantine", {}).get("quarantine_id", "unknown")
+        issues = "; ".join(result.get("validation", {}).get("issues", []))
+        raise ValueError(f"Import quarantined as {quarantine_id}: {issues}")
+    return result["record"]
 
 
 def _load_current_governed_text(data_id: str, user_id: str, workspace_id: str):
@@ -775,7 +784,7 @@ async def rag_ingest_url(req: IngestURLRequest, user_id: str = Depends(get_user_
         stored_path = web_source_dir / f"{uuid.uuid4().hex}.txt"
         stored_path.write_text(extracted_text, encoding="utf-8")
         try:
-            data_record = register_import(
+            data_record = _register_validated_import(
                 stored_path,
                 source="rag_url_ingest",
                 owner_id=user_id,
