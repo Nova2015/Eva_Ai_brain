@@ -11,7 +11,7 @@ try:
     from ..rag.rag_routes_v2 import get_user_id
 except ImportError:
     from rag.rag_routes_v2 import get_user_id
-from . import job_manager, manufacturing, mcp_gateway, tool_registry, workflow_engine
+from . import job_manager, manufacturing, mcp_gateway, tolerance_analysis, tool_registry, workflow_engine
 
 
 router = APIRouter(prefix="/engineering", tags=["Engineering Suite"])
@@ -110,6 +110,21 @@ class ManufacturingValidationRequest(BaseModel):
     input_manifest: dict[str, Any] = Field(default_factory=dict)
     machine_start_requested: bool = False
     preflight_tools: bool = False
+
+
+class ToleranceStackRequest(BaseModel):
+    dimensions: list[dict[str, Any]]
+    unit: str = "mm"
+
+
+class ClearanceFitRequest(BaseModel):
+    hole_nominal: float
+    hole_plus_tolerance: float
+    hole_minus_tolerance: float
+    shaft_nominal: float
+    shaft_plus_tolerance: float
+    shaft_minus_tolerance: float
+    unit: str = "mm"
 
 
 @router.get("/tools")
@@ -522,3 +537,39 @@ def engineering_validate_manufacturing_process(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return {"ok": True, "validation": result, "physical_execution_performed": False}
+
+
+@router.post("/tolerance/stack")
+def engineering_tolerance_stack(
+    req: ToleranceStackRequest,
+    user_id: str = Depends(get_user_id),
+):
+    _authenticated(user_id)
+    try:
+        result = tolerance_analysis.calculate_tolerance_stack(
+            req.dimensions, unit=req.unit
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "analysis": result, "engineering_approval": "not_granted"}
+
+
+@router.post("/tolerance/fit")
+def engineering_clearance_fit(
+    req: ClearanceFitRequest,
+    user_id: str = Depends(get_user_id),
+):
+    _authenticated(user_id)
+    try:
+        result = tolerance_analysis.evaluate_clearance_fit(
+            hole_nominal=req.hole_nominal,
+            hole_plus_tolerance=req.hole_plus_tolerance,
+            hole_minus_tolerance=req.hole_minus_tolerance,
+            shaft_nominal=req.shaft_nominal,
+            shaft_plus_tolerance=req.shaft_plus_tolerance,
+            shaft_minus_tolerance=req.shaft_minus_tolerance,
+            unit=req.unit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "analysis": result, "engineering_approval": "not_granted"}
