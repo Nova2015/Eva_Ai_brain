@@ -5,6 +5,7 @@ import pytest
 
 from src.data_governance import (
     get_record,
+    authorize_data_action,
     approve_content_revision,
     list_records,
     list_reconciliation_events,
@@ -388,3 +389,74 @@ def test_permission_matrix_rejects_unknown_actions_and_invalid_principals(tmp_pa
             record["data_id"], {"read": [""]},
             owner_id="user-1", workspace_id="workspace-1", actor_id="user-1",
         )
+
+
+def test_acl_grants_only_the_configured_independent_actions(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "shared.txt"
+    source.write_text("shared engineering data", encoding="utf-8")
+    record = _register(source)
+
+    set_permissions(
+        record["data_id"],
+        {
+            "read": ["user-2"],
+            "write": ["user-2"],
+            "execute": [],
+            "delete": [],
+        },
+        owner_id="user-1",
+        workspace_id="workspace-1",
+        actor_id="user-1",
+    )
+
+    shared = get_record(
+        record["data_id"], owner_id="user-2", workspace_id="workspace-1"
+    )
+    assert shared is not None
+    assert shared["owner_id"] == "user-1"
+    assert authorize_data_action(
+        record["data_id"], actor_id="user-2",
+        workspace_id="workspace-1", action="read",
+    )
+    assert authorize_data_action(
+        record["data_id"], actor_id="user-2",
+        workspace_id="workspace-1", action="write",
+    )
+    assert not authorize_data_action(
+        record["data_id"], actor_id="user-2",
+        workspace_id="workspace-1", action="execute",
+    )
+    assert not authorize_data_action(
+        record["data_id"], actor_id="user-2",
+        workspace_id="workspace-1", action="delete",
+    )
+
+    updated = set_classification(
+        record["data_id"], "confidential",
+        owner_id="user-2", workspace_id="workspace-1", actor_id="user-2",
+    )
+    assert updated["classification"] == "confidential"
+    assert get_record(
+        record["data_id"], owner_id="user-3", workspace_id="workspace-1"
+    ) is None
+
+
+def test_acl_does_not_grant_access_outside_workspace(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "workspace.txt"
+    source.write_text("workspace-bound data", encoding="utf-8")
+    record = _register(source)
+    set_permissions(
+        record["data_id"],
+        {"read": ["user-2"], "write": [], "execute": [], "delete": []},
+        owner_id="user-1", workspace_id="workspace-1", actor_id="user-1",
+    )
+
+    assert get_record(
+        record["data_id"], owner_id="user-2", workspace_id="workspace-2"
+    ) is None
+    assert not authorize_data_action(
+        record["data_id"], actor_id="user-2",
+        workspace_id="workspace-2", action="read",
+    )
