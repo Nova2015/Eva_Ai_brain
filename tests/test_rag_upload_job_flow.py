@@ -922,3 +922,7 @@ def test_quarantine_api_lists_only_owner_workspace_items(tmp_path, monkeypatch):
     assert len(owner_items["items"]) == 1
     assert owner_items["items"][0]["quarantine_id"] == result["quarantine"]["quarantine_id"]
     assert other_user_items["items"] == []
+    audit = asyncio.run(routes.rag_quarantine_audit(
+        result["quarantine"]["quarantine_id"], workspace_id="cad", user_id="user-a"
+    ))
+    assert audit["events"][0]["action"] == "file_quarantined"
