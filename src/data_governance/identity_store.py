@@ -190,6 +190,37 @@ def _normalize_permissions(
     return normalized
 
 
+def _authorized_record(
+    conn: sqlite3.Connection,
+    data_id: str,
+    actor_id: str,
+    workspace_id: str,
+    action: str,
+) -> Optional[sqlite3.Row]:
+    """Resolve a record only when its owner or ACL grants the requested action."""
+    if action not in _PERMISSION_ACTIONS:
+        raise ValueError(f"Unsupported permission action: {action}")
+    row = conn.execute(
+        "SELECT * FROM data_items WHERE data_id=? AND workspace_id=?",
+        (data_id, workspace_id),
+    ).fetchone()
+    if row is None:
+        return None
+    if row["owner_id"] == actor_id:
+        return row
+    permissions = json.loads(row["permissions_json"])
+    return row if actor_id in permissions.get(action, []) else None
+
+
+def authorize_data_action(
+    data_id: str, *, actor_id: str, workspace_id: str, action: str
+) -> bool:
+    """Check one of read/write/execute/delete against the item's owner and ACL."""
+    _require_scope(data_id, actor_id, workspace_id)
+    with _connect() as conn:
+        return _authorized_record(conn, data_id, actor_id, workspace_id, action) is not None
+
+
 def register_import(
     file_path: str | os.PathLike[str],
     *,
@@ -275,11 +306,7 @@ def get_record(
     """Return a record only inside the authenticated owner/workspace scope."""
     _require_scope(data_id, owner_id, workspace_id)
     with _connect() as conn:
-        row = conn.execute(
-            """SELECT * FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
-        ).fetchone()
+        row = _authorized_record(conn, data_id, owner_id, workspace_id, "read")
     return _row_dict(row)
 
 
@@ -297,26 +324,21 @@ def update_location(
     if not path.is_file():
         raise ValueError("new_file_path must point to a regular file")
     with _connect() as conn:
-        row = conn.execute(
-            """SELECT * FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
-        ).fetchone()
+        row = _authorized_record(conn, data_id, owner_id, workspace_id, "write")
         if row is None:
             raise KeyError(f"Unknown governed Data ID: {data_id}")
         old_path = row["file_path"]
         conn.execute(
             """UPDATE data_items SET file_path=?, file_name=?, updated_at=?
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (str(path), path.name, _now(), data_id, owner_id, workspace_id),
+               WHERE data_id=? AND workspace_id=?""",
+            (str(path), path.name, _now(), data_id, workspace_id),
         )
         _audit(conn, data_id, "location_updated", actor_id, {
             "old_path": old_path, "new_path": str(path),
         })
         updated = conn.execute(
-            """SELECT * FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
+            """SELECT * FROM data_items WHERE data_id=? AND workspace_id=?""",
+            (data_id, workspace_id),
         ).fetchone()
     return _row_dict(updated)  # type: ignore[return-value]
 
@@ -387,11 +409,7 @@ def record_revision(
     """Record a new content version only within the caller's scope."""
     _require_scope(data_id, owner_id, workspace_id)
     with _connect() as conn:
-        row = conn.execute(
-            """SELECT * FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
-        ).fetchone()
+        row = _authorized_record(conn, data_id, owner_id, workspace_id, "write")
         if row is None:
             raise KeyError(f"Unknown Data ID: {data_id}")
         path = Path(row["file_path"])
@@ -406,8 +424,8 @@ def record_revision(
         now = _now()
         conn.execute(
             """UPDATE data_items SET sha256=?, size_bytes=?, version=?, updated_at=?
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (digest, size, next_version, now, data_id, owner_id, workspace_id),
+               WHERE data_id=? AND workspace_id=?""",
+            (digest, size, next_version, now, data_id, workspace_id),
         )
         conn.execute(
             """INSERT INTO data_item_versions
@@ -495,25 +513,20 @@ def set_classification(
     if classification not in CLASSIFICATIONS:
         raise ValueError(f"Unsupported classification: {classification}")
     with _connect() as conn:
-        row = conn.execute(
-            """SELECT classification FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
-        ).fetchone()
+        row = _authorized_record(conn, data_id, owner_id, workspace_id, "write")
         if row is None:
             raise KeyError(f"Unknown Data ID: {data_id}")
         previous = row["classification"]
         conn.execute(
             """UPDATE data_items SET classification=?, updated_at=?
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (classification, _now(), data_id, owner_id, workspace_id),
+               WHERE data_id=? AND workspace_id=?""",
+            (classification, _now(), data_id, workspace_id),
         )
         _audit(conn, data_id, "classification_changed", actor_id,
                {"from": previous, "to": classification})
         updated = conn.execute(
-            """SELECT * FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
+            """SELECT * FROM data_items WHERE data_id=? AND workspace_id=?""",
+            (data_id, workspace_id),
         ).fetchone()
     return _row_dict(updated)  # type: ignore[return-value]
 
@@ -543,9 +556,8 @@ def set_permissions(
         )
         _audit(conn, data_id, "permissions_changed", actor_id, {"permissions": normalized_permissions})
         updated = conn.execute(
-            """SELECT * FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
+            """SELECT * FROM data_items WHERE data_id=? AND workspace_id=?""",
+            (data_id, workspace_id),
         ).fetchone()
     return _row_dict(updated)  # type: ignore[return-value]
 
@@ -565,18 +577,14 @@ def set_training_approval(
     if status == "approved" and (not isinstance(actor_id, str) or not actor_id.strip()):
         raise ValueError("An approving actor_id is required")
     with _connect() as conn:
-        row = conn.execute(
-            """SELECT training_approval FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
-        ).fetchone()
+        row = _authorized_record(conn, data_id, owner_id, workspace_id, "write")
         if row is None:
             raise KeyError(f"Unknown Data ID: {data_id}")
         previous = row["training_approval"]
         conn.execute(
             """UPDATE data_items SET training_approval=?, updated_at=?
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (status, _now(), data_id, owner_id, workspace_id),
+               WHERE data_id=? AND workspace_id=?""",
+            (status, _now(), data_id, workspace_id),
         )
         _audit(conn, data_id, "training_approval_changed", actor_id,
                {"from": previous, "to": status})
@@ -594,11 +602,7 @@ def list_versions(
     """List versions only for a Data ID in the caller's scope."""
     _require_scope(data_id, owner_id, workspace_id)
     with _connect() as conn:
-        exists = conn.execute(
-            """SELECT 1 FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
-        ).fetchone()
+        exists = _authorized_record(conn, data_id, owner_id, workspace_id, "read")
         if exists is None:
             raise KeyError(f"Unknown Data ID: {data_id}")
         rows = conn.execute(
@@ -697,11 +701,7 @@ def list_audit_events(
     """Read the append-only audit trail only inside the caller's scope."""
     _require_scope(data_id, owner_id, workspace_id)
     with _connect() as conn:
-        exists = conn.execute(
-            """SELECT 1 FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
-        ).fetchone()
+        exists = _authorized_record(conn, data_id, owner_id, workspace_id, "read")
         if exists is None:
             raise KeyError(f"Unknown Data ID: {data_id}")
         rows = conn.execute(
