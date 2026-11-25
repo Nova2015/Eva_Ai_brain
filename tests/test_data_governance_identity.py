@@ -337,3 +337,54 @@ def test_data_item_reads_and_mutations_reject_wrong_owner_or_workspace(tmp_path,
     assert get_record(data_id, **wrong_workspace) is None
     with pytest.raises(KeyError):
         list_audit_events(data_id, **wrong_workspace)
+
+
+def test_permission_matrix_has_independent_read_write_execute_delete_actions(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "permissions.txt"
+    source.write_text("permission defaults", encoding="utf-8")
+    record = _register(source)
+
+    assert record["permissions"] == {
+        "read": ["user-1"],
+        "write": ["user-1"],
+        "execute": [],
+        "delete": [],
+    }
+
+    updated = set_permissions(
+        record["data_id"],
+        {
+            "read": ["user-2", "user-1", "user-2"],
+            "write": ["user-1"],
+            "execute": [],
+            "delete": ["admin-1"],
+        },
+        owner_id="user-1",
+        workspace_id="workspace-1",
+        actor_id="user-1",
+    )
+    assert updated["permissions"] == {
+        "read": ["user-1", "user-2"],
+        "write": ["user-1"],
+        "execute": [],
+        "delete": ["admin-1"],
+    }
+
+
+def test_permission_matrix_rejects_unknown_actions_and_invalid_principals(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "permissions.txt"
+    source.write_text("permission validation", encoding="utf-8")
+    record = _register(source)
+
+    with pytest.raises(ValueError, match="Unsupported permission actions"):
+        set_permissions(
+            record["data_id"], {"read": ["user-1"], "admin": ["user-1"]},
+            owner_id="user-1", workspace_id="workspace-1", actor_id="user-1",
+        )
+    with pytest.raises(ValueError, match="invalid principal"):
+        set_permissions(
+            record["data_id"], {"read": [""]},
+            owner_id="user-1", workspace_id="workspace-1", actor_id="user-1",
+        )
