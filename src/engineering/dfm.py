@@ -213,7 +213,7 @@ def analyze_injection_molding_dfm(
             )
 
     status = "review_required" if findings else "preliminary_pass"
-    return {
+    result = {
         "analysis_type": "injection_molding_dfm_screen",
         "status": status,
         "material_id": material_id,
@@ -227,3 +227,16 @@ def analyze_injection_molding_dfm(
         "advisory_only": True,
         "requires_engineer_review": True,
     }
+    materials.record_material_analysis(
+        material_id,
+        owner_id=owner_id,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        action="dfm_analysis_completed",
+        details={
+            "status": status,
+            "finding_codes": [finding["code"] for finding in findings],
+            "rules": thresholds,
+        },
+    )
+    return result
