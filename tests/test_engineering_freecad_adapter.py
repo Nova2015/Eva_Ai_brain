@@ -100,6 +100,7 @@ def test_freecad_macro_api_requires_authentication_and_approval(tmp_path, monkey
             {"op": "create_box", "name": "Base", "length_mm": 10,
              "width_mm": 10, "height_mm": 2},
         ],
+        workspace_id="cad",
         approved=False,
     )
     with pytest.raises(HTTPException) as auth_error:
