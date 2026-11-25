@@ -373,13 +373,8 @@ def _evidence_matches_current_revision(data_id: str, owner_id: str, workspace_id
         from ..data_governance import get_record
     except ImportError:
         from data_governance import get_record
-    record = get_record(data_id)
-    return bool(
-        record
-        and record.get("owner_id") == owner_id
-        and record.get("workspace_id") == workspace_id
-        and int(record.get("version") or 1) == int(source_version)
-    )
+    record = get_record(data_id, owner_id=owner_id, workspace_id=workspace_id)
+    return bool(record and int(record.get("version") or 1) == int(source_version))
 
 
 def search_entities(
