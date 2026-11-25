@@ -652,12 +652,8 @@ def set_permissions(
         raise PermissionError("Only the data owner may change permissions")
     normalized_permissions = _normalize_permissions(permissions)
     with _connect() as conn:
-        row = conn.execute(
-            """SELECT data_id FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
-        ).fetchone()
-        if row is None:
+        row = _authorized_record(conn, data_id, owner_id, workspace_id, "write")
+        if row is None or row["owner_id"] != owner_id:
             raise KeyError(f"Unknown Data ID: {data_id}")
         conn.execute(
             """UPDATE data_items SET permissions_json=?, updated_at=?
