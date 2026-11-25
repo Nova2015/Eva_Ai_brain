@@ -18,7 +18,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
-CLASSIFICATIONS = frozenset({"public", "internal", "confidential", "restricted"})
+# Canonical governance classes plus legacy values retained for existing records.
+CLASSIFICATIONS = frozenset({
+    "public", "private", "sensitive", "ip",
+    "internal", "confidential", "restricted",
+})
 TRAINING_APPROVALS = frozenset({"pending", "approved", "rejected"})
 
 _ROOT = Path(__file__).resolve().parents[2]
