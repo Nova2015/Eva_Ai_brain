@@ -804,3 +804,25 @@ def test_delete_indexed_document_is_owner_and_workspace_scoped(monkeypatch):
     assert result["deleted_chunks"] == 1
     assert collection.deleted == ["user-a-doc"]
     assert collection.where_values == [{"user_id": "user-a"}]
+
+
+def test_reconciliation_repair_requires_execute_permission(monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+    from src.rag import rag_routes_v2 as routes
+
+    request = routes.ReconciliationRepairRequest(
+        data_id="EVA-DATA-EXECUTE-ONLY",
+        action="reindex_missing",
+        approved=True,
+        workspace_id="cad",
+    )
+    monkeypatch.setattr(routes, "authorize_data_action", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        routes, "get_record",
+        lambda *args, **kwargs: pytest.fail("Read must not proceed without execute permission"),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(routes.rag_reconciliation_repair(request, user_id="user-a"))
+    assert error.value.status_code == 404
