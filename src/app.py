@@ -3095,6 +3095,18 @@ except Exception as e:
     print(f"Feature routes not available: {e}")
     traceback.print_exc()
 
+
+try:
+    try:
+        from src.engineering.routes import router as engineering_router
+    except ImportError:
+        from engineering.routes import router as engineering_router
+    app.include_router(engineering_router)
+    logger.info("Engineering Suite tool registry routes loaded")
+except Exception as e:
+    logger.error("Engineering Suite routes not available: %s", e)
+    traceback.print_exc()
+
 if PHASE_ROUTE_ERRORS:
     logger.warning(f"Phase 11-25 route load warnings: {PHASE_ROUTE_ERRORS}")
 
