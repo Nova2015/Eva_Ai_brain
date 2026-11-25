@@ -13,7 +13,7 @@ try:
     from ..rag.rag_routes_v2 import get_user_id
 except ImportError:
     from rag.rag_routes_v2 import get_user_id
-from . import blender_adapter, calculix_adapter, freecad_adapter, gmsh_adapter, job_manager, manufacturing, materials, mcp_gateway, tolerance_analysis, tool_registry, validation_service, workflow_engine
+from . import blender_adapter, calculix_adapter, dfm, freecad_adapter, gmsh_adapter, job_manager, manufacturing, materials, mcp_gateway, tolerance_analysis, tool_registry, validation_service, workflow_engine
 
 
 router = APIRouter(prefix="/engineering", tags=["Engineering Suite"])
@@ -155,6 +155,13 @@ class MaterialRegistrationRequest(BaseModel):
 
 class GovernedDataValidationRequest(BaseModel):
     workspace_id: str
+
+
+class InjectionMoldingDFMRequest(BaseModel):
+    material_id: str
+    workspace_id: str
+    analysis: dict[str, Any]
+    rules: Optional[dict[str, Any]] = None
 
 
 class GmshMeshScriptRequest(BaseModel):
@@ -850,6 +857,30 @@ def engineering_validate_governed_data(
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return {"ok": True, "result": result}
+
+
+@router.post("/dfm/injection-molding/analyze")
+def engineering_analyze_injection_molding_dfm(
+    req: InjectionMoldingDFMRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        result = dfm.analyze_injection_molding_dfm(
+            req.analysis,
+            material_id=req.material_id,
+            owner_id=actor_id,
+            workspace_id=req.workspace_id,
+            actor_id=actor_id,
+            rules=req.rules,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Approved material record not found")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "dfm": result}
 
 
 @router.post("/mesh/gmsh/script")
