@@ -315,14 +315,28 @@ def release_quarantined(
         )
         if not report["ok"]:
             raise ValueError("Quarantined file still fails validation: " + "; ".join(report["issues"]))
-        record = register_import(
-            quarantined_path,
-            source="quarantine_release",
-            owner_id=owner_id,
-            workspace_id=workspace_id,
-            actor_id=actor_id,
-            classification=classification,
+        validated_root_value = os.getenv("EVA_DATA_VALIDATED_DIR")
+        validated_root = Path(validated_root_value).expanduser() if validated_root_value else (
+            Path(__file__).resolve().parents[2] / "data" / "validated"
         )
+        validated_root.mkdir(parents=True, exist_ok=True)
+        validated_path = validated_root / f"validated-{uuid.uuid4().hex}{quarantined_path.suffix.lower()}"
+        shutil.copy2(quarantined_path, validated_path)
+        if sha256_file(validated_path) != item["sha256"]:
+            validated_path.unlink(missing_ok=True)
+            raise OSError("Validated-zone copy failed SHA-256 integrity verification")
+        try:
+            record = register_import(
+                validated_path,
+                source="quarantine_release",
+                owner_id=owner_id,
+                workspace_id=workspace_id,
+                actor_id=actor_id,
+                classification=classification,
+            )
+        except Exception:
+            validated_path.unlink(missing_ok=True)
+            raise
     except Exception as exc:
         with _connect() as conn:
             conn.execute(
@@ -365,6 +379,7 @@ def release_quarantined(
         "quarantine_id": quarantine_id,
         "data_id": record["data_id"],
         "record": record,
+        "validated_path": record["file_path"],
         "quarantine_file_retained": True,
     }
 
