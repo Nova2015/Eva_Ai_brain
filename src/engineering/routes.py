@@ -11,7 +11,7 @@ try:
     from ..rag.rag_routes_v2 import get_user_id
 except ImportError:
     from rag.rag_routes_v2 import get_user_id
-from . import freecad_adapter, job_manager, manufacturing, mcp_gateway, tolerance_analysis, tool_registry, workflow_engine
+from . import blender_adapter, freecad_adapter, job_manager, manufacturing, mcp_gateway, tolerance_analysis, tool_registry, workflow_engine
 
 
 router = APIRouter(prefix="/engineering", tags=["Engineering Suite"])
@@ -130,6 +130,12 @@ class ClearanceFitRequest(BaseModel):
 class FreeCADMacroRequest(BaseModel):
     operations: list[dict[str, Any]]
     document_name: str = "EVA_Engineering_Model"
+    approved: bool
+
+
+class BlenderScriptRequest(BaseModel):
+    operations: list[dict[str, Any]]
+    scene_name: str = "EVA_Engineering_Scene"
     approved: bool
 
 
@@ -603,6 +609,33 @@ def engineering_build_freecad_macro(
     return {
         "ok": True,
         "macro": manifest,
+        "execution_performed": False,
+        "machine_started": False,
+    }
+
+
+@router.post("/3d/blender/script")
+def engineering_build_blender_script(
+    req: BlenderScriptRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        manifest = blender_adapter.build_blender_script(
+            req.operations,
+            scene_name=req.scene_name,
+            actor_id=actor_id,
+            approved=req.approved,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "ok": True,
+        "script": manifest,
         "execution_performed": False,
         "machine_started": False,
     }
