@@ -145,7 +145,16 @@ class MaterialRegistrationRequest(BaseModel):
     grade: str
     source_reference: str
     properties: dict[str, Any]
+    reviewer_id: str
     manufacturer: str = ""
+
+
+class MaterialApprovalRequest(BaseModel):
+    approved: bool
+
+
+class MaterialRejectionRequest(BaseModel):
+    reason: str
 
 
 @router.get("/tools")
@@ -715,3 +724,69 @@ def engineering_material_audit(
     except KeyError:
         raise HTTPException(status_code=404, detail="Material not found")
     return {"ok": True, "material_id": material_id, "events": events}
+
+
+@router.get("/materials/review-queue")
+def engineering_material_review_queue(
+    workspace_id: str,
+    user_id: str = Depends(get_user_id),
+):
+    reviewer_id = _authenticated(user_id)
+    return {
+        "ok": True,
+        "materials": materials.list_materials_for_reviewer(
+            reviewer_id=reviewer_id, workspace_id=workspace_id
+        ),
+    }
+
+
+@router.post("/materials/{material_id}/approve")
+def engineering_approve_material(
+    material_id: str,
+    workspace_id: str,
+    req: MaterialApprovalRequest,
+    user_id: str = Depends(get_user_id),
+):
+    reviewer_id = _authenticated(user_id)
+    assigned = materials.list_materials_for_reviewer(
+        reviewer_id=reviewer_id, workspace_id=workspace_id
+    )
+    material = next((item for item in assigned if item["material_id"] == material_id), None)
+    if material is None:
+        raise HTTPException(status_code=404, detail="Assigned material review item not found")
+    try:
+        result = materials.approve_material(
+            material_id, owner_id=material["owner_id"], workspace_id=workspace_id,
+            actor_id=reviewer_id, approved=req.approved,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    return {"ok": True, "material": result, "status": result["status"]}
+
+
+@router.post("/materials/{material_id}/reject")
+def engineering_reject_material(
+    material_id: str,
+    workspace_id: str,
+    req: MaterialRejectionRequest,
+    user_id: str = Depends(get_user_id),
+):
+    reviewer_id = _authenticated(user_id)
+    assigned = materials.list_materials_for_reviewer(
+        reviewer_id=reviewer_id, workspace_id=workspace_id
+    )
+    material = next((item for item in assigned if item["material_id"] == material_id), None)
+    if material is None:
+        raise HTTPException(status_code=404, detail="Assigned material review item not found")
+    try:
+        result = materials.reject_material(
+            material_id, owner_id=material["owner_id"], workspace_id=workspace_id,
+            actor_id=reviewer_id, reason=req.reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    return {"ok": True, "material": result, "status": result["status"]}
