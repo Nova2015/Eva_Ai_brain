@@ -110,3 +110,14 @@ def test_injection_molding_dfm_api_is_authenticated_and_material_scoped(tmp_path
     result = routes.engineering_analyze_injection_molding_dfm(request, user_id="owner-1")
     assert result["dfm"]["status"] == "preliminary_pass"
     assert result["dfm"]["engineering_approval"] == "not_granted"
+
+
+
+def test_injection_molding_dfm_rejects_non_string_rule_names(tmp_path, monkeypatch):
+    material = _approved_material(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="rule names must be strings"):
+        dfm.analyze_injection_molding_dfm(
+            {"nominal_wall_thickness_mm": 2, "draft_angles_deg": [1]},
+            material_id=material["material_id"], owner_id="owner-1",
+            workspace_id="cad", actor_id="owner-1", rules={1: 0.5},
+        )
