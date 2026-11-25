@@ -16,6 +16,8 @@ from src.data_governance import (
     record_governance_event,
     record_reconciliation_event,
     set_training_approval,
+    set_classification,
+    set_permissions,
     update_location,
 )
 
@@ -43,7 +45,7 @@ def test_each_import_gets_distinct_persistent_data_id(tmp_path, monkeypatch):
     assert first["data_id"] != second["data_id"]
     assert first["sha256"] == second["sha256"]
     assert first["training_approval"] == "pending"
-    assert get_record(first["data_id"])["data_id"] == first["data_id"]
+    assert get_record(first["data_id"], owner_id="user-1", workspace_id="workspace-1")["data_id"] == first["data_id"]
 
 
 def test_rename_and_move_preserves_data_id(tmp_path, monkeypatch):
@@ -54,7 +56,7 @@ def test_rename_and_move_preserves_data_id(tmp_path, monkeypatch):
 
     moved = tmp_path / "renamed.txt"
     original.rename(moved)
-    updated = update_location(record["data_id"], moved, actor_id="user-1")
+    updated = update_location(record["data_id"], moved, owner_id="user-1", workspace_id="workspace-1", actor_id="user-1")
 
     assert updated["data_id"] == record["data_id"]
     assert updated["file_name"] == "renamed.txt"
@@ -67,7 +69,7 @@ def test_content_change_creates_new_version(tmp_path, monkeypatch):
     source.write_text("revision one", encoding="utf-8")
     record = _register(source)
 
-    unchanged = record_revision(record["data_id"], actor_id="user-1")
+    unchanged = record_revision(record["data_id"], owner_id="user-1", workspace_id="workspace-1", actor_id="user-1")
     assert unchanged["changed"] is False
     assert unchanged["version"] == 1
 
@@ -75,7 +77,7 @@ def test_content_change_creates_new_version(tmp_path, monkeypatch):
     changed = record_revision(record["data_id"], actor_id="user-1")
     assert changed["changed"] is True
     assert changed["version"] == 2
-    assert [v["version"] for v in list_versions(record["data_id"])] == [1, 2]
+    assert [v["version"] for v in list_versions(record["data_id"], owner_id="user-1", workspace_id="workspace-1")] == [1, 2]
 
 
 def test_training_data_requires_explicit_approval(tmp_path, monkeypatch):
@@ -84,8 +86,8 @@ def test_training_data_requires_explicit_approval(tmp_path, monkeypatch):
     source.write_text('{"text":"example"}', encoding="utf-8")
     record = _register(source)
 
-    assert get_record(record["data_id"])["training_approval"] == "pending"
-    approved = set_training_approval(record["data_id"], "approved", actor_id="reviewer-1")
+    assert get_record(record["data_id"], owner_id="user-1", workspace_id="workspace-1")["training_approval"] == "pending"
+    approved = set_training_approval(record["data_id"], "approved", owner_id="user-1", workspace_id="workspace-1", actor_id="reviewer-1")
     assert approved["training_approval"] == "approved"
 
 
@@ -165,7 +167,7 @@ def test_recover_location_preserves_data_id_and_requires_matching_hash(tmp_path,
     assert updated["data_id"] == record["data_id"]
     assert updated["file_path"] == str(recovered.resolve())
     assert updated["version"] == record["version"]
-    assert list_audit_events(record["data_id"])[-1]["action"] == "location_recovered"
+    assert list_audit_events(record["data_id"], owner_id="user-1", workspace_id="workspace-1")[-1]["action"] == "location_recovered"
 
 
 def test_recover_location_rejects_hash_mismatch_and_outside_root(tmp_path, monkeypatch):
