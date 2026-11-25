@@ -44,6 +44,7 @@ def _connect() -> sqlite3.Connection:
             workspace_id TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending_review',
             created_by TEXT NOT NULL,
+            reviewer_id TEXT,
             approved_by TEXT,
             rejection_reason TEXT,
             created_at TEXT NOT NULL,
@@ -72,6 +73,11 @@ def _connect() -> sqlite3.Connection:
         END;
         """
     )
+    columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(engineering_materials)").fetchall()
+    }
+    if "reviewer_id" not in columns:
+        conn.execute("ALTER TABLE engineering_materials ADD COLUMN reviewer_id TEXT")
     return conn
 
 
@@ -130,6 +136,7 @@ def register_material(
     workspace_id: str,
     actor_id: str,
     manufacturer: str = "",
+    reviewer_id: Optional[str] = None,
 ) -> dict[str, Any]:
     for field, value in (
         ("name", name), ("family", family), ("grade", grade),
@@ -140,6 +147,12 @@ def register_material(
             raise ValueError(f"{field} is required")
     if actor_id != owner_id:
         raise PermissionError("Only the authenticated owner may register material data in this scope")
+    if reviewer_id is not None:
+        if not isinstance(reviewer_id, str) or not reviewer_id.strip():
+            raise ValueError("reviewer_id must be a non-empty string when provided")
+        if reviewer_id.strip() == actor_id:
+            raise ValueError("Material reviewer must be different from the owner")
+        reviewer_id = reviewer_id.strip()
     validated = _validate_properties(properties)
     material_id = "EVA-MAT-" + uuid.uuid4().hex.upper()
     now = _now()
@@ -147,13 +160,13 @@ def register_material(
         conn.execute(
             """INSERT INTO engineering_materials
                (material_id, name, family, grade, manufacturer, source_reference,
-                properties_json, owner_id, workspace_id, status, created_by, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?)""",
+                properties_json, owner_id, workspace_id, status, created_by, reviewer_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?)""",
             (
                 material_id, name.strip(), family.strip(), grade.strip(),
                 manufacturer.strip(), source_reference.strip(),
                 json.dumps(validated, sort_keys=True), owner_id, workspace_id,
-                actor_id, now,
+                actor_id, reviewer_id, now,
             ),
         )
         conn.execute(
@@ -217,8 +230,10 @@ def approve_material(
         ).fetchone()
         if row is None:
             raise KeyError(f"Material not found: {material_id}")
-        if actor_id == row["created_by"]:
-            raise PermissionError("Material approval must be performed by a different reviewer")
+        if not row["reviewer_id"]:
+            raise PermissionError("No independent reviewer has been assigned to this material")
+        if actor_id != row["reviewer_id"]:
+            raise PermissionError("Only the assigned material reviewer may approve this record")
         if row["status"] != "pending_review":
             raise ValueError(f"Material cannot be approved from status {row['status']!r}")
         now = _now()
@@ -257,8 +272,10 @@ def reject_material(
         ).fetchone()
         if row is None:
             raise KeyError(f"Material not found: {material_id}")
-        if actor_id == row["created_by"]:
-            raise PermissionError("Material review must be performed by a different reviewer")
+        if not row["reviewer_id"]:
+            raise PermissionError("No independent reviewer has been assigned to this material")
+        if actor_id != row["reviewer_id"]:
+            raise PermissionError("Only the assigned material reviewer may reject this record")
         if row["status"] != "pending_review":
             raise ValueError(f"Material cannot be rejected from status {row['status']!r}")
         now = _now()
