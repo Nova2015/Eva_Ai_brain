@@ -80,6 +80,9 @@ def _initialize(conn: sqlite3.Connection) -> None:
             ON engineering_jobs(owner_id, workspace_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_engineering_jobs_status
             ON engineering_jobs(status, machine_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_engineering_workflow_step
+            ON engineering_jobs(workflow_id, step_id)
+            WHERE workflow_id IS NOT NULL AND step_id IS NOT NULL;
 
         CREATE TABLE IF NOT EXISTS engineering_job_events (
             event_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,6 +176,21 @@ def create_job(
         raise ValueError("depends_on must be a list of non-empty step IDs")
     if len(set(dependencies)) != len(dependencies):
         raise ValueError("depends_on cannot contain duplicate step IDs")
+    if step_id and not workflow_id:
+        raise ValueError("step_id requires workflow_id")
+    if dependencies and not workflow_id:
+        raise ValueError("dependent jobs must belong to a workflow")
+    if step_id and step_id in dependencies:
+        raise ValueError("a workflow step cannot depend on itself")
+    if not isinstance(requires_approval, bool):
+        raise ValueError("requires_approval must be a boolean")
+    if classification not in {
+        "public", "private", "sensitive", "ip",
+        "internal", "confidential", "restricted",
+    }:
+        raise ValueError("unsupported data classification")
+    if data_id is not None and (not isinstance(data_id, str) or not data_id.strip()):
+        raise ValueError("data_id must be a non-empty string when provided")
     try:
         manifest_json = json.dumps(input_manifest, sort_keys=True)
     except (TypeError, ValueError) as exc:
