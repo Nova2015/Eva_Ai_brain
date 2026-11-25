@@ -182,3 +182,48 @@ def test_workflow_catalog_and_instantiation_api_are_authenticated(tmp_path, monk
     )
     assert result["workflow"]["jobs"][0]["status"] == "queued"
     assert result["execution_performed"] is False
+
+
+
+def test_workflow_validation_rejects_malformed_steps_and_duplicate_dependencies():
+    workflow_engine._WORKFLOWS["duplicate_dependency_test"] = {
+        "name": "Duplicate dependency", "description": "invalid",
+        "steps": [
+            {"step_id": "a", "tool_id": "freecad", "job_type": "analysis",
+             "depends_on": ["b", "b"], "requires_approval": False},
+            {"step_id": "b", "tool_id": "freecad", "job_type": "analysis",
+             "depends_on": [], "requires_approval": False},
+        ],
+    }
+    try:
+        with pytest.raises(ValueError, match="duplicate dependencies"):
+            workflow_engine.validate_workflow("duplicate_dependency_test")
+    finally:
+        workflow_engine._WORKFLOWS.pop("duplicate_dependency_test", None)
+
+    workflow_engine._WORKFLOWS["malformed_step_test"] = {
+        "name": "Malformed", "description": "invalid", "steps": [{"step_id": "only"}],
+    }
+    try:
+        with pytest.raises(ValueError, match="missing required fields"):
+            workflow_engine.validate_workflow("malformed_step_test")
+    finally:
+        workflow_engine._WORKFLOWS.pop("malformed_step_test", None)
+
+
+def test_get_workflow_returns_deep_copy_of_dependency_lists():
+    original = workflow_engine.get_workflow("plastic_bracket")
+    original["steps"][1]["depends_on"].append("tampered")
+    refreshed = workflow_engine.get_workflow("plastic_bracket")
+    assert "tampered" not in refreshed["steps"][1]["depends_on"]
+
+
+def test_workflow_instantiation_rejects_owner_spoofing_before_creating_jobs(tmp_path, monkeypatch):
+    _enable_freecad(tmp_path, monkeypatch)
+    with pytest.raises(PermissionError, match="authenticated owner"):
+        workflow_engine.instantiate_workflow(
+            "plastic_bracket", owner_id="owner-1", workspace_id="cad",
+            machine_id="machine-b", actor_id="attacker", data_id=None,
+            input_manifest={"part": "bracket"},
+        )
+    assert job_manager.list_jobs(owner_id="owner-1", workspace_id="cad") == []
