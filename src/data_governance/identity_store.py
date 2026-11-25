@@ -372,11 +372,7 @@ def recover_location(
     digest = sha256_file(candidate)
     size = candidate.stat().st_size
     with _connect() as conn:
-        row = conn.execute(
-            """SELECT * FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
-        ).fetchone()
+        row = _authorized_record(conn, data_id, owner_id, workspace_id, "write")
         if row is None:
             raise KeyError(f"Unknown governed Data ID: {data_id}")
         if digest != row["sha256"]:
@@ -453,11 +449,7 @@ def approve_content_revision(
                (data_id, owner_id, workspace_id, actor_id, expected_sha256)):
         raise ValueError("data_id, owner_id, workspace_id, actor_id and expected_sha256 are required")
     with _connect() as conn:
-        row = conn.execute(
-            """SELECT * FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
-        ).fetchone()
+        row = _authorized_record(conn, data_id, owner_id, workspace_id, "write")
         if row is None:
             raise KeyError(f"Unknown governed Data ID: {data_id}")
         if row["sha256"] != expected_sha256:
@@ -478,8 +470,8 @@ def approve_content_revision(
         now = _now()
         conn.execute(
             """UPDATE data_items SET sha256=?, size_bytes=?, version=?, updated_at=?
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (digest, size, next_version, now, data_id, owner_id, workspace_id),
+               WHERE data_id=? AND workspace_id=?""",
+            (digest, size, next_version, now, data_id, workspace_id),
         )
         conn.execute(
             """INSERT INTO data_item_versions
@@ -626,11 +618,7 @@ def record_governance_event(
                (data_id, action, owner_id, workspace_id, actor_id)):
         raise ValueError("data_id, action, owner_id, workspace_id and actor_id are required")
     with _connect() as conn:
-        exists = conn.execute(
-            """SELECT 1 FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
-        ).fetchone()
+        exists = _authorized_record(conn, data_id, owner_id, workspace_id, "write")
         if exists is None:
             raise KeyError(f"Unknown governed Data ID: {data_id}")
         _audit(conn, data_id, action, actor_id, details or {})
