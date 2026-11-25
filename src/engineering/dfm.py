@@ -215,9 +215,13 @@ def analyze_injection_molding_dfm(
     status = "review_required" if findings else "preliminary_pass"
     result = {
         "analysis_type": "injection_molding_dfm_screen",
+        "ruleset_version": "eva-injection-molding-dfm-0.1",
         "status": status,
         "material_id": material_id,
         "material_name": material["name"],
+        "material_family": material["family"],
+        "material_grade": material["grade"],
+        "material_source_reference": material["source_reference"],
         "nominal_wall_thickness_mm": wall,
         "rules": thresholds,
         "findings": findings,
