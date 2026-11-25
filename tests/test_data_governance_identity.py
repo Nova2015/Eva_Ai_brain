@@ -7,6 +7,10 @@ import pytest
 from src.data_governance import (
     get_record,
     authorize_data_action,
+    archive_record,
+    restore_record,
+    request_deletion,
+    approve_deletion,
     approve_content_revision,
     list_records,
     list_reconciliation_events,
@@ -622,3 +626,49 @@ def test_canonical_governance_classifications_are_supported(tmp_path, monkeypatc
         actor_id="user-1", classification=classification,
     )
     assert record["classification"] == classification
+
+
+def test_archive_restore_and_deletion_tombstone_require_explicit_approval(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "lifecycle.txt"
+    source.write_text("lifecycle governed source", encoding="utf-8")
+    record = _register(source)
+    scope = {"owner_id": "user-1", "workspace_id": "workspace-1"}
+
+    archived = archive_record(record["data_id"], **scope, actor_id="user-1")
+    assert archived["lifecycle_status"] == "archived"
+    assert source.exists()
+
+    restored = restore_record(record["data_id"], **scope, actor_id="user-1")
+    assert restored["lifecycle_status"] == "active"
+
+    with pytest.raises(ValueError, match="reason"):
+        request_deletion(
+            record["data_id"], **scope, actor_id="user-1", reason=" "
+        )
+    pending = request_deletion(
+        record["data_id"], **scope, actor_id="user-1",
+        reason="Project retention period completed",
+    )
+    assert pending["lifecycle_status"] == "pending_deletion"
+    with pytest.raises(ValueError, match="Explicit deletion approval"):
+        approve_deletion(
+            record["data_id"], **scope, actor_id="user-1", approved=False
+        )
+
+    tombstone = approve_deletion(
+        record["data_id"], **scope, actor_id="user-1", approved=True
+    )
+    assert tombstone["lifecycle_status"] == "deleted"
+    assert tombstone["source_file_deleted"] is False
+    assert tombstone["physical_deletion_performed"] is False
+    assert source.exists()
+    actions = [
+        event["action"]
+        for event in list_audit_events(
+            record["data_id"], owner_id="user-1", workspace_id="workspace-1"
+        )
+    ]
+    assert actions[-4:] == [
+        "record_archived", "record_restored", "deletion_requested", "deletion_approved"
+    ]
