@@ -5,6 +5,7 @@ import pytest
 
 from src.data_governance.import_pipeline import (
     list_quarantined,
+    list_quarantine_audit,
     quarantine_candidate,
     release_quarantined,
     validate_and_register_import,
@@ -55,6 +56,10 @@ def test_invalid_pdf_is_quarantined_without_modifying_original(tmp_path, monkeyp
     assert len(items) == 1
     assert items[0]["quarantine_id"] == result["quarantine"]["quarantine_id"]
     assert list_quarantined(owner_id="owner-1", workspace_id="other-workspace") == []
+    quarantine_events = list_quarantine_audit(
+        result["quarantine"]["quarantine_id"], owner_id="owner-1", workspace_id="cad"
+    )
+    assert quarantine_events[0]["action"] == "file_quarantined"
     conn = sqlite3.connect(tmp_path / "governance.db")
     try:
         with pytest.raises(sqlite3.IntegrityError, match="append-only"):
@@ -178,3 +183,13 @@ def test_quarantine_release_requires_approval_and_fresh_clean_scan(tmp_path, mon
     assert Path(released["record"]["file_path"]) == Path(released["validated_path"])
     assert source.exists()
     assert list_quarantined(owner_id="owner-1", workspace_id="cad") == []
+    actions = [
+        event["action"]
+        for event in list_quarantine_audit(
+            quarantine_id, owner_id="owner-1", workspace_id="cad"
+        )
+    ]
+    assert actions == [
+        "file_quarantined", "release_started", "release_failed",
+        "release_started", "released",
+    ]
