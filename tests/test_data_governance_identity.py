@@ -74,7 +74,7 @@ def test_content_change_creates_new_version(tmp_path, monkeypatch):
     assert unchanged["version"] == 1
 
     source.write_text("revision two", encoding="utf-8")
-    changed = record_revision(record["data_id"], actor_id="user-1")
+    changed = record_revision(record["data_id"], owner_id="user-1", workspace_id="workspace-1", actor_id="user-1")
     assert changed["changed"] is True
     assert changed["version"] == 2
     assert [v["version"] for v in list_versions(record["data_id"], owner_id="user-1", workspace_id="workspace-1")] == [1, 2]
@@ -220,8 +220,8 @@ def test_approved_content_revision_increments_version_and_audits(tmp_path, monke
 
     assert result["changed"] is True
     assert result["version"] == 2
-    assert list_versions(record["data_id"])[-1]["sha256"] == result["sha256"]
-    assert list_audit_events(record["data_id"])[-1]["action"] == "content_revision_approved"
+    assert list_versions(record["data_id"], owner_id="user-1", workspace_id="workspace-1")[-1]["sha256"] == result["sha256"]
+    assert list_audit_events(record["data_id"], owner_id="user-1", workspace_id="workspace-1")[-1]["action"] == "content_revision_approved"
 
 
 def test_content_revision_approval_rejects_stale_hash_and_wrong_owner(tmp_path, monkeypatch):
@@ -264,7 +264,7 @@ def test_governance_events_are_owner_scoped_and_append_only(tmp_path, monkeypatc
         owner_id="user-1", workspace_id="workspace-1",
         actor_id="user-1", details={"action": "reindex_missing"},
     )
-    events = list_audit_events(record["data_id"])
+    events = list_audit_events(record["data_id"], owner_id="user-1", workspace_id="workspace-1")
     assert events[-1]["action"] == "approved_repair"
     assert events[-1]["actor_id"] == "user-1"
 
