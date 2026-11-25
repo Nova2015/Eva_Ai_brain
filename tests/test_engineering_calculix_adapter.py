@@ -129,3 +129,36 @@ def test_calculix_input_deck_api_is_authenticated_and_never_runs_solver(tmp_path
     assert result["input_deck"]["validation"]["ok"] is True
     assert result["solver_execution_performed"] is False
     assert result["engineering_approval"] == "not_granted"
+
+
+
+def test_calculix_deck_rejects_degenerate_or_inverted_tetrahedra(tmp_path, monkeypatch):
+    material = _approved_material(tmp_path, monkeypatch)
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering-output"))
+    model = _model(material["material_id"])
+    model["elements"] = [{"id": 1, "nodes": [1, 1, 3, 4]}]
+    with pytest.raises(ValueError, match="duplicate node references"):
+        calculix_adapter.build_calculix_static_deck(**model)
+
+    model = _model(material["material_id"])
+    model["elements"] = [{"id": 1, "nodes": [1, 3, 2, 4]}]
+    with pytest.raises(ValueError, match="negative or invalid tetrahedral volume"):
+        calculix_adapter.build_calculix_static_deck(**model)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("boundary_conditions", ["not-an-object"]),
+        ("concentrated_loads", ["not-an-object"]),
+    ],
+)
+def test_calculix_deck_rejects_malformed_boundary_and_load_records(
+    tmp_path, monkeypatch, field, value
+):
+    material = _approved_material(tmp_path, monkeypatch)
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering-output"))
+    model = _model(material["material_id"])
+    model[field] = value
+    with pytest.raises(ValueError, match="must be an object"):
+        calculix_adapter.build_calculix_static_deck(**model)
