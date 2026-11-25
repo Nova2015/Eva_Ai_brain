@@ -5,6 +5,7 @@ controls a physical machine.
 """
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from . import tool_registry
@@ -119,7 +120,7 @@ _PROCESS_CATALOG: tuple[dict[str, Any], ...] = (
 
 
 def list_processes(category: str | None = None) -> list[dict[str, Any]]:
-    items = [dict(item) for item in _PROCESS_CATALOG]
+    items = copy.deepcopy(list(_PROCESS_CATALOG))
     if category:
         items = [item for item in items if item["category"] == category]
     return items
@@ -128,7 +129,7 @@ def list_processes(category: str | None = None) -> list[dict[str, Any]]:
 def get_process(process_id: str) -> dict[str, Any]:
     for item in _PROCESS_CATALOG:
         if item["process_id"] == process_id:
-            return dict(item)
+            return copy.deepcopy(item)
     raise KeyError(f"Unknown manufacturing process: {process_id}")
 
 
@@ -144,12 +145,22 @@ def validate_process_request(
         raise ValueError("input_manifest must be a dictionary")
     if not isinstance(machine_start_requested, bool):
         raise ValueError("machine_start_requested must be a boolean")
+    if not isinstance(preflight_tools, bool):
+        raise ValueError("preflight_tools must be a boolean")
     if machine_start_requested:
         raise PermissionError("EVA does not start or control physical manufacturing machines")
 
+    def _missing(value: Any) -> bool:
+        return (
+            value is None
+            or value is False
+            or (isinstance(value, str) and not value.strip())
+            or (isinstance(value, (list, dict, tuple, set)) and len(value) == 0)
+        )
+
     missing = [
         field for field in process["required_inputs"]
-        if field not in input_manifest or input_manifest[field] in (None, "", [])
+        if field not in input_manifest or _missing(input_manifest[field])
     ]
     if missing:
         raise ValueError("Missing required manufacturing inputs: " + ", ".join(missing))
@@ -167,6 +178,8 @@ def validate_process_request(
         })
     selected_tool_id = input_manifest.get("tool_id")
     if preflight_tools:
+        if not isinstance(selected_tool_id, str):
+            raise ValueError("Select a supported tool_id from this process's tool candidates")
         if selected_tool_id not in process["tool_candidates"]:
             raise ValueError("Select a supported tool_id from this process's tool candidates")
         selected_tool = tool_registry.resolve_tool(selected_tool_id)
