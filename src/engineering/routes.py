@@ -11,7 +11,7 @@ try:
     from ..rag.rag_routes_v2 import get_user_id
 except ImportError:
     from rag.rag_routes_v2 import get_user_id
-from . import job_manager, manufacturing, mcp_gateway, tolerance_analysis, tool_registry, workflow_engine
+from . import freecad_adapter, job_manager, manufacturing, mcp_gateway, tolerance_analysis, tool_registry, workflow_engine
 
 
 router = APIRouter(prefix="/engineering", tags=["Engineering Suite"])
@@ -125,6 +125,12 @@ class ClearanceFitRequest(BaseModel):
     shaft_plus_tolerance: float
     shaft_minus_tolerance: float
     unit: str = "mm"
+
+
+class FreeCADMacroRequest(BaseModel):
+    operations: list[dict[str, Any]]
+    document_name: str = "EVA_Engineering_Model"
+    approved: bool
 
 
 @router.get("/tools")
@@ -573,3 +579,28 @@ def engineering_clearance_fit(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"ok": True, "analysis": result, "engineering_approval": "not_granted"}
+
+
+@router.post("/cad/freecad/macro")
+def engineering_build_freecad_macro(
+    req: FreeCADMacroRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        manifest = freecad_adapter.build_freecad_macro(
+            req.operations,
+            document_name=req.document_name,
+            actor_id=actor_id,
+            approved=req.approved,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "ok": True,
+        "macro": manifest,
+        "execution_performed": False,
+        "machine_started": False,
+    }
