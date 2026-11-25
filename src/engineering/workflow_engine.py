@@ -23,7 +23,7 @@ _WORKFLOWS: dict[str, dict[str, Any]] = {
             {"step_id": "structural_fea", "tool_id": "calculix", "job_type": "fea_solve", "depends_on": ["mesh_generation"], "requires_approval": True},
             {"step_id": "mold_flow", "tool_id": "openinjmoldsim", "job_type": "mold_flow", "depends_on": ["mold_design"], "requires_approval": True},
             {"step_id": "visualization", "tool_id": "blender", "job_type": "visualization", "depends_on": ["structural_fea", "mold_flow"], "requires_approval": False},
-            {"step_id": "engineering_report", "tool_id": "vtk", "job_type": "report_generate", "depends_on": ["visualization"], "requires_approval": True},
+            {"step_id": "engineering_report", "tool_id": "python_reporting", "job_type": "report_generate", "depends_on": ["visualization"], "requires_approval": True},
         ],
     },
     "plastic_bracket": {
@@ -34,7 +34,7 @@ _WORKFLOWS: dict[str, dict[str, Any]] = {
             {"step_id": "mesh_generation", "tool_id": "gmsh", "job_type": "mesh_generate", "depends_on": ["cad_model"], "requires_approval": True},
             {"step_id": "structural_fea", "tool_id": "calculix", "job_type": "fea_solve", "depends_on": ["mesh_generation"], "requires_approval": True},
             {"step_id": "visualization", "tool_id": "blender", "job_type": "visualization", "depends_on": ["structural_fea"], "requires_approval": False},
-            {"step_id": "engineering_report", "tool_id": "vtk", "job_type": "report_generate", "depends_on": ["visualization"], "requires_approval": True},
+            {"step_id": "engineering_report", "tool_id": "python_reporting", "job_type": "report_generate", "depends_on": ["visualization"], "requires_approval": True},
         ],
     },
     "injection_mold": {
@@ -46,7 +46,7 @@ _WORKFLOWS: dict[str, dict[str, Any]] = {
             {"step_id": "mold_mesh", "tool_id": "gmsh", "job_type": "mesh_generate", "depends_on": ["mold_cad"], "requires_approval": True},
             {"step_id": "mold_fea", "tool_id": "calculix", "job_type": "fea_solve", "depends_on": ["mold_mesh"], "requires_approval": True},
             {"step_id": "cam_preparation", "tool_id": "freecad_path", "job_type": "cam_postprocess", "depends_on": ["mold_fea", "mold_flow"], "requires_approval": True},
-            {"step_id": "manufacturing_report", "tool_id": "vtk", "job_type": "report_generate", "depends_on": ["cam_preparation"], "requires_approval": True},
+            {"step_id": "manufacturing_report", "tool_id": "python_reporting", "job_type": "report_generate", "depends_on": ["cam_preparation"], "requires_approval": True},
         ],
     },
     "cnc_component": {
@@ -55,8 +55,8 @@ _WORKFLOWS: dict[str, dict[str, Any]] = {
         "steps": [
             {"step_id": "component_cad", "tool_id": "freecad", "job_type": "cad_modify", "depends_on": [], "requires_approval": True},
             {"step_id": "cam_toolpath", "tool_id": "freecad_path", "job_type": "cam_postprocess", "depends_on": ["component_cad"], "requires_approval": True},
-            {"step_id": "gcode_validation", "tool_id": "freecad_path", "job_type": "gcode_generate", "depends_on": ["cam_toolpath"], "requires_approval": True},
-            {"step_id": "operator_review", "tool_id": "freecad_path", "job_type": "machine_operation", "depends_on": ["gcode_validation"], "requires_approval": True},
+            {"step_id": "gcode_validation", "tool_id": "gcode_validator", "job_type": "gcode_generate", "depends_on": ["cam_toolpath"], "requires_approval": True},
+            {"step_id": "operator_review", "tool_id": "gcode_validator", "job_type": "machine_operation", "depends_on": ["gcode_validation"], "requires_approval": True},
         ],
     },
     "sheet_metal_bracket": {
@@ -67,7 +67,7 @@ _WORKFLOWS: dict[str, dict[str, Any]] = {
             {"step_id": "forming_mesh", "tool_id": "gmsh", "job_type": "mesh_generate", "depends_on": ["sheet_metal_cad"], "requires_approval": True},
             {"step_id": "forming_analysis", "tool_id": "code_aster", "job_type": "fea_solve", "depends_on": ["forming_mesh"], "requires_approval": True},
             {"step_id": "cam_preparation", "tool_id": "freecad_path", "job_type": "cam_postprocess", "depends_on": ["forming_analysis"], "requires_approval": True},
-            {"step_id": "inspection_report", "tool_id": "vtk", "job_type": "report_generate", "depends_on": ["cam_preparation"], "requires_approval": True},
+            {"step_id": "inspection_report", "tool_id": "python_reporting", "job_type": "report_generate", "depends_on": ["cam_preparation"], "requires_approval": True},
         ],
     },
     "plastic_assembly": {
@@ -78,7 +78,7 @@ _WORKFLOWS: dict[str, dict[str, Any]] = {
             {"step_id": "fitment_mesh", "tool_id": "gmsh", "job_type": "mesh_generate", "depends_on": ["assembly_cad"], "requires_approval": True},
             {"step_id": "assembly_fea", "tool_id": "calculix", "job_type": "fea_solve", "depends_on": ["fitment_mesh"], "requires_approval": True},
             {"step_id": "exploded_visualization", "tool_id": "blender", "job_type": "visualization", "depends_on": ["assembly_fea"], "requires_approval": False},
-            {"step_id": "assembly_report", "tool_id": "vtk", "job_type": "report_generate", "depends_on": ["exploded_visualization"], "requires_approval": True},
+            {"step_id": "assembly_report", "tool_id": "python_reporting", "job_type": "report_generate", "depends_on": ["exploded_visualization"], "requires_approval": True},
         ],
     },
 }
