@@ -160,6 +160,12 @@ def _require_scope(data_id: str, owner_id: str, workspace_id: str) -> None:
             raise ValueError(f"{field} is required")
 
 
+def _require_actor(actor_id: str) -> None:
+    """Require an attributable principal for every audited mutation."""
+    if not isinstance(actor_id, str) or not actor_id.strip():
+        raise ValueError("actor_id is required")
+
+
 _PERMISSION_ACTIONS = ("read", "write", "execute", "delete")
 
 
@@ -320,6 +326,7 @@ def update_location(
 ) -> dict[str, Any]:
     """Update a moved/renamed file only within the caller's owner/workspace scope."""
     _require_scope(data_id, owner_id, workspace_id)
+    _require_actor(actor_id)
     path = Path(new_file_path).expanduser().resolve(strict=True)
     if not path.is_file():
         raise ValueError("new_file_path must point to a regular file")
@@ -408,6 +415,7 @@ def record_revision(
 ) -> dict[str, Any]:
     """Record a new content version only within the caller's scope."""
     _require_scope(data_id, owner_id, workspace_id)
+    _require_actor(actor_id)
     with _connect() as conn:
         row = _authorized_record(conn, data_id, owner_id, workspace_id, "write")
         if row is None:
@@ -506,6 +514,7 @@ def set_classification(
     actor_id: str,
 ) -> dict[str, Any]:
     _require_scope(data_id, owner_id, workspace_id)
+    _require_actor(actor_id)
     if classification not in CLASSIFICATIONS:
         raise ValueError(f"Unsupported classification: {classification}")
     with _connect() as conn:
@@ -536,6 +545,7 @@ def set_permissions(
     actor_id: str,
 ) -> dict[str, Any]:
     _require_scope(data_id, owner_id, workspace_id)
+    _require_actor(actor_id)
     normalized_permissions = _normalize_permissions(permissions)
     with _connect() as conn:
         row = conn.execute(
@@ -568,6 +578,7 @@ def set_training_approval(
 ) -> dict[str, Any]:
     """Set explicit human training-data approval inside the caller's scope."""
     _require_scope(data_id, owner_id, workspace_id)
+    _require_actor(actor_id)
     if status not in TRAINING_APPROVALS:
         raise ValueError(f"Unsupported training approval: {status}")
     if status == "approved" and (not isinstance(actor_id, str) or not actor_id.strip()):
