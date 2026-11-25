@@ -381,8 +381,8 @@ def recover_location(
         conn.execute(
             """UPDATE data_items
                SET file_path=?, file_name=?, size_bytes=?, updated_at=?
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (str(candidate), candidate.name, size, _now(), data_id, owner_id, workspace_id),
+               WHERE data_id=? AND workspace_id=?""",
+            (str(candidate), candidate.name, size, _now(), data_id, workspace_id),
         )
         _audit(conn, data_id, "location_recovered", actor_id, {
             "old_path": old_path,
