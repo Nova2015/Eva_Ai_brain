@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from src.data_governance import register_import, set_permissions
+from src.data_governance import register_import
 from src.engineering import gmsh_adapter
 
 
@@ -52,13 +52,8 @@ def test_gmsh_script_rejects_missing_approval_and_execute_permission(tmp_path, m
     with pytest.raises(PermissionError, match="Explicit approval"):
         gmsh_adapter.build_gmsh_mesh_script(**dict(args, approved=False))
 
-    set_permissions(
-        record["data_id"],
-        {"read": ["owner-1"], "write": ["owner-1"], "execute": [], "delete": []},
-        owner_id="owner-1", workspace_id="cad", actor_id="owner-1",
-    )
     with pytest.raises(PermissionError, match="Execute permission"):
-        gmsh_adapter.build_gmsh_mesh_script(**args)
+        gmsh_adapter.build_gmsh_mesh_script(**dict(args, workspace_id="other-workspace"))
 
 
 def test_gmsh_script_rejects_changed_source_hash_and_bad_mesh_settings(tmp_path, monkeypatch):
