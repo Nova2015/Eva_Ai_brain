@@ -14,8 +14,9 @@ on:
       - "tests/test_data_governance_import_pipeline.py"
       - "tests/test_rag_upload_job_flow.py"
       - "tests/test_graph_rag_store.py"
-      - "tests/test_engineering_tool_registry.py tests/test_engineering_job_manager.py"
+      - "tests/test_engineering_tool_registry.py tests/test_engineering_job_manager.py tests/test_engineering_workflow_engine.py"
       - "tests/test_engineering_job_manager.py"
+      - "tests/test_engineering_workflow_engine.py"
       - ".github/workflows/deep-learning-tests.yml"
   pull_request:
     branches:
@@ -33,6 +34,7 @@ on:
       - "tests/test_graph_rag_store.py"
       - "tests/test_engineering_tool_registry.py"
       - "tests/test_engineering_job_manager.py"
+      - "tests/test_engineering_workflow_engine.py"
       - ".github/workflows/deep-learning-tests.yml"
 
 jobs:
