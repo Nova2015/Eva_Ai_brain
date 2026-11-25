@@ -192,7 +192,7 @@ def set_mcp_tool_enabled(
         ).fetchone()
         if row is None or not row["source_reviewed"]:
             raise KeyError(f"MCP tool is not reviewed or registered: {server_id}/{tool_name}")
-        if actor_id not in {row["created_by"], row["approved_by"]}:
+        if not row["approved_by"] or actor_id != row["approved_by"]:
             raise PermissionError("Only the recorded MCP approver may change tool access")
         cursor = conn.execute(
             """UPDATE mcp_tool_allowlist SET enabled=?
