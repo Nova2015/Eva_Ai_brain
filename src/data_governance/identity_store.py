@@ -327,14 +327,18 @@ def update_location(
         row = _authorized_record(conn, data_id, owner_id, workspace_id, "write")
         if row is None:
             raise KeyError(f"Unknown governed Data ID: {data_id}")
+        digest = sha256_file(path)
+        if digest != row["sha256"]:
+            raise ValueError("Moved file content does not match the governed SHA-256 revision")
+        size = path.stat().st_size
         old_path = row["file_path"]
         conn.execute(
-            """UPDATE data_items SET file_path=?, file_name=?, updated_at=?
+            """UPDATE data_items SET file_path=?, file_name=?, size_bytes=?, updated_at=?
                WHERE data_id=? AND workspace_id=?""",
-            (str(path), path.name, _now(), data_id, workspace_id),
+            (str(path), path.name, size, _now(), data_id, workspace_id),
         )
         _audit(conn, data_id, "location_updated", actor_id, {
-            "old_path": old_path, "new_path": str(path),
+            "old_path": old_path, "new_path": str(path), "sha256": digest,
         })
         updated = conn.execute(
             """SELECT * FROM data_items WHERE data_id=? AND workspace_id=?""",
