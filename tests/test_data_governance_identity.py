@@ -663,6 +663,13 @@ def test_archive_restore_and_deletion_tombstone_require_explicit_approval(tmp_pa
     assert tombstone["source_file_deleted"] is False
     assert tombstone["physical_deletion_performed"] is False
     assert source.exists()
+    assert get_record(
+        record["data_id"], owner_id="user-1", workspace_id="workspace-1"
+    ) is None
+    assert not authorize_data_action(
+        record["data_id"], actor_id="user-1",
+        workspace_id="workspace-1", action="read",
+    )
     actions = [
         event["action"]
         for event in list_audit_events(
