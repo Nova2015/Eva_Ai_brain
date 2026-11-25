@@ -7,6 +7,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.rag import job_manager as jm
 from src.rag import upload_policy
+from src.data_governance import register_import
 
 
 import pytest
@@ -202,7 +203,7 @@ def test_graph_extract_endpoint_persists_only_proposals(tmp_path, monkeypatch):
         source, source="test", owner_id="user-a", workspace_id="cad",
         actor_id="user-a", classification="confidential",
     )
-    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id: {
+    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id, **kwargs: {
         **record, "file_path": str(source),
     })
     monkeypatch.setattr(rag_routes_v2, "sha256_file", lambda path: record["sha256"])
@@ -232,7 +233,7 @@ def test_graph_proposal_review_and_query_flow(tmp_path, monkeypatch):
         source, source="test", owner_id="user-a", workspace_id="cad",
         actor_id="user-a", classification="confidential",
     )
-    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id: {
+    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id, **kwargs: {
         **record, "file_path": str(source),
     })
     monkeypatch.setattr(rag_routes_v2, "sha256_file", lambda path: record["sha256"])
@@ -285,7 +286,7 @@ def test_graph_proposal_batch_validates_all_evidence_before_writing(tmp_path, mo
         source, source="test", owner_id="user-a", workspace_id="cad",
         actor_id="user-a", classification="confidential",
     )
-    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id: {
+    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id, **kwargs: {
         **record, "file_path": str(source),
     })
     monkeypatch.setattr(rag_routes_v2, "sha256_file", lambda path: record["sha256"])
@@ -314,7 +315,7 @@ def test_graph_proposal_endpoint_requires_source_excerpt_and_authentication(tmp_
         source, source="test", owner_id="user-a", workspace_id="cad",
         actor_id="user-a", classification="confidential",
     )
-    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id: {
+    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id, **kwargs: {
         **record, "file_path": str(source),
     })
     monkeypatch.setattr(rag_routes_v2, "sha256_file", lambda path: record["sha256"])
@@ -345,7 +346,7 @@ def test_graph_proposal_endpoint_rejects_stale_governed_source(tmp_path, monkeyp
         source, source="test", owner_id="user-a", workspace_id="cad",
         actor_id="user-a", classification="confidential",
     )
-    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id: {
+    monkeypatch.setattr(rag_routes_v2, "get_record", lambda data_id, **kwargs: {
         **record, "file_path": str(source),
     })
     monkeypatch.setattr(rag_routes_v2, "sha256_file", lambda path: "0" * 64)
@@ -726,12 +727,13 @@ def test_chroma_bm25_fetch_always_filters_by_exact_owner(monkeypatch):
 
 
 def test_rag_query_rejects_anonymous_user():
+    import asyncio
     from fastapi import HTTPException
     from src.rag import rag_routes_v2 as routes
 
     request = routes.QueryRequest(query="private document question")
     with pytest.raises(HTTPException) as error:
-        routes.rag_query(request, user_id="anonymous")
+        asyncio.run(routes.rag_query(request, user_id="anonymous"))
     assert error.value.status_code == 401
 
 
