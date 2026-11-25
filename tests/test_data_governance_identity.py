@@ -305,8 +305,7 @@ def test_data_item_reads_and_mutations_reject_wrong_owner_or_workspace(tmp_path,
     data_id = record["data_id"]
 
     wrong_scope = {"owner_id": "other-user", "workspace_id": "workspace-1"}
-    with pytest.raises(KeyError):
-        get_record(data_id, **wrong_scope)
+    assert get_record(data_id, **wrong_scope) is None
     with pytest.raises(KeyError):
         update_location(
             data_id, source, **wrong_scope, actor_id="other-user"
@@ -335,7 +334,6 @@ def test_data_item_reads_and_mutations_reject_wrong_owner_or_workspace(tmp_path,
 
     # A different workspace under the same owner is also isolated.
     wrong_workspace = {"owner_id": "user-1", "workspace_id": "other-workspace"}
-    with pytest.raises(KeyError):
-        get_record(data_id, **wrong_workspace)
+    assert get_record(data_id, **wrong_workspace) is None
     with pytest.raises(KeyError):
         list_audit_events(data_id, **wrong_workspace)
