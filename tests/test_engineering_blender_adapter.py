@@ -83,3 +83,27 @@ def test_blender_adapter_never_overwrites_existing_export(tmp_path, monkeypatch)
             actor_id="owner-1", approved=True,
         )
     assert existing.read_bytes() == b"existing user export"
+
+
+def test_blender_script_api_requires_authentication_and_approval(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from src.engineering import routes
+
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
+    request = routes.BlenderScriptRequest(
+        operations=[{"op": "create_cube", "name": "Base", "size": 10}],
+        approved=False,
+    )
+    with pytest.raises(HTTPException) as auth_error:
+        routes.engineering_build_blender_script(request, user_id="anonymous")
+    assert auth_error.value.status_code == 401
+
+    with pytest.raises(HTTPException) as approval_error:
+        routes.engineering_build_blender_script(request, user_id="owner-1")
+    assert approval_error.value.status_code == 403
+
+    request.approved = True
+    result = routes.engineering_build_blender_script(request, user_id="owner-1")
+    assert result["script"]["status"] == "prepared_for_review"
+    assert result["execution_performed"] is False
+    assert result["machine_started"] is False
