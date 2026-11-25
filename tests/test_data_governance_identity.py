@@ -514,3 +514,24 @@ def test_write_acl_allows_scoped_revision_and_location_recovery(tmp_path, monkey
     ]
     assert "content_revision_approved" in actions
     assert "location_recovered" in actions
+
+
+def test_update_location_rejects_replacement_content_with_different_hash(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    original = tmp_path / "original.txt"
+    replacement = tmp_path / "replacement.txt"
+    original.write_text("approved bytes", encoding="utf-8")
+    replacement.write_text("different bytes", encoding="utf-8")
+    record = _register(original)
+
+    with pytest.raises(ValueError, match="SHA-256"):
+        update_location(
+            record["data_id"], replacement,
+            owner_id="user-1", workspace_id="workspace-1", actor_id="user-1",
+        )
+
+    current = get_record(
+        record["data_id"], owner_id="user-1", workspace_id="workspace-1"
+    )
+    assert current["file_path"] == str(original.resolve())
+    assert current["sha256"] == record["sha256"]
