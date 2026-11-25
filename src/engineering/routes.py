@@ -11,7 +11,7 @@ try:
     from ..rag.rag_routes_v2 import get_user_id
 except ImportError:
     from rag.rag_routes_v2 import get_user_id
-from . import blender_adapter, freecad_adapter, job_manager, manufacturing, materials, mcp_gateway, tolerance_analysis, tool_registry, workflow_engine
+from . import blender_adapter, calculix_adapter, freecad_adapter, job_manager, manufacturing, materials, mcp_gateway, tolerance_analysis, tool_registry, workflow_engine
 
 
 router = APIRouter(prefix="/engineering", tags=["Engineering Suite"])
@@ -147,6 +147,18 @@ class MaterialRegistrationRequest(BaseModel):
     properties: dict[str, Any]
     reviewer_id: str
     manufacturer: str = ""
+
+
+class CalculixStaticDeckRequest(BaseModel):
+    model_name: str
+    nodes: list[dict[str, Any]]
+    elements: list[dict[str, Any]]
+    element_type: str
+    material_id: str
+    workspace_id: str
+    boundary_conditions: list[dict[str, Any]]
+    concentrated_loads: list[dict[str, Any]]
+    approved: bool
 
 
 class MaterialApprovalRequest(BaseModel):
@@ -790,3 +802,28 @@ def engineering_reject_material(
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     return {"ok": True, "material": result, "status": result["status"]}
+
+
+@router.post("/fea/calculix/input-deck")
+def engineering_build_calculix_deck(
+    req: CalculixStaticDeckRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        payload = _model_payload(req)
+        payload["owner_id"] = actor_id
+        payload["actor_id"] = actor_id
+        manifest = calculix_adapter.build_calculix_static_deck(**payload)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Approved material record not found")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "ok": True,
+        "input_deck": manifest,
+        "solver_execution_performed": False,
+        "engineering_approval": "not_granted",
+    }
