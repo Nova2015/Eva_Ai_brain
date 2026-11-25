@@ -5,6 +5,7 @@ validated, or enabled. Instantiation is blocked until every required tool is app
 """
 from __future__ import annotations
 
+import copy
 import uuid
 from typing import Any
 
@@ -104,20 +105,42 @@ def get_workflow(workflow_id: str) -> dict[str, Any]:
         "workflow_id": workflow_id,
         "name": template["name"],
         "description": template["description"],
-        "steps": [dict(step) for step in template["steps"]],
+        "steps": copy.deepcopy(template["steps"]),
     }
 
 
 def validate_workflow(workflow_id: str) -> dict[str, Any]:
     template = get_workflow(workflow_id)
     steps = template["steps"]
-    by_id = {step["step_id"]: step for step in steps}
-    if len(by_id) != len(steps):
-        raise ValueError("Workflow contains duplicate step IDs")
-
-    for step in steps:
+    if not isinstance(steps, list) or not steps:
+        raise ValueError("Workflow must contain at least one step")
+    required_fields = {"step_id", "tool_id", "job_type", "depends_on", "requires_approval"}
+    by_id: dict[str, dict[str, Any]] = {}
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict) or not required_fields.issubset(step):
+            raise ValueError(f"Workflow step {index} is missing required fields")
+        for field in ("step_id", "tool_id", "job_type"):
+            value = step[field]
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"Workflow step {index} has invalid {field}")
+        if step["step_id"] in by_id:
+            raise ValueError("Workflow contains duplicate step IDs")
         if step["job_type"] == "machine_start":
             raise ValueError("Workflow templates cannot contain automatic machine start")
+        dependencies = step["depends_on"]
+        if not isinstance(dependencies, list) or any(
+            not isinstance(item, str) or not item.strip() for item in dependencies
+        ):
+            raise ValueError(f"Workflow step {step['step_id']} has invalid dependencies")
+        if len(set(dependencies)) != len(dependencies):
+            raise ValueError(f"Workflow step {step['step_id']} has duplicate dependencies")
+        if step["step_id"] in dependencies:
+            raise ValueError(f"Workflow step {step['step_id']} cannot depend on itself")
+        if not isinstance(step["requires_approval"], bool):
+            raise ValueError(f"Workflow step {step['step_id']} requires a boolean approval flag")
+        by_id[step["step_id"]] = step
+
+    for step in steps:
         for dependency in step["depends_on"]:
             if dependency not in by_id:
                 raise ValueError(
@@ -158,6 +181,18 @@ def instantiate_workflow(
     input_manifest: dict[str, Any],
 ) -> dict[str, Any]:
     """Create approval-gated jobs in topological order; no tool is executed."""
+    for field, value in (
+        ("owner_id", owner_id), ("workspace_id", workspace_id),
+        ("machine_id", machine_id), ("actor_id", actor_id),
+    ):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field} is required")
+    if actor_id != owner_id:
+        raise PermissionError("Only the authenticated owner may instantiate a workflow")
+    if not isinstance(input_manifest, dict):
+        raise ValueError("input_manifest must be a dictionary")
+    if data_id is not None and (not isinstance(data_id, str) or not data_id.strip()):
+        raise ValueError("data_id must be a non-empty string when provided")
     validated = validate_workflow(workflow_id)
     ordered_steps = validated["steps"]
 
