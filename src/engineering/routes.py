@@ -11,7 +11,7 @@ try:
     from ..rag.rag_routes_v2 import get_user_id
 except ImportError:
     from rag.rag_routes_v2 import get_user_id
-from . import job_manager, tool_registry, workflow_engine
+from . import job_manager, mcp_gateway, tool_registry, workflow_engine
 
 
 router = APIRouter(prefix="/engineering", tags=["Engineering Suite"])
@@ -79,6 +79,26 @@ class WorkflowInstantiateRequest(BaseModel):
     machine_id: str
     data_id: Optional[str] = None
     input_manifest: dict[str, Any] = Field(default_factory=dict)
+
+
+class MCPToolRegistrationRequest(BaseModel):
+    tool_name: str
+    description: str = ""
+    source_reviewed: bool
+    approved: bool
+
+
+class MCPToolEnableRequest(BaseModel):
+    enabled: bool
+    approved: bool
+
+
+class MCPAuthorizationRequest(BaseModel):
+    server_id: str
+    tool_name: str
+    workspace_id: str
+    data_id: str
+    action: str
 
 
 @router.get("/tools")
@@ -359,3 +379,91 @@ def engineering_instantiate_workflow(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return {"ok": True, "workflow": result, "execution_performed": False}
+
+
+@router.get("/mcp/tools")
+def engineering_mcp_tools(
+    server_id: Optional[str] = None,
+    user_id: str = Depends(get_user_id),
+):
+    _authenticated(user_id)
+    return {"ok": True, "tools": mcp_gateway.list_mcp_tools(server_id)}
+
+
+@router.post("/mcp/servers/{server_id}/tools")
+def engineering_register_mcp_tool(
+    server_id: str,
+    req: MCPToolRegistrationRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        item = mcp_gateway.register_mcp_tool(
+            server_id, req.tool_name, actor_id=actor_id,
+            description=req.description,
+            source_reviewed=req.source_reviewed,
+            approved=req.approved,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "tool": item, "execution_performed": False}
+
+
+@router.post("/mcp/servers/{server_id}/tools/{tool_name}/enable")
+def engineering_enable_mcp_tool(
+    server_id: str,
+    tool_name: str,
+    req: MCPToolEnableRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        item = mcp_gateway.set_mcp_tool_enabled(
+            server_id, tool_name, enabled=req.enabled,
+            actor_id=actor_id, approved=req.approved,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="MCP tool not found")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "tool": item, "execution_performed": False}
+
+
+@router.post("/mcp/authorize")
+def engineering_authorize_mcp_call(
+    req: MCPAuthorizationRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        result = mcp_gateway.authorize_mcp_call(
+            req.server_id, req.tool_name, actor_id=actor_id,
+            workspace_id=req.workspace_id, data_id=req.data_id, action=req.action,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="MCP tool or governed data not found")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "authorization": result, "execution_performed": False}
+
+
+@router.get("/mcp/audit")
+def engineering_mcp_audit(
+    workspace_id: str,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    return {
+        "ok": True,
+        "events": mcp_gateway.list_mcp_audit(
+            actor_id=actor_id, workspace_id=workspace_id
+        ),
+    }
