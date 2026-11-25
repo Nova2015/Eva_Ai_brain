@@ -228,7 +228,7 @@ def instantiate_workflow(
             try:
                 job_manager.fail_job(
                     job["job_id"], owner_id=owner_id, workspace_id=workspace_id,
-                    actor_id=actor_id, error=f"Workflow creation rolled back: {type(exc).__name__}",
+                    actor_id=actor_id, error=f"Workflow creation aborted after partial enqueue: {type(exc).__name__}",
                 )
             except Exception:
                 pass
