@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from ..data_governance import register_import
 from .materials import resolve_material_for_analysis
 from .domain_validation import validate_calculix_input
 
@@ -233,10 +234,19 @@ def build_calculix_static_deck(
         raise ValueError("Generated CalculiX input failed structural validation: " +
                          "; ".join(validation["issues"]))
 
+    generated_record = register_import(
+        deck_path,
+        source="engineering_generated:calculix_deck",
+        owner_id=owner_id,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        classification="ip",
+    )
     digest = hashlib.sha256(deck_text.encode("utf-8")).hexdigest()
     manifest = {
         "deck_id": deck_id,
         "deck_path": str(deck_path.resolve()),
+        "deck_data_id": generated_record["data_id"],
         "sha256": digest,
         "model_name": model_name,
         "material_id": material_id,
