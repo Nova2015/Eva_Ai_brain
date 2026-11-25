@@ -845,3 +845,56 @@ def test_graph_extraction_requires_execute_permission(monkeypatch):
     with pytest.raises(HTTPException) as error:
         asyncio.run(routes.rag_graph_extract(request, user_id="user-a"))
     assert error.value.status_code == 404
+
+
+def test_governed_document_lifecycle_routes_keep_source_file_and_audit(tmp_path):
+    import asyncio
+    from fastapi import HTTPException
+    from src.rag import rag_routes_v2 as routes
+
+    source = tmp_path / "lifecycle-route.txt"
+    source.write_text("governed lifecycle route source", encoding="utf-8")
+    record = register_import(
+        source, source="test", owner_id="user-a", workspace_id="cad",
+        actor_id="user-a", classification="private",
+    )
+
+    archived = asyncio.run(
+        routes.rag_archive_governed_document(record["data_id"], workspace_id="cad", user_id="user-a")
+    )
+    assert archived["lifecycle_status"] == "archived"
+    restored = asyncio.run(
+        routes.rag_restore_governed_document(record["data_id"], workspace_id="cad", user_id="user-a")
+    )
+    assert restored["lifecycle_status"] == "active"
+
+    requested = asyncio.run(routes.rag_request_governed_deletion(
+        record["data_id"],
+        routes.DeletionRequest(reason="Retention period completed", workspace_id="cad"),
+        user_id="user-a",
+    ))
+    assert requested["lifecycle_status"] == "pending_deletion"
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(routes.rag_approve_governed_deletion(
+            record["data_id"],
+            routes.DeletionApprovalRequest(approved=False, workspace_id="cad"),
+            user_id="user-a",
+        ))
+    assert error.value.status_code == 409
+
+    deleted = asyncio.run(routes.rag_approve_governed_deletion(
+        record["data_id"],
+        routes.DeletionApprovalRequest(approved=True, workspace_id="cad"),
+        user_id="user-a",
+    ))
+    assert deleted["lifecycle_status"] == "deleted"
+    assert deleted["physical_deletion_performed"] is False
+    assert source.exists()
+
+    audit = asyncio.run(
+        routes.rag_governed_document_audit(
+            record["data_id"], workspace_id="cad", user_id="user-a"
+        )
+    )
+    assert audit["events"][-1]["action"] == "deletion_approved"
