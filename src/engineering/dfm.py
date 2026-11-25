@@ -31,7 +31,8 @@ def _finite_number(value: Any, field: str) -> float:
 
 def _positive_number(value: Any, field: str, *, allow_zero: bool = False) -> float:
     number = _finite_number(value, field)
-    if number < 0 if allow_zero else number <= 0:
+    invalid = number < 0 if allow_zero else number <= 0
+    if invalid:
         qualifier = "non-negative" if allow_zero else "positive"
         raise ValueError(f"{field} must be {qualifier}")
     return number
