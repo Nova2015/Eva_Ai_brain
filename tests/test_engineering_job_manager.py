@@ -206,3 +206,37 @@ def test_job_creation_cannot_assign_another_user_as_owner(tmp_path, monkeypatch)
             input_manifest={"operation": "geometry_check"}, requires_approval=False,
         )
     assert job_manager.list_jobs(owner_id="owner-1", workspace_id="cad") == []
+
+
+def test_engineering_analysis_requires_approved_material_record(tmp_path, monkeypatch):
+    from src.engineering import materials
+
+    _enable_tool(tmp_path, monkeypatch)
+    material = materials.register_material(
+        name="Test ABS", family="thermoplastic", grade="ABS-TEST",
+        source_reference="local://test-fixture/abs",
+        properties={
+            "density": {"value": 1.04, "unit": "g/cm3"},
+            "elastic_modulus": {"value": 2100, "unit": "MPa"},
+        },
+        owner_id="owner-1", workspace_id="cad", actor_id="owner-1",
+    )
+    with pytest.raises(PermissionError, match="Only independently reviewed"):
+        job_manager.create_job(
+            job_type="fea_solve", tool_id="freecad", owner_id="owner-1",
+            workspace_id="cad", machine_id="machine-b", actor_id="owner-1",
+            input_manifest={"material_id": material["material_id"]},
+            requires_approval=False,
+        )
+
+    materials.approve_material(
+        material["material_id"], owner_id="owner-1", workspace_id="cad",
+        actor_id="reviewer-1", approved=True,
+    )
+    job = job_manager.create_job(
+        job_type="fea_solve", tool_id="freecad", owner_id="owner-1",
+        workspace_id="cad", machine_id="machine-b", actor_id="owner-1",
+        input_manifest={"material_id": material["material_id"]},
+        requires_approval=False,
+    )
+    assert job["status"] == "queued"
