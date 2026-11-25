@@ -123,6 +123,7 @@ def build_gmsh_mesh_script(
         f"Mesh.CharacteristicLengthMax = {size_max:.12g};",
         f"Mesh.Algorithm3D = {algorithm_3d};",
         f"Mesh.ElementOrder = {element_order};",
+        "Mesh.MshFileVersion = 2.2;",
         "Mesh 3;",
         f"Save {_gmsh_quote(mesh_path)};",
         "// No solver or physical machine is started by EVA.",
