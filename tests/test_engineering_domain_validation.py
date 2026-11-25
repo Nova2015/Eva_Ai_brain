@@ -202,6 +202,8 @@ def test_calculix_validator_rejects_duplicate_element_ids_and_unbalanced_steps(t
         ("%\nG21 G90 G0 X0 Y0\nG1 X10 X20 F100\nM30\n%", "duplicate axis"),
         ("%\nG21 G90 G0 G1 X10 F100\nM30\n%", "conflicting modal G-codes"),
         ("%\nG21 G90 G0 X0 Y0\nM3\nM30\n%", "spindle start requires"),
+        ("%\nG21 G90 G0 X0 Y0\nM3 S0\nM30\n%", "S values must be positive"),
+        ("%\nG21 G90 G0 X0 Y0\nM3 S1000 M5\nM30\n%", "conflicting modal M-codes"),
         ("%\nG21 G90 G0 X0 Y0\nM6\nM30\n%", "tool change M6 requires"),
         ("%\nG21 G90 G0 X0 Y0\nG2 X10 Y10\nM30\n%", "arc motion G2/G3 requires"),
         ("%\nG21 G90 G0 X0 Y0\nM30\nG1 X10 F100\n%", "after program end"),
