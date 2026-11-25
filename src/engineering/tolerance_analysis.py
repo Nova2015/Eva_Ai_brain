@@ -24,6 +24,8 @@ _TO_MM = {
 
 
 def _finite_number(value: Any, field: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be numeric")
     try:
         number = float(value)
     except (TypeError, ValueError) as exc:
@@ -56,13 +58,18 @@ def calculate_tolerance_stack(
     for index, item in enumerate(dimensions):
         if not isinstance(item, dict):
             raise ValueError(f"Dimension {index + 1} must be an object")
-        name = str(item.get("name") or f"dimension_{index + 1}")
+        raw_name = item.get("name", f"dimension_{index + 1}")
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise ValueError(f"Dimension {index + 1} name must be a non-empty string")
+        name = raw_name.strip()
         nominal = _finite_number(item.get("nominal"), f"{name}.nominal") * factor
         plus = _finite_number(item.get("plus_tolerance", 0.0), f"{name}.plus_tolerance") * factor
         minus = _finite_number(item.get("minus_tolerance", 0.0), f"{name}.minus_tolerance") * factor
         direction = item.get("direction", 1)
-        if direction not in (-1, 1):
+        if isinstance(direction, bool) or not isinstance(direction, int) or direction not in (-1, 1):
             raise ValueError(f"{name}.direction must be +1 or -1")
+        if not all(math.isfinite(value) for value in (nominal, plus, minus)):
+            raise ValueError(f"{name} values overflow after unit conversion")
         if plus < 0 or minus < 0:
             raise ValueError(f"{name} tolerances must be non-negative")
 
@@ -83,6 +90,10 @@ def calculate_tolerance_stack(
 
     rss_upper = math.sqrt(rss_upper_squares)
     rss_lower = math.sqrt(rss_lower_squares)
+    if not all(math.isfinite(value) for value in (
+        nominal_stack, worst_upper, worst_lower, rss_upper, rss_lower
+    )):
+        raise ValueError("Tolerance stack overflowed; check dimensions and units")
     return {
         "unit": "mm",
         "nominal_stack_mm": nominal_stack,
