@@ -163,7 +163,7 @@ def register_material(
     workspace_id: str,
     actor_id: str,
     manufacturer: str = "",
-    reviewer_id: Optional[str] = None,
+    reviewer_id: str,
 ) -> dict[str, Any]:
     for field, value in (
         ("name", name), ("family", family), ("grade", grade),
@@ -174,12 +174,11 @@ def register_material(
             raise ValueError(f"{field} is required")
     if actor_id != owner_id:
         raise PermissionError("Only the authenticated owner may register material data in this scope")
-    if reviewer_id is not None:
-        if not isinstance(reviewer_id, str) or not reviewer_id.strip():
-            raise ValueError("reviewer_id must be a non-empty string when provided")
-        if reviewer_id.strip() == actor_id:
-            raise ValueError("Material reviewer must be different from the owner")
-        reviewer_id = reviewer_id.strip()
+    if not isinstance(reviewer_id, str) or not reviewer_id.strip():
+        raise ValueError("reviewer_id is required")
+    if reviewer_id.strip() == actor_id:
+        raise ValueError("Material reviewer must be different from the owner")
+    reviewer_id = reviewer_id.strip()
     validated = _validate_properties(properties)
     material_id = "EVA-MAT-" + uuid.uuid4().hex.upper()
     now = _now()
