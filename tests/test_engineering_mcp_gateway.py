@@ -150,3 +150,23 @@ def test_authenticated_mcp_api_only_authorizes_and_never_invokes_server(tmp_path
     )
     assert result["authorization"]["authorized"] is True
     assert result["execution_performed"] is False
+
+
+
+def test_only_recorded_mcp_approver_can_enable_or_disable_tool(tmp_path, monkeypatch):
+    _enable_blender_mcp(tmp_path, monkeypatch)
+    mcp_gateway.register_mcp_tool(
+        "blender_mcp", "scene_write", actor_id="owner-1",
+        source_reviewed=True, approved=True,
+    )
+    with pytest.raises(PermissionError, match="recorded MCP approver"):
+        mcp_gateway.set_mcp_tool_enabled(
+            "blender_mcp", "scene_write", enabled=True,
+            actor_id="other-user", approved=True,
+        )
+    assert mcp_gateway.get_mcp_tool("blender_mcp", "scene_write")["enabled"] is False
+    enabled = mcp_gateway.set_mcp_tool_enabled(
+        "blender_mcp", "scene_write", enabled=True,
+        actor_id="owner-1", approved=True,
+    )
+    assert enabled["enabled"] is True
