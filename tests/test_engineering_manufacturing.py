@@ -96,3 +96,26 @@ def test_process_rejects_tool_not_in_its_candidate_list():
             },
             preflight_tools=True,
         )
+
+
+def test_manufacturing_process_api_is_authenticated_and_read_only():
+    from fastapi import HTTPException
+    from src.engineering import routes
+
+    with pytest.raises(HTTPException) as error:
+        routes.engineering_manufacturing_processes(user_id="anonymous")
+    assert error.value.status_code == 401
+    catalog = routes.engineering_manufacturing_processes(user_id="owner-1")
+    assert len(catalog["processes"]) == 10
+    result = routes.engineering_validate_manufacturing_process(
+        "injection_molding",
+        routes.ManufacturingValidationRequest(
+            input_manifest={
+                "part_geometry": "door_trim.step", "material": "PP",
+                "wall_thickness": "2.5mm", "mold_concept": "two_plate",
+            }
+        ),
+        user_id="owner-1",
+    )
+    assert result["validation"]["valid"] is True
+    assert result["physical_execution_performed"] is False
