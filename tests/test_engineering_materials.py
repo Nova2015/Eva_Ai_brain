@@ -177,6 +177,14 @@ def test_material_registry_api_is_authenticated_and_owner_scoped(tmp_path, monke
     other_list = routes.engineering_materials(workspace_id="cad", user_id="other-user")
     assert len(owner_list["materials"]) == 1
     assert other_list["materials"] == []
+    with pytest.raises(HTTPException) as unassigned:
+        routes.engineering_approve_material(
+            created["material"]["material_id"],
+            workspace_id="cad",
+            req=routes.MaterialApprovalRequest(approved=True),
+            user_id="unassigned-reviewer",
+        )
+    assert unassigned.value.status_code == 404
     review_queue = routes.engineering_material_review_queue(
         workspace_id="cad", user_id="reviewer-1"
     )
