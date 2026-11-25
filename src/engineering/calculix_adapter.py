@@ -88,7 +88,7 @@ def build_calculix_static_deck(
         raise PermissionError("Only the authenticated data owner may prepare this FEA deck")
     if not isinstance(model_name, str) or not _MODEL_NAME.fullmatch(model_name):
         raise ValueError("model_name must be a simple identifier")
-    if element_type not in {"C3D4", "C3D8"}:
+    if not isinstance(element_type, str) or element_type not in {"C3D4", "C3D8"}:
         raise ValueError("Only first-order C3D4 and C3D8 elements are supported")
     expected_nodes = 4 if element_type == "C3D4" else 8
     if not isinstance(nodes, list) or len(nodes) < expected_nodes:
@@ -143,10 +143,29 @@ def build_calculix_static_deck(
         missing = [value for value in node_ids if value not in node_map]
         if missing:
             raise ValueError(f"Element {element_id} references missing nodes: {missing}")
+        if len(set(node_ids)) != len(node_ids):
+            raise ValueError(f"Element {element_id} contains duplicate node references")
+        if element_type == "C3D4":
+            a, b, d, e = (node_map[node_id] for node_id in node_ids)
+            ab = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+            ad = (d[0] - a[0], d[1] - a[1], d[2] - a[2])
+            ae = (e[0] - a[0], e[1] - a[1], e[2] - a[2])
+            determinant = (
+                ab[0] * (ad[1] * ae[2] - ad[2] * ae[1])
+                - ab[1] * (ad[0] * ae[2] - ad[2] * ae[0])
+                + ab[2] * (ad[0] * ae[1] - ad[1] * ae[0])
+            )
+            volume = determinant / 6.0
+            if not math.isfinite(volume) or volume <= 1e-12:
+                raise ValueError(
+                    f"Element {element_id} has zero, negative or invalid tetrahedral volume"
+                )
         normalized_elements.append((element_id, node_ids))
 
     normalized_boundaries = []
     for index, boundary in enumerate(boundary_conditions, 1):
+        if not isinstance(boundary, dict):
+            raise ValueError(f"Boundary condition {index} must be an object")
         node_id = _positive_id(boundary.get("node_id"), f"boundary_{index}.node_id")
         if node_id not in node_map:
             raise ValueError(f"Boundary condition references missing node {node_id}")
@@ -159,6 +178,8 @@ def build_calculix_static_deck(
 
     normalized_loads = []
     for index, load in enumerate(concentrated_loads, 1):
+        if not isinstance(load, dict):
+            raise ValueError(f"Concentrated load {index} must be an object")
         node_id = _positive_id(load.get("node_id"), f"load_{index}.node_id")
         if node_id not in node_map:
             raise ValueError(f"Load references missing node {node_id}")
@@ -204,7 +225,8 @@ def build_calculix_static_deck(
     deck_path = output_dir / f"{deck_id}.inp"
     if deck_path.exists():
         raise FileExistsError("Generated FEA input already exists; refusing to overwrite")
-    deck_path.write_text(deck_text, encoding="utf-8")
+    with deck_path.open("x", encoding="utf-8") as handle:
+        handle.write(deck_text)
     validation = validate_calculix_input(deck_path)
     if not validation["ok"]:
         deck_path.unlink(missing_ok=True)
@@ -231,5 +253,10 @@ def build_calculix_static_deck(
         "engineering_approval": "not_granted",
     }
     manifest_path = output_dir / f"{deck_id}.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    try:
+        with manifest_path.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(manifest, indent=2, sort_keys=True))
+    except Exception:
+        deck_path.unlink(missing_ok=True)
+        raise
     return manifest
