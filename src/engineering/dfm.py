@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from .materials import resolve_material_for_analysis
+from .materials import record_material_analysis, resolve_material_for_analysis
 
 
 _DEFAULT_RULES = {
@@ -227,7 +227,7 @@ def analyze_injection_molding_dfm(
         "advisory_only": True,
         "requires_engineer_review": True,
     }
-    materials.record_material_analysis(
+    record_material_analysis(
         material_id,
         owner_id=owner_id,
         workspace_id=workspace_id,
