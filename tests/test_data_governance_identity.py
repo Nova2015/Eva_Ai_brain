@@ -1,4 +1,5 @@
 import hashlib
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -560,3 +561,46 @@ def test_audited_mutations_require_actor_identity(tmp_path, monkeypatch):
         set_training_approval(
             record["data_id"], "rejected", **scope, actor_id=""
         )
+
+
+def test_audit_tables_are_append_only_even_for_direct_sql(tmp_path, monkeypatch):
+    db_path = tmp_path / "governance.db"
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(db_path))
+    source = tmp_path / "audit-immutable.txt"
+    source.write_text("immutable audit source", encoding="utf-8")
+    record = _register(source)
+    record_governance_event(
+        record["data_id"], "test_event",
+        owner_id="user-1", workspace_id="workspace-1", actor_id="user-1",
+    )
+    record_reconciliation_event(
+        "ORPHAN-A", owner_id="user-1", workspace_id="workspace-1",
+        action="orphan_seen", actor_id="user-1",
+    )
+
+    conn = sqlite3.connect(db_path)
+    try:
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            conn.execute(
+                "UPDATE data_item_audit SET action='tampered' WHERE data_id=?",
+                (record["data_id"],),
+            )
+        conn.rollback()
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            conn.execute(
+                "DELETE FROM data_item_audit WHERE data_id=?",
+                (record["data_id"],),
+            )
+        conn.rollback()
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            conn.execute(
+                "UPDATE reconciliation_audit SET action='tampered' WHERE data_id='ORPHAN-A'"
+            )
+        conn.rollback()
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            conn.execute(
+                "DELETE FROM reconciliation_audit WHERE data_id='ORPHAN-A'"
+            )
+        conn.rollback()
+    finally:
+        conn.close()
