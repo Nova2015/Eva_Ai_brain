@@ -5,7 +5,7 @@ These routes configure and inspect tools. They do not execute tools or start mac
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt
 
 try:
     from ..rag.rag_routes_v2 import get_user_id
@@ -34,8 +34,8 @@ class ToolValidationRequest(BaseModel):
 
 
 class ToolEnableRequest(BaseModel):
-    enabled: bool
-    approved: bool
+    enabled: StrictBool
+    approved: StrictBool
     license_confirmed: bool = False
 
 
@@ -64,7 +64,7 @@ class EngineeringJobRequest(BaseModel):
 
 
 class JobApprovalRequest(BaseModel):
-    approved: bool
+    approved: StrictBool
 
 
 class JobClaimRequest(BaseModel):
@@ -90,12 +90,12 @@ class MCPToolRegistrationRequest(BaseModel):
     tool_name: str
     description: str = ""
     source_reviewed: bool
-    approved: bool
+    approved: StrictBool
 
 
 class MCPToolEnableRequest(BaseModel):
-    enabled: bool
-    approved: bool
+    enabled: StrictBool
+    approved: StrictBool
 
 
 class MCPAuthorizationRequest(BaseModel):
@@ -108,8 +108,8 @@ class MCPAuthorizationRequest(BaseModel):
 
 class ManufacturingValidationRequest(BaseModel):
     input_manifest: dict[str, Any] = Field(default_factory=dict)
-    machine_start_requested: bool = False
-    preflight_tools: bool = False
+    machine_start_requested: StrictBool = False
+    preflight_tools: StrictBool = False
 
 
 class ToleranceStackRequest(BaseModel):
@@ -131,14 +131,14 @@ class FreeCADMacroRequest(BaseModel):
     operations: list[dict[str, Any]]
     workspace_id: str
     document_name: str = "EVA_Engineering_Model"
-    approved: bool
+    approved: StrictBool
 
 
 class BlenderScriptRequest(BaseModel):
     operations: list[dict[str, Any]]
     workspace_id: str
     scene_name: str = "EVA_Engineering_Scene"
-    approved: bool
+    approved: StrictBool
 
 
 class MaterialRegistrationRequest(BaseModel):
@@ -158,11 +158,11 @@ class GovernedDataValidationRequest(BaseModel):
 class GmshMeshScriptRequest(BaseModel):
     data_id: str
     workspace_id: str
-    mesh_size_min_mm: float
-    mesh_size_max_mm: float
-    algorithm_3d: int = 10
-    element_order: int = 1
-    approved: bool
+    mesh_size_min_mm: StrictFloat
+    mesh_size_max_mm: StrictFloat
+    algorithm_3d: StrictInt = 10
+    element_order: StrictInt = 1
+    approved: StrictBool
 
 
 class CalculixStaticDeckRequest(BaseModel):
@@ -174,11 +174,11 @@ class CalculixStaticDeckRequest(BaseModel):
     workspace_id: str
     boundary_conditions: list[dict[str, Any]]
     concentrated_loads: list[dict[str, Any]]
-    approved: bool
+    approved: StrictBool
 
 
 class MaterialApprovalRequest(BaseModel):
-    approved: bool
+    approved: StrictBool
 
 
 class MaterialRejectionRequest(BaseModel):
