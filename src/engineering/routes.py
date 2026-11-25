@@ -2,10 +2,12 @@
 
 These routes configure and inspect tools. They do not execute tools or start machines.
 """
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt
+
+StrictNumber = Union[StrictFloat, StrictInt]
 
 try:
     from ..rag.rag_routes_v2 import get_user_id
@@ -118,12 +120,12 @@ class ToleranceStackRequest(BaseModel):
 
 
 class ClearanceFitRequest(BaseModel):
-    hole_nominal: StrictFloat
-    hole_plus_tolerance: StrictFloat
-    hole_minus_tolerance: StrictFloat
-    shaft_nominal: StrictFloat
-    shaft_plus_tolerance: StrictFloat
-    shaft_minus_tolerance: StrictFloat
+    hole_nominal: StrictNumber
+    hole_plus_tolerance: StrictNumber
+    hole_minus_tolerance: StrictNumber
+    shaft_nominal: StrictNumber
+    shaft_plus_tolerance: StrictNumber
+    shaft_minus_tolerance: StrictNumber
     unit: str = "mm"
 
 
@@ -158,8 +160,8 @@ class GovernedDataValidationRequest(BaseModel):
 class GmshMeshScriptRequest(BaseModel):
     data_id: str
     workspace_id: str
-    mesh_size_min_mm: StrictFloat
-    mesh_size_max_mm: StrictFloat
+    mesh_size_min_mm: StrictNumber
+    mesh_size_max_mm: StrictNumber
     algorithm_3d: StrictInt = 10
     element_order: StrictInt = 1
     approved: StrictBool
