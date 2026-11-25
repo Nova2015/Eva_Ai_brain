@@ -151,3 +151,46 @@ def test_job_creation_requires_execute_permission_for_governed_data(tmp_path, mo
             data_id=record["data_id"], input_manifest={"data_id": record["data_id"]},
             requires_approval=False,
         )
+
+
+def test_engineering_job_api_is_authenticated_and_never_executes_tools(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from src.engineering import routes
+
+    _enable_tool(tmp_path, monkeypatch)
+    with pytest.raises(HTTPException) as error:
+        routes.engineering_list_jobs(workspace_id="cad", user_id="anonymous")
+    assert error.value.status_code == 401
+
+    created = routes.engineering_create_job(
+        routes.EngineeringJobRequest(
+            job_type="cad_modify", tool_id="freecad", workspace_id="cad",
+            machine_id="machine-b", input_manifest={"operation": "create_boss"},
+        ),
+        user_id="owner-1",
+    )
+    job_id = created["job"]["job_id"]
+    assert created["job"]["status"] == "pending_approval"
+    assert created["execution_performed"] is False
+
+    approved = routes.engineering_approve_job(
+        job_id, workspace_id="cad",
+        req=routes.JobApprovalRequest(approved=True), user_id="owner-1",
+    )
+    assert approved["job"]["status"] == "queued"
+
+    with pytest.raises(HTTPException) as wrong_machine:
+        routes.engineering_claim_job(
+            job_id, workspace_id="cad",
+            req=routes.JobClaimRequest(machine_id="machine-a"), user_id="owner-1",
+        )
+    assert wrong_machine.value.status_code == 403
+
+    claimed = routes.engineering_claim_job(
+        job_id, workspace_id="cad",
+        req=routes.JobClaimRequest(machine_id="machine-b"), user_id="owner-1",
+    )
+    assert claimed["job"]["status"] == "running"
+    assert claimed["execution_performed"] is False
+    assert claimed["machine_started"] is False
+    assert claimed["machine_failover"] is False
