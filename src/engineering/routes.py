@@ -36,7 +36,7 @@ class ToolValidationRequest(BaseModel):
 class ToolEnableRequest(BaseModel):
     enabled: StrictBool
     approved: StrictBool
-    license_confirmed: bool = False
+    license_confirmed: StrictBool = False
 
 
 class ToolRegistrationRequest(BaseModel):
@@ -60,7 +60,7 @@ class EngineeringJobRequest(BaseModel):
     classification: str = "private"
     workflow_id: Optional[str] = None
     step_id: Optional[str] = None
-    requires_approval: bool = True
+    requires_approval: StrictBool = True
 
 
 class JobApprovalRequest(BaseModel):
@@ -89,7 +89,7 @@ class WorkflowInstantiateRequest(BaseModel):
 class MCPToolRegistrationRequest(BaseModel):
     tool_name: str
     description: str = ""
-    source_reviewed: bool
+    source_reviewed: StrictBool
     approved: StrictBool
 
 
@@ -118,12 +118,12 @@ class ToleranceStackRequest(BaseModel):
 
 
 class ClearanceFitRequest(BaseModel):
-    hole_nominal: float
-    hole_plus_tolerance: float
-    hole_minus_tolerance: float
-    shaft_nominal: float
-    shaft_plus_tolerance: float
-    shaft_minus_tolerance: float
+    hole_nominal: StrictFloat
+    hole_plus_tolerance: StrictFloat
+    hole_minus_tolerance: StrictFloat
+    shaft_nominal: StrictFloat
+    shaft_plus_tolerance: StrictFloat
+    shaft_minus_tolerance: StrictFloat
     unit: str = "mm"
 
 
@@ -188,7 +188,7 @@ class MaterialRejectionRequest(BaseModel):
 @router.get("/tools")
 def engineering_tools(
     category: Optional[str] = None,
-    enabled_only: bool = False,
+    enabled_only: StrictBool = False,
     user_id: str = Depends(get_user_id),
 ):
     _authenticated(user_id)
