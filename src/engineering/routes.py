@@ -129,12 +129,14 @@ class ClearanceFitRequest(BaseModel):
 
 class FreeCADMacroRequest(BaseModel):
     operations: list[dict[str, Any]]
+    workspace_id: str
     document_name: str = "EVA_Engineering_Model"
     approved: bool
 
 
 class BlenderScriptRequest(BaseModel):
     operations: list[dict[str, Any]]
+    workspace_id: str
     scene_name: str = "EVA_Engineering_Scene"
     approved: bool
 
@@ -643,6 +645,8 @@ def engineering_build_freecad_macro(
         manifest = freecad_adapter.build_freecad_macro(
             req.operations,
             document_name=req.document_name,
+            owner_id=actor_id,
+            workspace_id=req.workspace_id,
             actor_id=actor_id,
             approved=req.approved,
         )
@@ -668,6 +672,8 @@ def engineering_build_blender_script(
         manifest = blender_adapter.build_blender_script(
             req.operations,
             scene_name=req.scene_name,
+            owner_id=actor_id,
+            workspace_id=req.workspace_id,
             actor_id=actor_id,
             approved=req.approved,
         )
