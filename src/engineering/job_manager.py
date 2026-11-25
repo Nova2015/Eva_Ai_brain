@@ -19,6 +19,12 @@ from . import tool_registry
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = ROOT_DIR / "data" / "eva_engineering.db"
 
+_CLASSIFICATION_RANK = {
+    "public": 0, "internal": 1, "private": 2, "ip": 3,
+    "confidential": 3, "sensitive": 4, "restricted": 5,
+}
+
+
 _ALWAYS_APPROVAL_JOB_TYPES = frozenset({
     "cad_modify", "cad_delete", "file_overwrite", "file_delete",
     "cam_postprocess", "gcode_generate", "machine_operation",
@@ -225,13 +231,26 @@ def create_job(
         )
     if data_id:
         try:
-            from ..data_governance import authorize_data_action
+            from ..data_governance import authorize_data_action, get_record
         except ImportError:
-            from data_governance import authorize_data_action
+            from data_governance import authorize_data_action, get_record
         if not authorize_data_action(
             data_id, actor_id=actor_id, workspace_id=workspace_id, action="execute"
         ):
             raise PermissionError("Execute permission is required for the governed source")
+        source_record = get_record(
+            data_id, owner_id=owner_id, workspace_id=workspace_id
+        )
+        if source_record is None:
+            raise KeyError(f"Unknown governed Data ID: {data_id}")
+        source_classification = source_record["classification"]
+        if (
+            _CLASSIFICATION_RANK.get(classification, -1)
+            < _CLASSIFICATION_RANK.get(source_classification, 99)
+        ):
+            raise PermissionError(
+                "Job classification cannot be lower than its governed source classification"
+            )
 
     approval_required = bool(requires_approval or job_type in _ALWAYS_APPROVAL_JOB_TYPES)
     job_id = "EVA-JOB-" + uuid.uuid4().hex.upper()
