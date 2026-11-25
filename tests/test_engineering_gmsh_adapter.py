@@ -37,6 +37,7 @@ def test_gmsh_script_requires_governed_step_and_creates_reviewable_script(tmp_pa
     assert manifest["source_data_id"] == record["data_id"]
     assert "SetFactory(" in script
     assert "Merge " in script
+    assert "Mesh.MshFileVersion = 2.2;" in script
     assert "Mesh 3;" in script
     assert manifest["mesh_output_path"].endswith(".msh")
 
