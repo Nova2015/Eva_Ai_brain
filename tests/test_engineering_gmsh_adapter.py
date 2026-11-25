@@ -105,3 +105,20 @@ def test_gmsh_mesh_script_api_is_authenticated_and_never_runs_gmsh(tmp_path, mon
     assert result["mesh_script"]["status"] == "prepared_for_review"
     assert result["mesh_generation_performed"] is False
     assert result["solver_execution_performed"] is False
+
+
+
+def test_gmsh_api_rejects_boolean_mesh_sizes_and_coerced_approval_values():
+    from pydantic import ValidationError
+    from src.engineering import routes
+
+    with pytest.raises(ValidationError):
+        routes.GmshMeshScriptRequest(
+            data_id="EVA-DATA-1", workspace_id="cad",
+            mesh_size_min_mm=True, mesh_size_max_mm=2.0, approved=True,
+        )
+    with pytest.raises(ValidationError):
+        routes.GmshMeshScriptRequest(
+            data_id="EVA-DATA-1", workspace_id="cad",
+            mesh_size_min_mm=0.5, mesh_size_max_mm=2.0, approved="true",
+        )
