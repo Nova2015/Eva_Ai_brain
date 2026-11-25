@@ -380,6 +380,17 @@ def validate_gcode_file(
         )
         if any(len(g_codes & group) > 1 for group in modal_groups):
             issues.append(f"Line {line_number}: conflicting modal G-codes appear on one line")
+        m_codes = {code for letter, code in codes if letter == "M"}
+        m_conflict_groups = ({3, 4, 5}, {8, 9}, {2, 30})
+        if any(len(m_codes & group) > 1 for group in m_conflict_groups):
+            issues.append(f"Line {line_number}: conflicting modal M-codes appear on one line")
+        for address in ("F", "S"):
+            if address in address_values and any(value <= 0 for value in address_values[address]):
+                issues.append(f"Line {line_number}: {address} values must be positive")
+        if "T" in address_values and any(
+            value <= 0 or not value.is_integer() for value in address_values["T"]
+        ):
+            issues.append(f"Line {line_number}: T tool numbers must be positive integers")
         if any(letter == "M" and code in {3, 4} for letter, code in codes) and "S" not in address_values:
             issues.append(f"Line {line_number}: spindle start requires an explicit S speed")
         if any(letter == "M" and code == 6 for letter, code in codes) and "T" not in address_values:
