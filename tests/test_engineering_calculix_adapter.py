@@ -101,3 +101,31 @@ def test_calculix_deck_rejects_invalid_mesh_loads_and_owner_mismatch(tmp_path, m
     model["actor_id"] = "other-user"
     with pytest.raises(PermissionError, match="authenticated data owner"):
         calculix_adapter.build_calculix_static_deck(**model)
+
+
+def test_calculix_input_deck_api_is_authenticated_and_never_runs_solver(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from src.engineering import routes
+
+    material = _approved_material(tmp_path, monkeypatch)
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering-output"))
+    model = _model(material["material_id"])
+    request = routes.CalculixStaticDeckRequest(
+        model_name=model["model_name"],
+        nodes=model["nodes"],
+        elements=model["elements"],
+        element_type=model["element_type"],
+        material_id=model["material_id"],
+        workspace_id=model["workspace_id"],
+        boundary_conditions=model["boundary_conditions"],
+        concentrated_loads=model["concentrated_loads"],
+        approved=True,
+    )
+    with pytest.raises(HTTPException) as auth_error:
+        routes.engineering_build_calculix_deck(request, user_id="anonymous")
+    assert auth_error.value.status_code == 401
+
+    result = routes.engineering_build_calculix_deck(request, user_id="owner-1")
+    assert result["input_deck"]["validation"]["ok"] is True
+    assert result["solver_execution_performed"] is False
+    assert result["engineering_approval"] == "not_granted"
