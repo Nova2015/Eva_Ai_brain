@@ -213,7 +213,7 @@ def list_materials(
 def approve_material(
     material_id: str,
     *,
-    owner_id: str,
+    owner_id: Optional[str] = None,
     workspace_id: str,
     actor_id: str,
     approved: bool,
@@ -223,11 +223,18 @@ def approve_material(
     if not isinstance(actor_id, str) or not actor_id.strip():
         raise ValueError("actor_id is required")
     with _connect() as conn:
-        row = conn.execute(
-            """SELECT * FROM engineering_materials
-               WHERE material_id=? AND owner_id=? AND workspace_id=?""",
-            (material_id, owner_id, workspace_id),
-        ).fetchone()
+        if owner_id is None:
+            row = conn.execute(
+                """SELECT * FROM engineering_materials
+                   WHERE material_id=? AND workspace_id=? AND reviewer_id=?""",
+                (material_id, workspace_id, actor_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """SELECT * FROM engineering_materials
+                   WHERE material_id=? AND owner_id=? AND workspace_id=?""",
+                (material_id, owner_id, workspace_id),
+            ).fetchone()
         if row is None:
             raise KeyError(f"Material not found: {material_id}")
         if not row["reviewer_id"]:
@@ -249,13 +256,13 @@ def approve_material(
                VALUES (?, 'material_approved', ?, ?, ?)""",
             (material_id, actor_id, json.dumps({"status": "approved"}), now),
         )
-    return get_material(material_id, owner_id=owner_id, workspace_id=workspace_id)  # type: ignore[return-value]
+    return get_material(material_id, owner_id=row["owner_id"], workspace_id=workspace_id)  # type: ignore[return-value]
 
 
 def reject_material(
     material_id: str,
     *,
-    owner_id: str,
+    owner_id: Optional[str] = None,
     workspace_id: str,
     actor_id: str,
     reason: str,
@@ -265,11 +272,18 @@ def reject_material(
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError("A rejection reason is required")
     with _connect() as conn:
-        row = conn.execute(
-            """SELECT * FROM engineering_materials
-               WHERE material_id=? AND owner_id=? AND workspace_id=?""",
-            (material_id, owner_id, workspace_id),
-        ).fetchone()
+        if owner_id is None:
+            row = conn.execute(
+                """SELECT * FROM engineering_materials
+                   WHERE material_id=? AND workspace_id=? AND reviewer_id=?""",
+                (material_id, workspace_id, actor_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """SELECT * FROM engineering_materials
+                   WHERE material_id=? AND owner_id=? AND workspace_id=?""",
+                (material_id, owner_id, workspace_id),
+            ).fetchone()
         if row is None:
             raise KeyError(f"Material not found: {material_id}")
         if not row["reviewer_id"]:
@@ -291,7 +305,7 @@ def reject_material(
                VALUES (?, 'material_rejected', ?, ?, ?)""",
             (material_id, actor_id, json.dumps({"reason": reason.strip()}), now),
         )
-    return get_material(material_id, owner_id=owner_id, workspace_id=workspace_id)  # type: ignore[return-value]
+    return get_material(material_id, owner_id=row["owner_id"], workspace_id=workspace_id)  # type: ignore[return-value]
 
 
 def resolve_material_for_analysis(
