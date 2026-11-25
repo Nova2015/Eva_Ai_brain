@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/engineering-core-foundation
+      - feat/deep-learning-worker-crash-recovery
     paths:
       - "src/deep_learning/**"
       - "src/data_governance/**"
