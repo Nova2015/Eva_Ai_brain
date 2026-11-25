@@ -793,6 +793,8 @@ def engineering_approve_material(
             material_id, owner_id=material["owner_id"], workspace_id=workspace_id,
             actor_id=reviewer_id, approved=req.approved,
         )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Material review item no longer exists")
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except PermissionError as exc:
@@ -819,6 +821,8 @@ def engineering_reject_material(
             material_id, owner_id=material["owner_id"], workspace_id=workspace_id,
             actor_id=reviewer_id, reason=req.reason,
         )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Material review item no longer exists")
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except PermissionError as exc:
