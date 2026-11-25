@@ -363,6 +363,42 @@ def resolve_material_for_analysis(
     return material
 
 
+def record_material_analysis(
+    material_id: str,
+    *,
+    owner_id: str,
+    workspace_id: str,
+    actor_id: str,
+    action: str,
+    details: dict[str, Any],
+) -> None:
+    if actor_id != owner_id:
+        raise PermissionError("Only the authenticated material owner may record analysis")
+    if not isinstance(action, str) or action not in {
+        "dfm_analysis_completed", "tolerance_analysis_completed",
+        "fea_deck_prepared", "material_usage_recorded",
+    }:
+        raise ValueError("Unsupported material audit action")
+    if not isinstance(details, dict):
+        raise ValueError("details must be a dictionary")
+    try:
+        details_json = json.dumps(details, sort_keys=True)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("details must be JSON serializable") from exc
+    material = get_material(material_id, owner_id=owner_id, workspace_id=workspace_id)
+    if material is None:
+        raise KeyError(f"Unknown material ID: {material_id}")
+    if material["status"] != "approved":
+        raise PermissionError("Only approved material records may be used for engineering analysis")
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO material_audit
+               (material_id, action, actor_id, details_json, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (material_id, action, actor_id, details_json, _now()),
+        )
+
+
 def list_material_audit(
     material_id: str, *, owner_id: str, workspace_id: str
 ) -> list[dict[str, Any]]:
