@@ -14,6 +14,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from ..data_governance import record_governance_event, register_import
+
 
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _SAFE_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,100}$")
@@ -95,12 +97,18 @@ def build_blender_script(
     operations: list[dict[str, Any]],
     *,
     scene_name: str = "EVA_Engineering_Scene",
+    owner_id: str,
+    workspace_id: str,
     actor_id: str,
     approved: bool,
 ) -> dict[str, Any]:
     """Prepare a Blender script from safe structured operations; never runs Blender."""
     if not isinstance(actor_id, str) or not actor_id.strip():
         raise ValueError("actor_id is required")
+    if not isinstance(owner_id, str) or not owner_id.strip() or actor_id != owner_id:
+        raise PermissionError("Only the authenticated owner may register the generated Blender script")
+    if not isinstance(workspace_id, str) or not workspace_id.strip():
+        raise ValueError("workspace_id is required")
     if approved is not True:
         raise PermissionError("Explicit approval is required to generate a Blender script")
     scene_name = _identifier(scene_name, "scene_name")
@@ -375,8 +383,18 @@ def build_blender_script(
     manifest_path = script_dir / f"{script_id}.json"
     script_path.write_text(script_text, encoding="utf-8")
     digest = hashlib.sha256(script_text.encode("utf-8")).hexdigest()
+    try:
+        generated_record = register_import(
+            script_path, source="engineering_generated:blender_script",
+            owner_id=owner_id, workspace_id=workspace_id, actor_id=actor_id,
+            classification="ip",
+        )
+    except Exception:
+        script_path.unlink(missing_ok=True)
+        raise
     manifest = {
         "script_id": script_id,
+        "script_data_id": generated_record["data_id"],
         "script_path": str(script_path.resolve()),
         "sha256": digest,
         "scene_name": scene_name,
@@ -387,5 +405,16 @@ def build_blender_script(
         "execution_performed": False,
         "machine_start_allowed": False,
     }
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    try:
+        with manifest_path.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(manifest, indent=2, sort_keys=True))
+        record_governance_event(
+            generated_record["data_id"], "blender_script_prepared",
+            owner_id=owner_id, workspace_id=workspace_id, actor_id=actor_id,
+            details={"script_id": script_id, "sha256": digest},
+        )
+    except Exception:
+        manifest_path.unlink(missing_ok=True)
+        script_path.unlink(missing_ok=True)
+        raise
     return manifest
