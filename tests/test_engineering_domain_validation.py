@@ -193,3 +193,38 @@ def test_calculix_validator_rejects_duplicate_element_ids_and_unbalanced_steps(t
     assert result["ok"] is False
     assert any("duplicate element ID" in issue for issue in result["issues"])
     assert any("complete *STEP" in issue for issue in result["issues"])
+
+
+
+@pytest.mark.parametrize(
+    "program,expected_issue",
+    [
+        ("%\nG21 G90 G0 X0 Y0\nG1 X10 X20 F100\nM30\n%", "duplicate axis"),
+        ("%\nG21 G90 G0 G1 X10 F100\nM30\n%", "conflicting modal G-codes"),
+        ("%\nG21 G90 G0 X0 Y0\nM3\nM30\n%", "spindle start requires"),
+        ("%\nG21 G90 G0 X0 Y0\nM6\nM30\n%", "tool change M6 requires"),
+        ("%\nG21 G90 G0 X0 Y0\nG2 X10 Y10\nM30\n%", "arc motion G2/G3 requires"),
+        ("%\nG21 G90 G0 X0 Y0\nM30\nG1 X10 F100\n%", "after program end"),
+    ],
+)
+def test_gcode_validator_rejects_duplicate_conflicting_or_incomplete_commands(
+    tmp_path, program, expected_issue
+):
+    path = tmp_path / "unsafe.nc"
+    path.write_text(program, encoding="utf-8")
+    result = domain_validation.validate_gcode_file(path)
+    assert result["ok"] is False
+    assert any(expected_issue in issue for issue in result["issues"])
+
+
+def test_gcode_validator_marks_machine_specific_commands_for_operator_review(tmp_path):
+    path = tmp_path / "operator-review.nc"
+    path.write_text(
+        "%\nG21 G90 G0 X0 Y0\nG28 X0 Y0\nM3 S1200\nM6 T2\nM30\n%",
+        encoding="utf-8",
+    )
+    result = domain_validation.validate_gcode_file(path)
+    assert result["ok"] is True
+    assert result["operator_review_required"] is True
+    assert {"G28", "M3", "M6"}.issubset(set(result["review_codes"]))
+    assert result["machine_execution_allowed"] is False
