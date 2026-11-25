@@ -285,11 +285,13 @@ def release_quarantined(
         if row is None:
             raise KeyError(f"Quarantine item not found: {quarantine_id}")
         item = dict(row)
-        conn.execute(
+        claim = conn.execute(
             """UPDATE quarantine_items SET status='releasing'
                WHERE quarantine_id=? AND status='quarantined'""",
             (quarantine_id,),
         )
+        if claim.rowcount != 1:
+            raise KeyError(f"Quarantine item is already being processed: {quarantine_id}")
         conn.execute(
             """INSERT INTO quarantine_audit
                (quarantine_id, action, actor_id, details_json, created_at)
