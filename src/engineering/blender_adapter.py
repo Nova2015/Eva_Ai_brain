@@ -381,7 +381,8 @@ def build_blender_script(
     script_id = "EVA-BLENDER-" + uuid.uuid4().hex.upper()
     script_path = script_dir / f"{script_id}.py"
     manifest_path = script_dir / f"{script_id}.json"
-    script_path.write_text(script_text, encoding="utf-8")
+    with script_path.open("x", encoding="utf-8") as handle:
+        handle.write(script_text)
     digest = hashlib.sha256(script_text.encode("utf-8")).hexdigest()
     try:
         generated_record = register_import(
