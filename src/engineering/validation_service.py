@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..data_governance import authorize_data_action, get_record, sha256_file
+from ..data_governance import authorize_data_action, get_record, record_governance_event, sha256_file
 from .domain_validation import validate_engineering_file
 
 
@@ -41,6 +41,18 @@ def validate_governed_data(
         raise ValueError("Source SHA-256 does not match the governed Data ID")
 
     validation = validate_engineering_file(path)
+    record_governance_event(
+        data_id,
+        "engineering_validation_completed",
+        owner_id=owner_id,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        details={
+            "validator": validation.get("validator"),
+            "ok": validation.get("ok"),
+            "sha256": digest,
+        },
+    )
     return {
         "data_id": data_id,
         "file_name": record["file_name"],
