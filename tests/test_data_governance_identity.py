@@ -460,3 +460,57 @@ def test_acl_does_not_grant_access_outside_workspace(tmp_path, monkeypatch):
         record["data_id"], actor_id="user-2",
         workspace_id="workspace-2", action="read",
     )
+
+
+def test_write_acl_allows_scoped_revision_and_location_recovery(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    governed_root = tmp_path / "governed"
+    governed_root.mkdir()
+    source = governed_root / "original.txt"
+    source.write_text("revision one", encoding="utf-8")
+    record = register_import(
+        source, source="test", owner_id="user-1", workspace_id="workspace-1",
+        actor_id="user-1",
+    )
+    set_permissions(
+        record["data_id"],
+        {
+            "read": ["user-1", "user-2"],
+            "write": ["user-1", "user-2"],
+            "execute": [],
+            "delete": [],
+        },
+        owner_id="user-1", workspace_id="workspace-1", actor_id="user-1",
+    )
+
+    source.write_text("revision two", encoding="utf-8")
+    approved = approve_content_revision(
+        record["data_id"],
+        owner_id="user-2",
+        workspace_id="workspace-1",
+        actor_id="user-2",
+        expected_sha256=record["sha256"],
+    )
+    assert approved["changed"] is True
+    assert approved["version"] == 2
+
+    recovered_path = governed_root / "recovered.txt"
+    source.rename(recovered_path)
+    recovered = recover_location(
+        record["data_id"],
+        recovered_path,
+        owner_id="user-2",
+        workspace_id="workspace-1",
+        actor_id="user-2",
+        allowed_root=governed_root,
+    )
+    assert recovered["file_path"] == str(recovered_path.resolve())
+    assert recovered["version"] == 2
+    actions = [
+        event["action"]
+        for event in list_audit_events(
+            record["data_id"], owner_id="user-2", workspace_id="workspace-1"
+        )
+    ]
+    assert "content_revision_approved" in actions
+    assert "location_recovered" in actions
