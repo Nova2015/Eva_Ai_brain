@@ -142,3 +142,43 @@ def test_workflow_instantiation_requires_explicit_machine_and_no_auto_start(tmp_
     )
     with pytest.raises(ValueError, match="automatic machine start"):
         workflow_engine.validate_workflow("machine_start_test")
+
+
+def test_workflow_catalog_and_instantiation_api_are_authenticated(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from src.engineering import routes
+
+    _enable_freecad(tmp_path, monkeypatch)
+    with pytest.raises(HTTPException) as error:
+        routes.engineering_workflows(user_id="anonymous")
+    assert error.value.status_code == 401
+
+    catalog = routes.engineering_workflows(user_id="owner-1")
+    assert len(catalog["workflows"]) == 6
+    validation = routes.engineering_validate_workflow(
+        "plastic_bracket", user_id="owner-1"
+    )
+    assert validation["validation"]["valid"] is True
+
+    monkeypatch.setitem(
+        workflow_engine._WORKFLOWS,
+        "api_workflow_test",
+        {
+            "name": "API Workflow",
+            "description": "route test",
+            "steps": [
+                {"step_id": "first", "tool_id": "freecad", "job_type": "analysis",
+                 "depends_on": [], "requires_approval": False},
+            ],
+        },
+    )
+    result = routes.engineering_instantiate_workflow(
+        "api_workflow_test",
+        routes.WorkflowInstantiateRequest(
+            workspace_id="cad", machine_id="machine-b",
+            input_manifest={"part": "test"},
+        ),
+        user_id="owner-1",
+    )
+    assert result["workflow"]["jobs"][0]["status"] == "queued"
+    assert result["execution_performed"] is False
