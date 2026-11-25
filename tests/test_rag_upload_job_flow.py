@@ -826,3 +826,22 @@ def test_reconciliation_repair_requires_execute_permission(monkeypatch):
     with pytest.raises(HTTPException) as error:
         asyncio.run(routes.rag_reconciliation_repair(request, user_id="user-a"))
     assert error.value.status_code == 404
+
+
+def test_graph_extraction_requires_execute_permission(monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+    from src.rag import rag_routes_v2 as routes
+
+    request = routes.GraphExtractionRequest(
+        data_id="EVA-DATA-EXECUTE-ONLY", workspace_id="cad"
+    )
+    monkeypatch.setattr(routes, "authorize_data_action", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        routes, "get_record",
+        lambda *args, **kwargs: pytest.fail("Source must not be read without execute permission"),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(routes.rag_graph_extract(request, user_id="user-a"))
+    assert error.value.status_code == 404
