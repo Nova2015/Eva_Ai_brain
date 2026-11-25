@@ -190,6 +190,8 @@ def engineering_validate_tool(
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="Engineering tool not found")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"ok": True, "tool": tool, "execution_performed": False}
