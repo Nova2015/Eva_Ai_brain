@@ -11,7 +11,7 @@ try:
     from ..rag.rag_routes_v2 import get_user_id
 except ImportError:
     from rag.rag_routes_v2 import get_user_id
-from . import job_manager, tool_registry
+from . import job_manager, tool_registry, workflow_engine
 
 
 router = APIRouter(prefix="/engineering", tags=["Engineering Suite"])
@@ -72,6 +72,13 @@ class JobCompletionRequest(BaseModel):
 
 class JobFailureRequest(BaseModel):
     error: str
+
+
+class WorkflowInstantiateRequest(BaseModel):
+    workspace_id: str
+    machine_id: str
+    data_id: Optional[str] = None
+    input_manifest: dict[str, Any] = Field(default_factory=dict)
 
 
 @router.get("/tools")
@@ -293,3 +300,62 @@ def engineering_fail_job(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return {"ok": True, "job": job, "execution_performed": False}
+
+
+@router.get("/workflows")
+def engineering_workflows(user_id: str = Depends(get_user_id)):
+    _authenticated(user_id)
+    return {"ok": True, "workflows": workflow_engine.list_workflows()}
+
+
+@router.get("/workflows/{workflow_id}")
+def engineering_workflow_detail(
+    workflow_id: str,
+    user_id: str = Depends(get_user_id),
+):
+    _authenticated(user_id)
+    try:
+        return {"ok": True, "workflow": workflow_engine.get_workflow(workflow_id)}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Engineering workflow not found")
+
+
+@router.post("/workflows/{workflow_id}/validate")
+def engineering_validate_workflow(
+    workflow_id: str,
+    user_id: str = Depends(get_user_id),
+):
+    _authenticated(user_id)
+    try:
+        result = workflow_engine.validate_workflow(workflow_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Engineering workflow not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "validation": result, "execution_performed": False}
+
+
+@router.post("/workflows/{workflow_id}/instantiate")
+def engineering_instantiate_workflow(
+    workflow_id: str,
+    req: WorkflowInstantiateRequest,
+    user_id: str = Depends(get_user_id),
+):
+    actor_id = _authenticated(user_id)
+    try:
+        result = workflow_engine.instantiate_workflow(
+            workflow_id,
+            owner_id=actor_id,
+            workspace_id=req.workspace_id,
+            machine_id=req.machine_id,
+            actor_id=actor_id,
+            data_id=req.data_id,
+            input_manifest=req.input_manifest,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Engineering workflow or tool not found")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "workflow": result, "execution_performed": False}
