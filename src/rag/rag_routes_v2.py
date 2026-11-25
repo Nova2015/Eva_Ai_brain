@@ -64,9 +64,9 @@ except ImportError:
     )
 
 try:
-    from ..data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, recover_location, request_deletion, restore_record, sha256_file, validate_and_register_import
+    from ..data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, recover_location, request_deletion, restore_record, sha256_file, validate_and_register_import, list_quarantined, release_quarantined
 except ImportError:
-    from data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, recover_location, request_deletion, restore_record, sha256_file, validate_and_register_import
+    from data_governance import approve_content_revision, approve_deletion, archive_record, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, recover_location, request_deletion, restore_record, sha256_file, validate_and_register_import, list_quarantined, release_quarantined
 
 try:
     import upload_policy
@@ -352,6 +352,12 @@ class DeletionRequest(BaseModel):
 class DeletionApprovalRequest(BaseModel):
     approved: bool
     workspace_id: Optional[str] = None
+
+
+class QuarantineReleaseRequest(BaseModel):
+    approved: bool
+    workspace_id: Optional[str] = None
+    classification: str = "internal"
 
 
 class GraphEntityCandidate(BaseModel):
@@ -1187,6 +1193,53 @@ async def rag_governed_document_audit(
         "data_id": data_id,
         "workspace_id": namespace,
         "events": events,
+    }
+
+
+@router.get("/quarantine")
+async def rag_list_quarantined(
+    workspace_id: Optional[str] = None,
+    user_id: str = Depends(get_user_id),
+):
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to view quarantine")
+    namespace = effective_workspace_id(workspace_id, user_id)
+    return {
+        "ok": True,
+        "workspace_id": namespace,
+        "items": list_quarantined(owner_id=user_id, workspace_id=namespace),
+    }
+
+
+@router.post("/quarantine/{quarantine_id}/release")
+async def rag_release_quarantined(
+    quarantine_id: str,
+    req: QuarantineReleaseRequest,
+    user_id: str = Depends(get_user_id),
+):
+    if user_id == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to release quarantine")
+    namespace = effective_workspace_id(req.workspace_id, user_id)
+    try:
+        result = release_quarantined(
+            quarantine_id,
+            owner_id=user_id,
+            workspace_id=namespace,
+            actor_id=user_id,
+            approved=req.approved,
+            classification=req.classification,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Quarantine item not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {
+        "ok": True,
+        "quarantine_id": quarantine_id,
+        "data_id": result["data_id"],
+        "workspace_id": namespace,
+        "status": result["status"],
+        "quarantine_file_retained": True,
     }
 
 
