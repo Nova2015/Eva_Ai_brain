@@ -271,3 +271,26 @@ def test_job_creation_blocks_case_insensitive_machine_start(tmp_path, monkeypatc
             workspace_id="cad", machine_id="machine-b", actor_id="owner-1",
             input_manifest={}, requires_approval=True,
         )
+
+
+
+def test_engineering_job_cannot_downgrade_governed_source_classification(tmp_path, monkeypatch):
+    from src.data_governance import register_import
+
+    _enable_tool(tmp_path, monkeypatch)
+    source = tmp_path / "sensitive-input.txt"
+    source.write_text("sensitive engineering input", encoding="utf-8")
+    record = register_import(
+        source, source="test", owner_id="owner-1", workspace_id="cad",
+        actor_id="owner-1", classification="sensitive",
+    )
+    base = dict(
+        job_type="fea_solve", tool_id="freecad", owner_id="owner-1",
+        workspace_id="cad", machine_id="machine-b", actor_id="owner-1",
+        input_manifest={"data_id": record["data_id"]}, data_id=record["data_id"],
+        requires_approval=False,
+    )
+    with pytest.raises(PermissionError, match="cannot be lower"):
+        job_manager.create_job(**base, classification="private")
+    allowed = job_manager.create_job(**base, classification="restricted")
+    assert allowed["classification"] == "restricted"
