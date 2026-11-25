@@ -589,9 +589,8 @@ def set_training_approval(
         _audit(conn, data_id, "training_approval_changed", actor_id,
                {"from": previous, "to": status})
         updated = conn.execute(
-            """SELECT * FROM data_items
-               WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (data_id, owner_id, workspace_id),
+            """SELECT * FROM data_items WHERE data_id=? AND workspace_id=?""",
+            (data_id, workspace_id),
         ).fetchone()
     return _row_dict(updated)  # type: ignore[return-value]
 
