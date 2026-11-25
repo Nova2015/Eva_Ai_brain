@@ -119,3 +119,38 @@ def test_manufacturing_process_api_is_authenticated_and_read_only():
     )
     assert result["validation"]["valid"] is True
     assert result["physical_execution_performed"] is False
+
+
+
+def test_manufacturing_catalog_returns_deep_copies():
+    processes = manufacturing.list_processes()
+    processes[0]["required_inputs"].append("tampered")
+    refreshed = manufacturing.get_process("injection_molding")
+    assert "tampered" not in refreshed["required_inputs"]
+
+
+@pytest.mark.parametrize(
+    "input_manifest",
+    [
+        {"part_geometry": "", "material": "PP", "wall_thickness": "2mm", "mold_concept": "two_plate"},
+        {"part_geometry": "part.step", "material": False, "wall_thickness": "2mm", "mold_concept": "two_plate"},
+        {"part_geometry": "part.step", "material": "PP", "wall_thickness": {}, "mold_concept": "two_plate"},
+    ],
+)
+def test_manufacturing_validation_rejects_empty_or_false_required_inputs(input_manifest):
+    with pytest.raises(ValueError, match="Missing required manufacturing inputs"):
+        manufacturing.validate_process_request(
+            "injection_molding", input_manifest=input_manifest
+        )
+
+
+def test_manufacturing_validation_requires_boolean_preflight_flag():
+    with pytest.raises(ValueError, match="preflight_tools must be a boolean"):
+        manufacturing.validate_process_request(
+            "injection_molding",
+            input_manifest={
+                "part_geometry": "part.step", "material": "PP",
+                "wall_thickness": "2mm", "mold_concept": "two_plate",
+            },
+            preflight_tools="yes",
+        )
