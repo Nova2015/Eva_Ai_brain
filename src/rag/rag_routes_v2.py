@@ -64,9 +64,9 @@ except ImportError:
     )
 
 try:
-    from ..data_governance import approve_content_revision, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, sha256_file
+    from ..data_governance import approve_content_revision, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, sha256_file
 except ImportError:
-    from data_governance import approve_content_revision, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, sha256_file
+    from data_governance import approve_content_revision, authorize_data_action, get_record, list_audit_events, list_reconciliation_events, record_governance_event, record_reconciliation_event, register_import, recover_location, sha256_file
 
 try:
     import upload_policy
@@ -981,6 +981,10 @@ async def rag_reconciliation_repair(
         raise HTTPException(status_code=400, detail="Explicit approval is required before repair")
 
     workspace_id = effective_workspace_id(req.workspace_id, user_id)
+    if not authorize_data_action(
+        req.data_id, actor_id=user_id, workspace_id=workspace_id, action="execute"
+    ):
+        raise HTTPException(status_code=404, detail="Governed data item not found")
     record = get_record(req.data_id, owner_id=user_id, workspace_id=workspace_id)
     if not record:
         raise HTTPException(status_code=404, detail="Governed data item not found")
