@@ -96,11 +96,11 @@ def test_tolerance_analysis_api_is_authenticated_and_does_not_grant_approval():
 )
 def test_tolerance_stack_rejects_boolean_and_malformed_dimension_values(dimension):
     with pytest.raises(ValueError):
-        tolerance_analysis.calculate_tolerance_stack([dimension])
+        calculate_tolerance_stack([dimension])
 
 
 def test_tolerance_stack_rejects_overflow_after_unit_conversion():
     with pytest.raises(ValueError, match="overflow"):
-        tolerance_analysis.calculate_tolerance_stack([
+        calculate_tolerance_stack([
             {"name": "huge", "nominal": 1e308, "plus_tolerance": 0, "minus_tolerance": 0}
         ], unit="m")
