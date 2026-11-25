@@ -74,3 +74,30 @@ def test_freecad_boolean_cut_requires_existing_objects_and_limits_operation_coun
               "width_mm": 1, "height_mm": 1} for i in range(101)],
             actor_id="owner-1", approved=True,
         )
+
+
+def test_freecad_macro_api_requires_authentication_and_approval(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from src.engineering import routes
+
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
+    request = routes.FreeCADMacroRequest(
+        operations=[
+            {"op": "create_box", "name": "Base", "length_mm": 10,
+             "width_mm": 10, "height_mm": 2},
+        ],
+        approved=False,
+    )
+    with pytest.raises(HTTPException) as auth_error:
+        routes.engineering_build_freecad_macro(request, user_id="anonymous")
+    assert auth_error.value.status_code == 401
+
+    with pytest.raises(HTTPException) as approval_error:
+        routes.engineering_build_freecad_macro(request, user_id="owner-1")
+    assert approval_error.value.status_code == 403
+
+    request.approved = True
+    result = routes.engineering_build_freecad_macro(request, user_id="owner-1")
+    assert result["macro"]["status"] == "prepared_for_review"
+    assert result["execution_performed"] is False
+    assert result["machine_started"] is False
