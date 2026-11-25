@@ -249,8 +249,10 @@ def _authorized_record(
     actor_id: str,
     workspace_id: str,
     action: str,
+    *,
+    include_deleted: bool = False,
 ) -> Optional[sqlite3.Row]:
-    """Resolve a record only when its owner or ACL grants the requested action."""
+    """Resolve a record only when its lifecycle state and ACL permit the action."""
     if action not in _PERMISSION_ACTIONS:
         raise ValueError(f"Unsupported permission action: {action}")
     row = conn.execute(
@@ -258,6 +260,13 @@ def _authorized_record(
         (data_id, workspace_id),
     ).fetchone()
     if row is None:
+        return None
+    lifecycle = row["lifecycle_status"]
+    if lifecycle == "deleted" and not include_deleted:
+        return None
+    if lifecycle == "pending_deletion" and action in {"write", "execute"}:
+        return None
+    if lifecycle == "archived" and action == "execute":
         return None
     if row["owner_id"] == actor_id:
         return row
@@ -759,7 +768,9 @@ def list_versions(
     """List versions only for a Data ID in the caller's scope."""
     _require_scope(data_id, owner_id, workspace_id)
     with _connect() as conn:
-        exists = _authorized_record(conn, data_id, owner_id, workspace_id, "read")
+        exists = _authorized_record(
+            conn, data_id, owner_id, workspace_id, "read", include_deleted=True
+        )
         if exists is None:
             raise KeyError(f"Unknown Data ID: {data_id}")
         rows = conn.execute(
@@ -854,7 +865,9 @@ def list_audit_events(
     """Read the append-only audit trail only inside the caller's scope."""
     _require_scope(data_id, owner_id, workspace_id)
     with _connect() as conn:
-        exists = _authorized_record(conn, data_id, owner_id, workspace_id, "read")
+        exists = _authorized_record(
+            conn, data_id, owner_id, workspace_id, "read", include_deleted=True
+        )
         if exists is None:
             raise KeyError(f"Unknown Data ID: {data_id}")
         rows = conn.execute(
