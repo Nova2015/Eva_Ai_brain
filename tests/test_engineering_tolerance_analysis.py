@@ -83,3 +83,24 @@ def test_tolerance_analysis_api_is_authenticated_and_does_not_grant_approval():
     )
     assert result["analysis"]["nominal_stack_mm"] == pytest.approx(10)
     assert result["engineering_approval"] == "not_granted"
+
+
+
+@pytest.mark.parametrize(
+    "dimension",
+    [
+        {"name": "bool", "nominal": True, "plus_tolerance": 0, "minus_tolerance": 0},
+        {"name": "bad-direction", "nominal": 10, "direction": True},
+        {"name": "bad-name", "name": 42, "nominal": 10},
+    ],
+)
+def test_tolerance_stack_rejects_boolean_and_malformed_dimension_values(dimension):
+    with pytest.raises(ValueError):
+        tolerance_analysis.calculate_tolerance_stack([dimension])
+
+
+def test_tolerance_stack_rejects_overflow_after_unit_conversion():
+    with pytest.raises(ValueError, match="overflow"):
+        tolerance_analysis.calculate_tolerance_stack([
+            {"name": "huge", "nominal": 1e308, "plus_tolerance": 0, "minus_tolerance": 0}
+        ], unit="m")
