@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Optional
 from .config import get_dataset_root, get_registry_db_path
+from .path_security import _is_unsafe_path_entry, validate_path
 
 
 
@@ -28,22 +29,6 @@ def _is_valid_eva_id(value: Any, prefix: str) -> bool:
         and value.startswith(prefix)
         and all(c in "0123456789ABCDEF" for c in value[len(prefix):])
     )
-
-
-def _is_unsafe_path_entry(path: Path) -> bool:
-    """Return True for symlinks, junctions, or paths that cannot be safely checked."""
-    try:
-        if path.is_symlink():
-            return True
-
-        is_junction = getattr(path, "is_junction", None)
-        if is_junction is not None and is_junction():
-            return True
-
-        return False
-    except (OSError, RuntimeError, ValueError):
-        # Fail closed: an uncheckable filesystem entry must never be deleted.
-        return True
 
 
 def _process_start_time(pid: int) -> float | None:
@@ -356,11 +341,12 @@ class DeepLearningRegistry:
 
         expected_name = f"{model_id}_v{version}.json"
         try:
-            supplied = Path(artifact_path).expanduser().resolve(strict=False)
-            root = get_dataset_root().resolve(strict=False)
-            expected = (
-                root / "processed" / dataset_id / expected_name
-            ).resolve(strict=False)
+            configured_root = validate_path(get_dataset_root(), directory=True)
+            processed_dir = validate_path(configured_root / "processed", directory=True)
+            dataset_dir = validate_path(processed_dir / dataset_id, directory=True)
+            expected_path = validate_path(dataset_dir / expected_name, regular_file=True)
+            supplied = validate_path(artifact_path).resolve(strict=False)
+            expected = expected_path.resolve(strict=False)
         except (OSError, RuntimeError, ValueError) as exc:
             raise ValueError("Unable to validate artifact path") from exc
 
@@ -504,14 +490,18 @@ class DeepLearningRegistry:
 
         # Resolve the exact permitted target and reject symlinked path components.
         try:
-            root = get_dataset_root().resolve(strict=False)
-
-            processed_dir = root / "processed"
-            dataset_dir = processed_dir / dataset_id
-            expected = dataset_dir / f"{model_id}_v{version}.json"
+            configured_root = validate_path(get_dataset_root(), directory=True)
+            root = configured_root.resolve(strict=False)
+            processed_dir = validate_path(root / "processed", directory=True)
+            dataset_dir = validate_path(processed_dir / dataset_id, directory=True)
+            expected = validate_path(
+                dataset_dir / f"{model_id}_v{version}.json", regular_file=True
+            )
+            recorded_candidate = validate_path(recorded_path)
 
             if (
-                _is_unsafe_path_entry(processed_dir)
+                _is_unsafe_path_entry(configured_root)
+                or _is_unsafe_path_entry(processed_dir)
                 or _is_unsafe_path_entry(dataset_dir)
                 or _is_unsafe_path_entry(expected)
             ):
@@ -520,7 +510,7 @@ class DeepLearningRegistry:
 
             expected_resolved = expected.resolve(strict=False)
             dataset_resolved = dataset_dir.resolve(strict=False)
-            recorded_resolved = Path(recorded_path).expanduser().resolve(strict=False)
+            recorded_resolved = recorded_candidate.resolve(strict=False)
 
             if (
                 recorded_resolved != expected_resolved

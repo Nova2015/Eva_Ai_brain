@@ -18,6 +18,7 @@ import numpy as np
 from .processor import sha256_file
 from .registry import registry
 from .config import get_dataset_root
+from .path_security import validate_path
 
 
 class _WorkerHeartbeat:
@@ -323,8 +324,8 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
         ):
             raise ValueError("Dataset source version changed; re-prepare and review it")
 
-        source = Path(dataset["file_path"])
-        if not source.is_file() or sha256_file(source) != dataset["sha256"]:
+        source = validate_path(dataset["file_path"], must_exist=True, regular_file=True)
+        if sha256_file(source) != dataset["sha256"]:
             raise ValueError("Dataset source file is missing or its integrity hash changed")
 
         metadata = json.loads(dataset.get("metadata_json") or "{}")
@@ -333,16 +334,12 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
         if review.get("status") != "verified":
             raise ValueError("Dataset labels and target columns have not been reviewed")
 
-        artifact_dir = (
-            get_dataset_root()
-            / "processed"
-            / dataset["dataset_id"]
+        dataset_root = validate_path(get_dataset_root(), directory=True)
+        processed_dir = validate_path(dataset_root / "processed", directory=True)
+        artifact_dir = validate_path(processed_dir / dataset["dataset_id"], directory=True)
+        prepared_path = validate_path(
+            artifact_dir / "prepared.json", must_exist=True, regular_file=True
         )
-        prepared_path = artifact_dir / "prepared.json"
-
-        if not prepared_path.is_file():
-            raise ValueError("Prepared dataset artifact is missing; prepare the dataset again")
-
         prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
         if prepared.get("source_sha256") != dataset["sha256"]:
             raise ValueError("Prepared artifact does not match the approved source hash")
@@ -367,8 +364,10 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
         model_id = f"EVA-MODEL-{uuid.uuid4().hex.upper()}"
         version = 1
 
+        artifact_dir = validate_path(artifact_dir, directory=True)
         artifact_dir.mkdir(parents=True, exist_ok=True)
-        artifact_path = artifact_dir / f"{model_id}_v{version}.json"
+        artifact_dir = validate_path(artifact_dir, must_exist=True, directory=True)
+        artifact_path = validate_path(artifact_dir / f"{model_id}_v{version}.json")
         registry.record_artifact_intent(
             job_id,
             owner_id=owner_id,
@@ -378,6 +377,8 @@ def run_training_job(job_id: str, *, owner_id: str, workspace_id: str,
             version=version,
             artifact_path=str(artifact_path),
         )
+        validate_path(artifact_dir, must_exist=True, directory=True)
+        artifact_path = validate_path(artifact_path)
         model.save_model(str(artifact_path))
 
         registry.update_job(

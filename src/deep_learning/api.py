@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 
 from .config import get_dataset_root, get_runtime_policy
+from .path_security import PathSecurityError, validate_path
 from .registry import registry
 
 try:
@@ -23,7 +24,6 @@ ALLOWED_EXTENSIONS = {
     ".csv", ".xlsx", ".xls", ".txt", ".md", ".docx", ".pptx", ".json", ".jsonl"
 }
 ROOT = Path(__file__).resolve().parents[2]
-DATASET_ROOT = get_dataset_root()
 
 
 def build_router(auth_dependency) -> APIRouter:
@@ -56,10 +56,15 @@ def build_router(auth_dependency) -> APIRouter:
         if len(payload) > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="Dataset exceeds configured upload limit")
 
-        DATASET_ROOT.mkdir(parents=True, exist_ok=True)
-        stored_name = f"{uuid.uuid4().hex}{suffix}"
-        target = DATASET_ROOT / stored_name
-        target.write_bytes(payload)
+        try:
+            dataset_root = validate_path(get_dataset_root(), directory=True)
+            dataset_root.mkdir(parents=True, exist_ok=True)
+            dataset_root = validate_path(get_dataset_root(), must_exist=True, directory=True)
+            stored_name = f"{uuid.uuid4().hex}{suffix}"
+            target = validate_path(dataset_root / stored_name)
+            target.write_bytes(payload)
+        except PathSecurityError as exc:
+            raise HTTPException(status_code=409, detail="Dataset storage path is unsafe") from exc
         governed = None
         try:
             governed = register_import(
@@ -81,7 +86,7 @@ def build_router(auth_dependency) -> APIRouter:
             # would leave a persistent Data ID pointing to a missing source.
             if governed is None:
                 try:
-                    target.unlink(missing_ok=True)
+                    validate_path(target).unlink(missing_ok=True)
                 except Exception:
                     pass
             raise
@@ -112,25 +117,39 @@ def build_router(auth_dependency) -> APIRouter:
             raise HTTPException(status_code=404, detail="Governed dataset not found")
         if governed.get("sha256") != dataset["sha256"] or int(governed.get("version", 0)) != int(dataset["source_version"]):
             raise HTTPException(status_code=409, detail="Dataset source revision changed; revalidate before preparation")
-        source_path = Path(dataset["file_path"])
-        if not source_path.is_file():
-            raise HTTPException(status_code=409, detail="Dataset source file is missing")
+        try:
+            source_path = validate_path(dataset["file_path"], must_exist=True, regular_file=True)
+        except PathSecurityError as exc:
+            raise HTTPException(status_code=409, detail="Dataset source path is unsafe or missing") from exc
         from .processor import process_dataset, sha256_file
         if sha256_file(source_path) != dataset["sha256"]:
             raise HTTPException(status_code=409, detail="Dataset file integrity check failed")
-        artifact_dir = DATASET_ROOT / "processed" / dataset_id
-        artifact_dir.mkdir(parents=True, exist_ok=True)
         try:
+            dataset_root = validate_path(get_dataset_root(), directory=True)
+            processed_dir = validate_path(dataset_root / "processed", directory=True)
+            processed_dir.mkdir(parents=True, exist_ok=True)
+            processed_dir = validate_path(processed_dir, must_exist=True, directory=True)
+            artifact_dir = validate_path(processed_dir / dataset_id, directory=True)
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            artifact_dir = validate_path(artifact_dir, must_exist=True, directory=True)
             prepared = process_dataset(source_path, assets_dir=artifact_dir / "assets")
+        except PathSecurityError as exc:
+            raise HTTPException(status_code=409, detail="Dataset preparation path is unsafe") from exc
         except Exception as exc:
             raise HTTPException(status_code=422, detail=f"Dataset preparation failed: {type(exc).__name__}")
         if prepared["source_sha256"] != dataset["sha256"]:
             raise HTTPException(status_code=409, detail="Dataset changed during preparation")
-        artifact_path = artifact_dir / "prepared.json"
-        temporary_path = artifact_dir / "prepared.json.tmp"
+        artifact_path = validate_path(artifact_dir / "prepared.json")
+        temporary_path = validate_path(artifact_dir / "prepared.json.tmp")
         import json
-        temporary_path.write_text(json.dumps(prepared, ensure_ascii=False), encoding="utf-8")
-        temporary_path.replace(artifact_path)
+        try:
+            validate_path(artifact_dir, must_exist=True, directory=True)
+            temporary_path.write_text(json.dumps(prepared, ensure_ascii=False), encoding="utf-8")
+            validate_path(temporary_path, must_exist=True, regular_file=True)
+            validate_path(artifact_path)
+            temporary_path.replace(artifact_path)
+        except PathSecurityError as exc:
+            raise HTTPException(status_code=409, detail="Prepared artifact path is unsafe") from exc
         summary = prepared["profile"]
         registry.update_dataset_metadata(
             dataset_id, owner_id=user_id, workspace_id=workspace_id,
@@ -185,9 +204,10 @@ def build_router(auth_dependency) -> APIRouter:
             raise HTTPException(status_code=404, detail="Governed dataset not found")
         if governed.get("sha256") != dataset["sha256"] or int(governed.get("version", 0)) != int(dataset["source_version"]):
             raise HTTPException(status_code=409, detail="Dataset source revision changed; prepare it again")
-        source_path = Path(dataset["file_path"])
-        if not source_path.is_file():
-            raise HTTPException(status_code=409, detail="Dataset source file is missing")
+        try:
+            source_path = validate_path(dataset["file_path"], must_exist=True, regular_file=True)
+        except PathSecurityError as exc:
+            raise HTTPException(status_code=409, detail="Dataset source path is unsafe or missing") from exc
         from .processor import sha256_file
         if sha256_file(source_path) != dataset["sha256"]:
             raise HTTPException(status_code=409, detail="Dataset source integrity check failed")
@@ -196,11 +216,16 @@ def build_router(auth_dependency) -> APIRouter:
             raise HTTPException(status_code=409, detail="Prepare the dataset before reviewing labels")
         if not confirm_labels:
             raise HTTPException(status_code=400, detail="Explicit confirmation that labels and target values were reviewed is required")
-        artifact_dir = DATASET_ROOT / "processed" / dataset_id
-        prepared_path = artifact_dir / "prepared.json"
-        if not prepared_path.is_file():
-            raise HTTPException(status_code=409, detail="Prepared dataset artifact is missing")
-        prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
+        try:
+            dataset_root = validate_path(get_dataset_root(), directory=True)
+            processed_dir = validate_path(dataset_root / "processed", directory=True)
+            artifact_dir = validate_path(processed_dir / dataset_id, directory=True)
+            prepared_path = validate_path(
+                artifact_dir / "prepared.json", must_exist=True, regular_file=True
+            )
+            prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
+        except PathSecurityError as exc:
+            raise HTTPException(status_code=409, detail="Prepared dataset path is unsafe or missing") from exc
         if prepared.get("source_sha256") != dataset["sha256"]:
             raise HTTPException(status_code=409, detail="Prepared artifact is stale; prepare the dataset again")
         tables = prepared.get("tables") or []
@@ -267,8 +292,10 @@ def build_router(auth_dependency) -> APIRouter:
             raise HTTPException(status_code=409, detail="Review and verify dataset labels before training approval")
         if governed.get("sha256") != dataset["sha256"] or int(governed.get("version", 0)) != int(dataset["source_version"]):
             raise HTTPException(status_code=409, detail="Dataset source revision changed; revalidate before training")
-        if not Path(dataset["file_path"]).is_file():
-            raise HTTPException(status_code=409, detail="Dataset source file is missing")
+        try:
+            validate_path(dataset["file_path"], must_exist=True, regular_file=True)
+        except PathSecurityError as exc:
+            raise HTTPException(status_code=409, detail="Dataset source path is unsafe or missing") from exc
         try:
             approval = set_training_approval(dataset["data_id"], "approved", actor_id=user_id)
             policy = get_runtime_policy()
@@ -307,8 +334,10 @@ def build_router(auth_dependency) -> APIRouter:
             raise HTTPException(status_code=409, detail="Dataset labels must be reviewed before training")
         if governed.get("sha256") != dataset["sha256"] or int(governed.get("version", 0)) != int(dataset["source_version"]):
             raise HTTPException(status_code=409, detail="Dataset source revision changed; revalidate before training")
-        if not Path(dataset["file_path"]).is_file():
-            raise HTTPException(status_code=409, detail="Dataset source file is missing")
+        try:
+            validate_path(dataset["file_path"], must_exist=True, regular_file=True)
+        except PathSecurityError as exc:
+            raise HTTPException(status_code=409, detail="Dataset source path is unsafe or missing") from exc
         try:
             policy = get_runtime_policy()
             job = registry.approve_dataset(

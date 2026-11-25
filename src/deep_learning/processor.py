@@ -12,6 +12,8 @@ import json
 import math
 import re
 from pathlib import Path
+
+from .path_security import PathSecurityError, validate_path
 from typing import Any
 
 MAX_PDF_PAGES = 200
@@ -22,8 +24,9 @@ MAX_IMAGE_PIXELS = 40_000_000
 
 
 def sha256_file(path: str | Path) -> str:
+    safe_path = validate_path(path, must_exist=True, regular_file=True)
     digest = hashlib.sha256()
-    with Path(path).open("rb") as stream:
+    with safe_path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
@@ -103,6 +106,11 @@ def _extract_pdf(path: Path, warnings: list[str], assets_dir: Path | None = None
     pages: list[dict[str, Any]] = []
     tables: list[list[Any]] = []
     images: list[dict[str, Any]] = []
+    safe_assets_dir = None
+    if assets_dir is not None:
+        safe_assets_dir = validate_path(assets_dir, directory=True)
+        safe_assets_dir.mkdir(parents=True, exist_ok=True)
+        safe_assets_dir = validate_path(safe_assets_dir, must_exist=True, directory=True)
     try:
         from pypdf import PdfReader
         reader = PdfReader(str(path), strict=False)
@@ -148,8 +156,8 @@ def _extract_pdf(path: Path, warnings: list[str], assets_dir: Path | None = None
                         pages[index] = {"page": index+1, "text": ocr, "extraction": "ocr"}
             except ImportError:
                 warnings.append("Scanned PDF OCR unavailable: install Pillow and pytesseract with local Tesseract.")
-        if assets_dir is not None:
-            assets_dir.mkdir(parents=True, exist_ok=True)
+        if safe_assets_dir is not None:
+            validate_path(safe_assets_dir, must_exist=True, directory=True)
             total_bytes = 0
             for page_index, page in enumerate(document[:MAX_PDF_PAGES]):
                 for image_index, image_info in enumerate(page.get_images(full=True)):
@@ -168,11 +176,15 @@ def _extract_pdf(path: Path, warnings: list[str], assets_dir: Path | None = None
                         warnings.append(f"Skipped invalid/oversized PDF image on page {page_index+1}.")
                         continue
                     asset_name = f"page_{page_index+1:03d}_image_{image_index+1:03d}.{extension}"
-                    (assets_dir / asset_name).write_bytes(image_bytes)
+                    asset_path = validate_path(safe_assets_dir / asset_name)
+                    validate_path(safe_assets_dir, must_exist=True, directory=True)
+                    asset_path.write_bytes(image_bytes)
                     total_bytes += len(image_bytes)
                     images.append({"page": page_index+1, "asset_name": asset_name,
                                    "width": width, "height": height, "format": extension,
                                    "source": "embedded_pdf_image"})
+    except PathSecurityError:
+        raise
     except ImportError:
         if assets_dir is not None:
             warnings.append("PDF embedded-image extraction unavailable: install PyMuPDF.")
@@ -184,9 +196,9 @@ def _extract_pdf(path: Path, warnings: list[str], assets_dir: Path | None = None
 
 
 def process_dataset(path: str | Path, *, assets_dir: str | Path | None = None) -> dict[str, Any]:
-    source = Path(path).resolve(strict=True)
-    if not source.is_file():
-        raise ValueError("Dataset source must be a regular file")
+    source = validate_path(path, must_exist=True, regular_file=True)
+    if assets_dir is not None:
+        assets_dir = validate_path(assets_dir, directory=True)
     suffix = source.suffix.lower()
     warnings: list[str] = []
     text_parts: list[dict[str, Any]] = []
@@ -194,7 +206,7 @@ def process_dataset(path: str | Path, *, assets_dir: str | Path | None = None) -
     images: list[dict[str, Any]] = []
 
     if suffix == ".pdf":
-        text_parts, tables, images = _extract_pdf(source, warnings, Path(assets_dir) if assets_dir else None)
+        text_parts, tables, images = _extract_pdf(source, warnings, assets_dir)
     elif suffix in {".csv"}:
         tables = [_parse_delimited(source.read_bytes())]
     elif suffix in {".xlsx", ".xls"}:

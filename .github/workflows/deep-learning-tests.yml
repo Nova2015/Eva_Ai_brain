@@ -13,6 +13,7 @@ on:
     branches:
       - main
       - feat/engineering-core-foundation
+      - feat/deep-learning-worker-crash-recovery
     paths:
       - "src/deep_learning/**"
       - "src/data_governance/**"
@@ -30,6 +31,6 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install focused test dependencies
-        run: python -m pip install --upgrade pip pytest numpy openpyxl fastapi python-multipart xgboost scikit-learn
+        run: python -m pip install --upgrade pip pytest numpy openpyxl fastapi python-multipart xgboost scikit-learn psutil
       - name: Run Deep Learning tests
         run: python -m pytest -q tests/test_deep_learning_*.py

@@ -340,7 +340,7 @@ def test_cleanup_blocks_real_windows_junction_without_deleting_target(
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert dataset_dir.is_junction()
+    assert registry_module._is_unsafe_path_entry(dataset_dir)
 
     # Mark the job failed and cleanup pending, preserving the recorded intent.
     with registry.connect() as conn:
