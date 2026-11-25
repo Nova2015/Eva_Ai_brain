@@ -34,6 +34,11 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _require_actor(actor_id: str) -> None:
+    if not isinstance(actor_id, str) or not actor_id.strip():
+        raise ValueError("actor_id is required")
+
+
 def _connect() -> sqlite3.Connection:
     path = _db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -165,7 +170,7 @@ def create_job(
         except ImportError:
             from data_governance import authorize_data_action
         if not authorize_data_action(
-            data_id, actor_id=owner_id, workspace_id=workspace_id, action="execute"
+            data_id, actor_id=actor_id, workspace_id=workspace_id, action="execute"
         ):
             raise PermissionError("Execute permission is required for the governed source")
 
@@ -203,8 +208,7 @@ def approve_job(
 ) -> dict[str, Any]:
     if not approved:
         raise ValueError("Explicit job approval is required")
-    if not actor_id or not actor_id.strip():
-        raise ValueError("actor_id is required")
+    _require_actor(actor_id)
     with _connect() as conn:
         row = conn.execute(
             """SELECT * FROM engineering_jobs
@@ -215,12 +219,14 @@ def approve_job(
             raise KeyError(f"Engineering job not found: {job_id}")
         if row["status"] != "pending_approval":
             raise ValueError(f"Job cannot be approved from status {row['status']!r}")
-        conn.execute(
+        cursor = conn.execute(
             """UPDATE engineering_jobs
                SET status='queued', approved_by=?, approved_at=?
-               WHERE job_id=? AND owner_id=? AND workspace_id=?""",
+               WHERE job_id=? AND owner_id=? AND workspace_id=? AND status='pending_approval'""",
             (actor_id, _now(), job_id, owner_id, workspace_id),
         )
+        if cursor.rowcount != 1:
+            raise ValueError("Job approval was already processed")
         _event(conn, job_id, "job_approved", actor_id, {"approved": True})
     return get_job(job_id, owner_id=owner_id, workspace_id=workspace_id)  # type: ignore[return-value]
 
@@ -233,8 +239,9 @@ def claim_job(
     machine_id: str,
     actor_id: str,
 ) -> dict[str, Any]:
-    if not machine_id or not machine_id.strip() or not actor_id or not actor_id.strip():
-        raise ValueError("machine_id and actor_id are required")
+    if not machine_id or not machine_id.strip():
+        raise ValueError("machine_id is required")
+    _require_actor(actor_id)
     with _connect() as conn:
         row = conn.execute(
             """SELECT * FROM engineering_jobs
@@ -252,11 +259,13 @@ def claim_job(
         tool = tool_registry.resolve_tool(row["tool_id"])
         if tool["machine_start_allowed"]:
             raise PermissionError("Automatic machine start is prohibited")
-        conn.execute(
+        cursor = conn.execute(
             """UPDATE engineering_jobs SET status='running', started_at=?
                WHERE job_id=? AND owner_id=? AND workspace_id=? AND status='queued'""",
             (_now(), job_id, owner_id, workspace_id),
         )
+        if cursor.rowcount != 1:
+            raise ValueError("Job was already claimed by another worker")
         _event(conn, job_id, "job_claimed", actor_id, {"machine_id": machine_id})
     return get_job(job_id, owner_id=owner_id, workspace_id=workspace_id)  # type: ignore[return-value]
 
@@ -269,6 +278,7 @@ def complete_job(
     actor_id: str,
     output_manifest: dict[str, Any],
 ) -> dict[str, Any]:
+    _require_actor(actor_id)
     if not isinstance(output_manifest, dict):
         raise ValueError("output_manifest must be a dictionary")
     try:
@@ -303,6 +313,7 @@ def fail_job(
     actor_id: str,
     error: str,
 ) -> dict[str, Any]:
+    _require_actor(actor_id)
     if not isinstance(error, str) or not error.strip():
         raise ValueError("error is required")
     with _connect() as conn:
