@@ -1,3 +1,8 @@
+from .import_pipeline import (
+    quarantine_candidate,
+    validate_and_register_import,
+    validate_import_candidate,
+)
 """EVA Data Governance foundation.
 
 This package provides persistent identity and audit primitives. It does not
@@ -36,6 +41,9 @@ __all__ = [
     "restore_record",
     "request_deletion",
     "approve_deletion",
+    "quarantine_candidate",
+    "validate_and_register_import",
+    "validate_import_candidate",
     "sha256_file",
     "register_import",
     "recover_location",
