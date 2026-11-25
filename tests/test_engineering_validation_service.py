@@ -1,6 +1,6 @@
 import pytest
 
-from src.data_governance import register_import
+from src.data_governance import list_audit_events, register_import
 from src.engineering import validation_service
 
 
@@ -31,6 +31,11 @@ def test_governed_validation_uses_data_id_hash_and_domain_validator(tmp_path, mo
     assert result["validation"]["ok"] is True
     assert result["source_modified"] is False
     assert source.exists()
+    events = list_audit_events(
+        record["data_id"], owner_id="owner-1", workspace_id="cad"
+    )
+    assert events[-1]["action"] == "engineering_validation_completed"
+    assert events[-1]["details"]["ok"] is True
 
 
 def test_governed_validation_rejects_owner_spoofing_and_changed_source(tmp_path, monkeypatch):
