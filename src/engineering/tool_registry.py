@@ -14,7 +14,11 @@ from typing import Any, Optional
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-DB_PATH = Path(os.getenv("EVA_ENGINEERING_DB", ROOT_DIR / "data" / "eva_engineering.db"))
+DEFAULT_DB_PATH = ROOT_DIR / "data" / "eva_engineering.db"
+
+
+def _db_path() -> Path:
+    return Path(os.getenv("EVA_ENGINEERING_DB", str(DEFAULT_DB_PATH))).expanduser()
 
 _DEFAULT_TOOLS: tuple[dict[str, Any], ...] = (
     {
@@ -363,8 +367,9 @@ _DEFAULT_TOOLS: tuple[dict[str, Any], ...] = (
 
 
 def _connect() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH), timeout=30)
+    db_path = _db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -561,6 +566,9 @@ def resolve_tool(tool_id: str) -> dict[str, Any]:
         raise KeyError(f"Unknown engineering tool: {tool_id}")
     if not tool["enabled"] or tool["validation_status"] != "path_verified":
         raise PermissionError(f"Engineering tool is not enabled and validated: {tool_id}")
+    executable = tool.get("executable_path")
+    if not executable or not Path(executable).is_file():
+        raise PermissionError(f"Validated executable is no longer available: {tool_id}")
     if tool["machine_start_allowed"]:
         raise PermissionError("Automatic machine start is prohibited by EVA policy")
     return tool
