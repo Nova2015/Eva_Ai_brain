@@ -1,5 +1,7 @@
 from pathlib import Path
 import json
+import sqlite3
+import pytest
 
 from src.data_governance.import_pipeline import (
     list_quarantined,
@@ -52,6 +54,15 @@ def test_invalid_pdf_is_quarantined_without_modifying_original(tmp_path, monkeyp
     assert len(items) == 1
     assert items[0]["quarantine_id"] == result["quarantine"]["quarantine_id"]
     assert list_quarantined(owner_id="owner-1", workspace_id="other-workspace") == []
+    conn = sqlite3.connect(tmp_path / "governance.db")
+    try:
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            conn.execute(
+                "UPDATE quarantine_audit SET action='tampered' WHERE quarantine_id=?",
+                (result["quarantine"]["quarantine_id"],),
+            )
+    finally:
+        conn.close()
 
 
 def test_size_limit_and_unsupported_extension_fail_closed_to_quarantine(tmp_path, monkeypatch):
