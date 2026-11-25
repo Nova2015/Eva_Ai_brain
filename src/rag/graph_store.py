@@ -155,8 +155,8 @@ def _validate_scope(data_id: str, owner_id: str, workspace_id: str, actor_id: st
         from ..data_governance import get_record
     except ImportError:
         from data_governance import get_record
-    record = get_record(data_id)
-    if not record or record.get("owner_id") != owner_id or record.get("workspace_id") != workspace_id:
+    record = get_record(data_id, owner_id=owner_id, workspace_id=workspace_id)
+    if not record:
         raise PermissionError("Source Data ID is not available in this owner/workspace")
     return record
 
