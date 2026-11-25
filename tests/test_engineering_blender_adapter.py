@@ -27,11 +27,11 @@ def test_blender_script_generation_is_approved_and_preserves_existing_scene(tmp_
 
     with pytest.raises(PermissionError, match="Explicit approval"):
         blender_adapter.build_blender_script(
-            operations, owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=False
+            operations, owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=False
         )
 
     manifest = blender_adapter.build_blender_script(
-        operations, scene_name="Door_Trim", actor_id="owner-1", approved=True
+        operations, scene_name="Door_Trim", owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True
     )
     script_path = Path(manifest["script_path"])
     script_text = script_path.read_text(encoding="utf-8")
@@ -76,7 +76,7 @@ def test_blender_script_rejects_untrusted_operations(tmp_path, monkeypatch, oper
     monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
     with pytest.raises(ValueError):
         blender_adapter.build_blender_script(
-            [operation], actor_id="owner-1", approved=True
+            [operation], owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True
         )
 
 
@@ -94,7 +94,7 @@ def test_blender_adapter_never_overwrites_existing_export(tmp_path, monkeypatch)
                 {"op": "create_cube", "name": "Cube", "size": 10},
                 {"op": "export_glb", "objects": ["Cube"], "filename": "part.glb"},
             ],
-            actor_id="owner-1", approved=True,
+            owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
         )
     assert existing.read_bytes() == b"existing user export"
 
@@ -140,7 +140,7 @@ def test_blender_rejects_malformed_operation_and_boolean_numeric_values(
     monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
     with pytest.raises(ValueError):
         blender_adapter.build_blender_script(
-            [operation], actor_id="owner-1", approved=True
+            [operation], owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True
         )
 
 
@@ -159,7 +159,7 @@ def test_blender_adapter_supports_plane_torus_and_mesh_modifiers(tmp_path, monke
             {"op": "add_mirror_modifier", "object": "TrimSurface",
              "axes": ["x", "y"], "use_clip": True},
         ],
-        actor_id="owner-1", approved=True,
+        owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True,
     )
     script = Path(manifest["script_path"]).read_text(encoding="utf-8")
     assert "primitive_plane_add" in script
@@ -190,5 +190,5 @@ def test_blender_adapter_rejects_unsafe_mesh_parameters(tmp_path, monkeypatch, o
     operations = [{"op": "create_cube", "name": "Cube", "size": 5}, operation]
     with pytest.raises(ValueError):
         blender_adapter.build_blender_script(
-            operations, actor_id="owner-1", approved=True
+            operations, owner_id="owner-1", workspace_id="cad", owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=True
         )
