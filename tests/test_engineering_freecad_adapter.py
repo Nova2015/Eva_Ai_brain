@@ -3,6 +3,12 @@ from pathlib import Path
 
 import pytest
 
+@pytest.fixture(autouse=True)
+def _governance_db(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+
+
+from src.data_governance import get_record, list_audit_events
 from src.engineering import freecad_adapter
 
 
@@ -19,7 +25,7 @@ def test_freecad_macro_generation_is_structured_approved_and_not_executed(tmp_pa
 
     with pytest.raises(PermissionError, match="Explicit approval"):
         freecad_adapter.build_freecad_macro(
-            operations, actor_id="owner-1", approved=False
+            operations, owner_id="owner-1", workspace_id="cad", actor_id="owner-1", approved=False
         )
 
     manifest = freecad_adapter.build_freecad_macro(
@@ -32,6 +38,14 @@ def test_freecad_macro_generation_is_structured_approved_and_not_executed(tmp_pa
     assert manifest["machine_start_allowed"] is False
     assert manifest["created_by"] == "owner-1"
     assert hashlib.sha256(macro_text.encode("utf-8")).hexdigest() == manifest["sha256"]
+    governed_macro = get_record(
+        manifest["macro_data_id"], owner_id="owner-1", workspace_id="cad"
+    )
+    assert governed_macro["sha256"] == manifest["sha256"]
+    events = list_audit_events(
+        manifest["macro_data_id"], owner_id="owner-1", workspace_id="cad"
+    )
+    assert events[-1]["action"] == "freecad_macro_prepared"
     assert "Part.makeBox" in macro_text
     assert "Part.makeCylinder" in macro_text
     assert "Part::Cut" in macro_text
