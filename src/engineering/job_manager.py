@@ -169,11 +169,20 @@ def create_job(
         raise ValueError("data_id must be a non-empty string when provided")
     if actor_id != owner_id:
         raise PermissionError("Only the authenticated owner may create jobs in this scope")
-    if job_type == "machine_start":
+    if job_type.strip().lower() == "machine_start":
         raise PermissionError("EVA does not automatically start CNC machines")
     if not isinstance(input_manifest, dict):
         raise ValueError("input_manifest must be a dictionary")
-    dependencies = depends_on or []
+    if workflow_id is not None and (
+        not isinstance(workflow_id, str) or not workflow_id.strip()
+    ):
+        raise ValueError("workflow_id must be a non-empty string when provided")
+    if step_id is not None and (not isinstance(step_id, str) or not step_id.strip()):
+        raise ValueError("step_id must be a non-empty string when provided")
+    if depends_on is None:
+        dependencies = []
+    else:
+        dependencies = depends_on
     if not isinstance(dependencies, list) or any(
         not isinstance(item, str) or not item.strip() for item in dependencies
     ):
@@ -188,7 +197,7 @@ def create_job(
         raise ValueError("a workflow step cannot depend on itself")
     if not isinstance(requires_approval, bool):
         raise ValueError("requires_approval must be a boolean")
-    if classification not in {
+    if not isinstance(classification, str) or classification not in {
         "public", "private", "sensitive", "ip",
         "internal", "confidential", "restricted",
     }:
@@ -202,6 +211,10 @@ def create_job(
     if tool["machine_start_allowed"]:
         raise PermissionError("Tool is not permitted to start a machine")
     material_id = input_manifest.get("material_id")
+    if material_id is not None and (
+        not isinstance(material_id, str) or not material_id.strip()
+    ):
+        raise ValueError("material_id must be a non-empty string when provided")
     if material_id:
         try:
             from .materials import resolve_material_for_analysis
