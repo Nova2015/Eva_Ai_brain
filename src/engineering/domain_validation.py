@@ -372,6 +372,14 @@ def validate_gcode_file(
             issues.append(
                 f"Line {line_number}: duplicate axis or modal address word(s): {', '.join(duplicates)}"
             )
+        g_codes = {code for letter, code in codes if letter == "G"}
+        modal_groups = (
+            {0, 1, 2, 3}, {17, 18, 19}, {20, 21}, {40, 41, 42},
+            {54, 55, 56, 57, 58, 59}, {80, 81, 82, 83, 84, 85, 86, 87, 88, 89},
+            {90, 91},
+        )
+        if any(len(g_codes & group) > 1 for group in modal_groups):
+            issues.append(f"Line {line_number}: conflicting modal G-codes appear on one line")
         if any(letter == "M" and code in {3, 4} for letter, code in codes) and "S" not in address_values:
             issues.append(f"Line {line_number}: spindle start requires an explicit S speed")
         if any(letter == "M" and code == 6 for letter, code in codes) and "T" not in address_values:
