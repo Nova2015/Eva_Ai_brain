@@ -173,3 +173,25 @@ def test_custom_tool_installation_and_enablement_are_bound_to_registrant(tmp_pat
     )
     assert enabled["enabled"] is True
     assert enabled["registered_by"] == "owner-1"
+
+
+
+def test_tool_validation_api_returns_forbidden_for_non_registrant(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from src.engineering import routes
+
+    monkeypatch.setenv("EVA_ENGINEERING_DB", str(tmp_path / "engineering.db"))
+    tool_registry.register_tool(
+        tool_id="owned-api-adapter", name="Owned API Adapter", category="cad",
+        integration_type="local_adapter", license_type="open_source",
+        capabilities=["cad_read"], actor_id="owner-1",
+    )
+    executable = tmp_path / "owned-api-adapter.py"
+    executable.write_text("# local adapter", encoding="utf-8")
+    with pytest.raises(HTTPException) as error:
+        routes.engineering_validate_tool(
+            "owned-api-adapter",
+            routes.ToolValidationRequest(executable_path=str(executable)),
+            user_id="other-user",
+        )
+    assert error.value.status_code == 403
