@@ -228,5 +228,5 @@ def test_gcode_validator_marks_machine_specific_commands_for_operator_review(tmp
     result = domain_validation.validate_gcode_file(path)
     assert result["ok"] is True
     assert result["operator_review_required"] is True
-    assert {"G28", "M3", "M6"}.issubset(set(result["review_codes"]))
+    assert {"G28", "M3", "M6"}.issubset(set(result["operator_review_codes"]))
     assert result["machine_execution_allowed"] is False
