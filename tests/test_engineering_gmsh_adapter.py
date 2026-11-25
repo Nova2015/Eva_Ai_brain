@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from src.data_governance import register_import
+from src.data_governance import list_audit_events, register_import
 from src.engineering import gmsh_adapter
 
 
@@ -40,6 +40,8 @@ def test_gmsh_script_requires_governed_step_and_creates_reviewable_script(tmp_pa
     assert "Mesh.MshFileVersion = 2.2;" in script
     assert "Mesh 3;" in script
     assert manifest["mesh_output_path"].endswith(".msh")
+    events = list_audit_events(record["data_id"], owner_id="owner-1", workspace_id="cad")
+    assert events[-1]["action"] == "gmsh_mesh_script_prepared"
 
 
 def test_gmsh_script_rejects_missing_approval_and_execute_permission(tmp_path, monkeypatch):
