@@ -20,10 +20,12 @@ on:
       - "tests/test_engineering_mcp_gateway.py"
       - "tests/test_engineering_manufacturing.py"
       - "tests/test_engineering_domain_validation.py"
-      - "tests/test_engineering_tolerance_analysis.py tests/test_engineering_freecad_adapter.py"
+      - "tests/test_engineering_tolerance_analysis.py tests/test_engineering_freecad_adapter.py tests/test_engineering_blender_adapter.py"
       - "tests/test_engineering_freecad_adapter.py"
+      - "tests/test_engineering_blender_adapter.py"
       - "tests/test_engineering_tolerance_analysis.py"
       - "tests/test_engineering_freecad_adapter.py"
+      - "tests/test_engineering_blender_adapter.py"
       - ".github/workflows/deep-learning-tests.yml"
   pull_request:
     branches:
@@ -47,6 +49,7 @@ on:
       - "tests/test_engineering_domain_validation.py"
       - "tests/test_engineering_tolerance_analysis.py"
       - "tests/test_engineering_freecad_adapter.py"
+      - "tests/test_engineering_blender_adapter.py"
       - ".github/workflows/deep-learning-tests.yml"
 
 jobs:
