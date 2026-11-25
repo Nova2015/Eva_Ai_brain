@@ -142,6 +142,8 @@ def validate_process_request(
     process = get_process(process_id)
     if not isinstance(input_manifest, dict):
         raise ValueError("input_manifest must be a dictionary")
+    if not isinstance(machine_start_requested, bool):
+        raise ValueError("machine_start_requested must be a boolean")
     if machine_start_requested:
         raise PermissionError("EVA does not start or control physical manufacturing machines")
 
@@ -163,8 +165,13 @@ def validate_process_request(
             "validation_status": tool["validation_status"],
             "license_type": tool["license_type"],
         })
-        if preflight_tools:
-            tool_registry.resolve_tool(tool_id)
+    selected_tool_id = input_manifest.get("tool_id")
+    if preflight_tools:
+        if selected_tool_id not in process["tool_candidates"]:
+            raise ValueError("Select a supported tool_id from this process's tool candidates")
+        selected_tool = tool_registry.resolve_tool(selected_tool_id)
+    else:
+        selected_tool = None
 
     return {
         "valid": True,
@@ -173,6 +180,7 @@ def validate_process_request(
         "required_inputs": process["required_inputs"],
         "validation_checks": process["validation_checks"],
         "tool_candidates": tools,
+        "selected_tool": selected_tool,
         "machine_start_allowed": False,
         "physical_execution_performed": False,
     }
