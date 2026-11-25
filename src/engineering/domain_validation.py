@@ -225,11 +225,14 @@ def validate_gmsh_msh_file(file_path: str | Path) -> dict[str, Any]:
 
     issues: list[str] = []
     nodes: set[int] = set()
-    elements: list[tuple[int, list[int]]] = []
+    elements: list[tuple[int, int, list[int]]] = []
     try:
         node_marker = lines.index("$Nodes")
-        node_count = int(lines[node_marker + 1])
-        for raw in lines[node_marker + 2:node_marker + 2 + node_count]:
+        expected_node_count = int(lines[node_marker + 1])
+        node_rows = lines[node_marker + 2:node_marker + 2 + expected_node_count]
+        if len(node_rows) != expected_node_count:
+            raise ValueError("node section is shorter than its declared count")
+        for raw in node_rows:
             parts = raw.split()
             if len(parts) != 4:
                 raise ValueError("invalid node row")
@@ -239,16 +242,27 @@ def validate_gmsh_msh_file(file_path: str | Path) -> dict[str, Any]:
                 raise ValueError("non-finite node coordinate")
             nodes.add(node_id)
         element_marker = lines.index("$Elements")
-        element_count = int(lines[element_marker + 1])
-        for raw in lines[element_marker + 2:element_marker + 2 + element_count]:
+        expected_element_count = int(lines[element_marker + 1])
+        element_rows = lines[element_marker + 2:element_marker + 2 + expected_element_count]
+        if len(element_rows) != expected_element_count:
+            raise ValueError("element section is shorter than its declared count")
+        element_node_counts = {
+            1: 2, 2: 3, 3: 4, 4: 4, 5: 8, 6: 6, 7: 5, 8: 3,
+            9: 6, 10: 9, 11: 10, 12: 27, 13: 18, 14: 14, 15: 1,
+            16: 8, 17: 20, 18: 15, 19: 13,
+        }
+        for raw in element_rows:
             parts = [int(value) for value in raw.split()]
             if len(parts) < 4:
                 raise ValueError("invalid element row")
             element_id, element_type, tag_count = parts[:3]
             node_ids = parts[3 + tag_count:]
-            if not node_ids:
-                raise ValueError("element has no node references")
-            elements.append((element_id, node_ids))
+            expected_count = element_node_counts.get(element_type)
+            if expected_count is None:
+                raise ValueError(f"unsupported Gmsh element type {element_type}")
+            if len(node_ids) != expected_count:
+                raise ValueError(f"element {element_id} has an invalid node count")
+            elements.append((element_id, element_type, node_ids))
     except (ValueError, IndexError) as exc:
         return _result(False, "gmsh_msh", [f"Invalid MSH2 node/element section: {exc}"])
 
@@ -257,7 +271,7 @@ def validate_gmsh_msh_file(file_path: str | Path) -> dict[str, Any]:
     if not elements:
         issues.append("Gmsh mesh contains no elements")
     missing = sorted({
-        node_id for _, refs in elements for node_id in refs if node_id not in nodes
+        node_id for _, _, refs in elements for node_id in refs if node_id not in nodes
     })
     if missing:
         issues.append(f"Gmsh elements reference missing nodes: {missing[:20]}")
@@ -266,6 +280,8 @@ def validate_gmsh_msh_file(file_path: str | Path) -> dict[str, Any]:
     return _result(
         not issues, "gmsh_msh", issues,
         node_count=len(nodes), element_count=len(elements),
+        declared_node_count=expected_node_count,
+        declared_element_count=expected_element_count,
         missing_node_references=missing,
         element_quality="connectivity_checked_only",
         self_intersection="not_checked",
