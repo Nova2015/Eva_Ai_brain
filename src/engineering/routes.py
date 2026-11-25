@@ -11,7 +11,7 @@ try:
     from ..rag.rag_routes_v2 import get_user_id
 except ImportError:
     from rag.rag_routes_v2 import get_user_id
-from . import job_manager, mcp_gateway, tool_registry, workflow_engine
+from . import job_manager, manufacturing, mcp_gateway, tool_registry, workflow_engine
 
 
 router = APIRouter(prefix="/engineering", tags=["Engineering Suite"])
@@ -99,6 +99,12 @@ class MCPAuthorizationRequest(BaseModel):
     workspace_id: str
     data_id: str
     action: str
+
+
+class ManufacturingValidationRequest(BaseModel):
+    input_manifest: dict[str, Any] = Field(default_factory=dict)
+    machine_start_requested: bool = False
+    preflight_tools: bool = False
 
 
 @router.get("/tools")
@@ -467,3 +473,47 @@ def engineering_mcp_audit(
             actor_id=actor_id, workspace_id=workspace_id
         ),
     }
+
+
+@router.get("/manufacturing/processes")
+def engineering_manufacturing_processes(
+    category: Optional[str] = None,
+    user_id: str = Depends(get_user_id),
+):
+    _authenticated(user_id)
+    return {"ok": True, "processes": manufacturing.list_processes(category)}
+
+
+@router.get("/manufacturing/processes/{process_id}")
+def engineering_manufacturing_process_detail(
+    process_id: str,
+    user_id: str = Depends(get_user_id),
+):
+    _authenticated(user_id)
+    try:
+        return {"ok": True, "process": manufacturing.get_process(process_id)}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Manufacturing process not found")
+
+
+@router.post("/manufacturing/processes/{process_id}/validate")
+def engineering_validate_manufacturing_process(
+    process_id: str,
+    req: ManufacturingValidationRequest,
+    user_id: str = Depends(get_user_id),
+):
+    _authenticated(user_id)
+    try:
+        result = manufacturing.validate_process_request(
+            process_id,
+            input_manifest=req.input_manifest,
+            machine_start_requested=req.machine_start_requested,
+            preflight_tools=req.preflight_tools,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Manufacturing process not found")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "validation": result, "physical_execution_performed": False}
