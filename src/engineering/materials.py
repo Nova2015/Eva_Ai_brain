@@ -24,6 +24,28 @@ _ALLOWED_PROPERTIES = frozenset({
     "melt_flow_index", "moisture_absorption", "friction_coefficient",
 })
 
+_PROPERTY_UNITS = {
+    "density": {"kg/m3", "kg/m^3", "g/cm3", "g/cm^3"},
+    "elastic_modulus": {"Pa", "kPa", "MPa", "GPa", "N/mm2", "N/mm^2"},
+    "shear_modulus": {"Pa", "kPa", "MPa", "GPa", "N/mm2", "N/mm^2"},
+    "tensile_strength": {"Pa", "kPa", "MPa", "GPa", "N/mm2", "N/mm^2"},
+    "yield_strength": {"Pa", "kPa", "MPa", "GPa", "N/mm2", "N/mm^2"},
+    "compressive_strength": {"Pa", "kPa", "MPa", "GPa", "N/mm2", "N/mm^2"},
+    "fatigue_strength": {"Pa", "kPa", "MPa", "GPa", "N/mm2", "N/mm^2"},
+    "poisson_ratio": {"-", "1", "dimensionless"},
+    "elongation": {"%", "percent", "fraction"},
+    "hardness": {"HB", "HBW", "HV", "HRC", "HRB", "Shore A", "Shore D"},
+    "impact_strength": {"J/m", "kJ/m2", "kJ/m^2", "J/cm2", "J/cm^2"},
+    "thermal_conductivity": {"W/mK", "W/(m*K)", "W/(m·K)"},
+    "specific_heat": {"J/kgK", "J/(kg*K)", "kJ/kgK", "kJ/(kg*K)"},
+    "thermal_expansion": {"1/K", "1/°C", "um/(m*K)", "µm/(m*K)"},
+    "glass_transition_temperature": {"°C", "C", "K"},
+    "melting_temperature": {"°C", "C", "K"},
+    "melt_flow_index": {"g/10min", "g/10 min"},
+    "moisture_absorption": {"%", "percent"},
+    "friction_coefficient": {"-", "1", "dimensionless"},
+}
+
 
 def _connect() -> sqlite3.Connection:
     path = tool_registry._db_path()
@@ -90,7 +112,7 @@ def _validate_properties(properties: dict[str, Any]) -> dict[str, dict[str, Any]
         raise ValueError("At least one material property is required")
     validated = {}
     for name, raw in properties.items():
-        if name not in _ALLOWED_PROPERTIES:
+        if not isinstance(name, str) or name not in _ALLOWED_PROPERTIES:
             raise ValueError(f"Unsupported material property: {name}")
         if not isinstance(raw, dict) or "value" not in raw or "unit" not in raw:
             raise ValueError(f"{name} must contain value and unit")
@@ -105,6 +127,11 @@ def _validate_properties(properties: dict[str, Any]) -> dict[str, dict[str, Any]
         unit = raw["unit"]
         if not isinstance(unit, str) or not unit.strip():
             raise ValueError(f"{name}.unit is required")
+        if unit.strip() not in _PROPERTY_UNITS[name]:
+            raise ValueError(
+                f"Unsupported unit for {name}: {unit!r}; expected one of "
+                + ", ".join(sorted(_PROPERTY_UNITS[name]))
+            )
         if name == "poisson_ratio" and not -1.0 < value < 0.5:
             raise ValueError("poisson_ratio must be between -1 and 0.5 for this isotropic registry")
         if name in {
