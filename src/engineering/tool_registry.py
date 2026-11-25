@@ -418,6 +418,11 @@ def _init(conn: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )"""
     )
+    columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(engineering_tools)").fetchall()
+    }
+    if "registered_by" not in columns:
+        conn.execute("ALTER TABLE engineering_tools ADD COLUMN registered_by TEXT")
     for spec in _DEFAULT_TOOLS:
         conn.execute(
             """INSERT OR IGNORE INTO engineering_tools
@@ -506,12 +511,12 @@ def register_tool(
             """INSERT INTO engineering_tools
                (tool_id, name, category, integration_type, license_type,
                 capabilities_json, executable_candidates_json, machine_start_allowed,
-                notes, updated_by, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, CURRENT_TIMESTAMP)""",
+                notes, updated_by, registered_by, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, CURRENT_TIMESTAMP)""",
             (
                 tool_id.strip(), name.strip(), category.strip(), integration_type.strip(),
                 license_type.strip(), json.dumps(sorted(set(capabilities))),
-                json.dumps(executable_candidates or []), notes, actor_id.strip(),
+                json.dumps(executable_candidates or []), notes, actor_id.strip(), actor_id.strip(),
             ),
         )
     return get_tool(tool_id)
@@ -533,10 +538,17 @@ def validate_tool_installation(
         raise ValueError("Tool executable path must point to an existing file")
     with _connect() as conn:
         _init(conn)
+        row = conn.execute(
+            "SELECT registered_by FROM engineering_tools WHERE tool_id=?", (tool_id,)
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown engineering tool: {tool_id}")
+        if row["registered_by"] and row["registered_by"] != actor_id.strip():
+            raise PermissionError("Only the tool registrant may validate its installation")
         cursor = conn.execute(
             """UPDATE engineering_tools
                SET executable_path=?, version=?, validation_status='path_verified',
-                   updated_by=?, updated_at=CURRENT_TIMESTAMP
+                   enabled=0, updated_by=?, updated_at=CURRENT_TIMESTAMP
                WHERE tool_id=?""",
             (str(path), version, actor_id.strip(), tool_id),
         )
@@ -567,6 +579,8 @@ def set_tool_enabled(
         ).fetchone()
         if row is None:
             raise KeyError(f"Unknown engineering tool: {tool_id}")
+        if row["registered_by"] and row["registered_by"] != actor_id.strip():
+            raise PermissionError("Only the tool registrant may change tool enablement")
         if enabled:
             if row["validation_status"] != "path_verified":
                 raise ValueError("Tool installation must be validated before enabling")
