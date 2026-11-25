@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from src.data_governance import list_audit_events, register_import
+from src.data_governance import get_record, list_audit_events, register_import
 from src.engineering import gmsh_adapter
 
 
@@ -35,6 +35,11 @@ def test_gmsh_script_requires_governed_step_and_creates_reviewable_script(tmp_pa
     assert manifest["status"] == "prepared_for_review"
     assert manifest["mesh_generation_performed"] is False
     assert manifest["source_data_id"] == record["data_id"]
+    governed_script = get_record(
+        manifest["script_data_id"], owner_id="owner-1", workspace_id="cad"
+    )
+    assert governed_script["sha256"] == manifest["sha256"]
+    assert governed_script["classification"] == "ip"
     assert "SetFactory(" in script
     assert "Merge " in script
     assert "Mesh.MshFileVersion = 2.2;" in script
