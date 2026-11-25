@@ -14,7 +14,7 @@ from typing import Any
 
 from .domain_validation import validate_step_file
 from .tool_registry import _db_path
-from ..data_governance import authorize_data_action, get_record, record_governance_event, sha256_file
+from ..data_governance import authorize_data_action, get_record, record_governance_event, register_import, sha256_file
 
 
 _ALLOWED_3D_ALGORITHMS = {1, 4, 7, 10}
@@ -132,9 +132,18 @@ def build_gmsh_mesh_script(
     with script_path.open("x", encoding="utf-8") as handle:
         handle.write(script)
     digest_script = hashlib.sha256(script.encode("utf-8")).hexdigest()
+    generated_record = register_import(
+        script_path,
+        source="engineering_generated:gmsh_script",
+        owner_id=owner_id,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        classification="ip",
+    )
     manifest = {
         "script_id": script_id,
         "script_path": str(script_path),
+        "script_data_id": generated_record["data_id"],
         "mesh_output_path": str(mesh_path),
         "sha256": digest_script,
         "source_data_id": data_id,
