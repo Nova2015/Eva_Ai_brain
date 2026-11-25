@@ -256,6 +256,119 @@ def list_quarantined(
     return results
 
 
+def release_quarantined(
+    quarantine_id: str,
+    *,
+    owner_id: str,
+    workspace_id: str,
+    actor_id: str,
+    approved: bool,
+    classification: str = "internal",
+    max_bytes: Optional[int] = None,
+    malware_scanner: Optional[Callable[[Path], Any]] = None,
+) -> dict[str, Any]:
+    """Release a quarantined copy only after approval and a fresh successful validation."""
+    for field, value in (("quarantine_id", quarantine_id), ("owner_id", owner_id),
+                         ("workspace_id", workspace_id), ("actor_id", actor_id)):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field} is required")
+    if approved is not True:
+        raise ValueError("Explicit quarantine release approval is required")
+
+    with _connect() as conn:
+        row = conn.execute(
+            """SELECT * FROM quarantine_items
+               WHERE quarantine_id=? AND owner_id=? AND workspace_id=?
+                 AND status='quarantined'""",
+            (quarantine_id, owner_id, workspace_id),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Quarantine item not found: {quarantine_id}")
+        item = dict(row)
+        conn.execute(
+            """UPDATE quarantine_items SET status='releasing'
+               WHERE quarantine_id=? AND status='quarantined'""",
+            (quarantine_id,),
+        )
+        conn.execute(
+            """INSERT INTO quarantine_audit
+               (quarantine_id, action, actor_id, details_json, created_at)
+               VALUES (?, 'release_started', ?, ?, ?)""",
+            (
+                quarantine_id, actor_id,
+                json.dumps({"approved": True}, sort_keys=True),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+
+    try:
+        quarantined_path = Path(item["quarantine_path"])
+        if not quarantined_path.is_file():
+            raise ValueError("Quarantined file is missing")
+        if sha256_file(quarantined_path) != item["sha256"]:
+            raise ValueError("Quarantined file failed SHA-256 integrity verification")
+        previous_report = json.loads(item["validation_json"])
+        if previous_report.get("malware_scan") in {"infected", "scan_error"} and malware_scanner is None:
+            raise ValueError("A configured malware scanner is required before releasing this item")
+        report = validate_import_candidate(
+            quarantined_path, max_bytes=max_bytes, malware_scanner=malware_scanner
+        )
+        if not report["ok"]:
+            raise ValueError("Quarantined file still fails validation: " + "; ".join(report["issues"]))
+        record = register_import(
+            quarantined_path,
+            source="quarantine_release",
+            owner_id=owner_id,
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            classification=classification,
+        )
+    except Exception as exc:
+        with _connect() as conn:
+            conn.execute(
+                """UPDATE quarantine_items SET status='quarantined'
+                   WHERE quarantine_id=? AND status='releasing'""",
+                (quarantine_id,),
+            )
+            conn.execute(
+                """INSERT INTO quarantine_audit
+                   (quarantine_id, action, actor_id, details_json, created_at)
+                   VALUES (?, 'release_failed', ?, ?, ?)""",
+                (
+                    quarantine_id, actor_id,
+                    json.dumps({"error": str(exc)}, sort_keys=True),
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+        raise
+
+    with _connect() as conn:
+        conn.execute(
+            """UPDATE quarantine_items
+               SET status='released', released_data_id=?
+               WHERE quarantine_id=? AND status='releasing'""",
+            (record["data_id"], quarantine_id),
+        )
+        conn.execute(
+            """INSERT INTO quarantine_audit
+               (quarantine_id, action, actor_id, details_json, created_at)
+               VALUES (?, 'released', ?, ?, ?)""",
+            (
+                quarantine_id, actor_id,
+                json.dumps({"data_id": record["data_id"]}, sort_keys=True),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+    return {
+        "ok": True,
+        "status": "released",
+        "quarantine_id": quarantine_id,
+        "data_id": record["data_id"],
+        "record": record,
+        "quarantine_file_retained": True,
+    }
+
+
 def validate_and_register_import(
     file_path: str | os.PathLike[str],
     *,
