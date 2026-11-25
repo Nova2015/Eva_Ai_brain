@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from .identity_store import register_import, sha256_file
+from .identity_store import _connect, register_import, sha256_file
 
 
 SUPPORTED_EXTENSIONS = frozenset({
@@ -207,7 +207,53 @@ def quarantine_candidate(
         json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
     )
     os.replace(temporary_path, manifest_path)
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO quarantine_items
+               (quarantine_id, original_path, quarantine_path, owner_id, workspace_id,
+                actor_id, reason, sha256, size_bytes, status, validation_json, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'quarantined', ?, ?)""",
+            (
+                quarantine_id, str(source), str(destination.resolve()), owner_id,
+                workspace_id, actor_id, reason.strip(), source_hash,
+                source.stat().st_size,
+                json.dumps(validation_report or {}, sort_keys=True),
+                manifest["created_at"],
+            ),
+        )
+        conn.execute(
+            """INSERT INTO quarantine_audit
+               (quarantine_id, action, actor_id, details_json, created_at)
+               VALUES (?, 'file_quarantined', ?, ?, ?)""",
+            (
+                quarantine_id, actor_id,
+                json.dumps({"reason": reason.strip(), "sha256": source_hash}, sort_keys=True),
+                manifest["created_at"],
+            ),
+        )
     return manifest
+
+
+def list_quarantined(
+    *, owner_id: str, workspace_id: str
+) -> list[dict[str, Any]]:
+    """List quarantined candidates only within the caller's owner/workspace scope."""
+    for field, value in (("owner_id", owner_id), ("workspace_id", workspace_id)):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field} is required")
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT * FROM quarantine_items
+               WHERE owner_id=? AND workspace_id=? AND status='quarantined'
+               ORDER BY created_at DESC""",
+            (owner_id, workspace_id),
+        ).fetchall()
+    results = []
+    for row in rows:
+        item = dict(row)
+        item["validation_report"] = json.loads(item.pop("validation_json"))
+        results.append(item)
+    return results
 
 
 def validate_and_register_import(
