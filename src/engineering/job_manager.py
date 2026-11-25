@@ -168,15 +168,6 @@ def create_job(
     if data_id is not None and (not isinstance(data_id, str) or not data_id.strip()):
         raise ValueError("data_id must be a non-empty string when provided")
     if actor_id != owner_id:
-        if data_id:
-            try:
-                from ..data_governance import authorize_data_action
-            except ImportError:
-                from data_governance import authorize_data_action
-            if not authorize_data_action(
-                data_id, actor_id=actor_id, workspace_id=workspace_id, action="execute"
-            ):
-                raise PermissionError("Execute permission is required for the governed source")
         raise PermissionError("Only the authenticated owner may create jobs in this scope")
     if job_type == "machine_start":
         raise PermissionError("EVA does not automatically start CNC machines")
@@ -202,8 +193,6 @@ def create_job(
         "internal", "confidential", "restricted",
     }:
         raise ValueError("unsupported data classification")
-    if data_id is not None and (not isinstance(data_id, str) or not data_id.strip()):
-        raise ValueError("data_id must be a non-empty string when provided")
     try:
         manifest_json = json.dumps(input_manifest, sort_keys=True)
     except (TypeError, ValueError) as exc:
