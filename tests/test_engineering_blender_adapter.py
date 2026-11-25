@@ -127,3 +127,53 @@ def test_blender_rejects_malformed_operation_and_boolean_numeric_values(
         blender_adapter.build_blender_script(
             [operation], actor_id="owner-1", approved=True
         )
+
+
+
+def test_blender_adapter_supports_plane_torus_and_mesh_modifiers(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
+    manifest = blender_adapter.build_blender_script(
+        [
+            {"op": "create_plane", "name": "TrimSurface", "size": 120},
+            {"op": "create_torus", "name": "SealRing", "major_radius": 20,
+             "minor_radius": 2, "major_segments": 64, "minor_segments": 16},
+            {"op": "add_solidify_modifier", "object": "TrimSurface",
+             "thickness": 2.5, "offset": -1},
+            {"op": "add_subdivision_modifier", "object": "TrimSurface",
+             "levels": 2, "render_levels": 3},
+            {"op": "add_mirror_modifier", "object": "TrimSurface",
+             "axes": ["x", "y"], "use_clip": True},
+        ],
+        actor_id="owner-1", approved=True,
+    )
+    script = Path(manifest["script_path"]).read_text(encoding="utf-8")
+    assert "primitive_plane_add" in script
+    assert "primitive_torus_add" in script
+    assert "SOLIDIFY" in script
+    assert "SUBSURF" in script
+    assert "MIRROR" in script
+    assert [item["op"] for item in manifest["operations"]] == [
+        "create_plane", "create_torus", "add_solidify_modifier",
+        "add_subdivision_modifier", "add_mirror_modifier",
+    ]
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        {"op": "create_torus", "name": "BadRing", "major_radius": 2,
+         "minor_radius": 2},
+        {"op": "create_torus", "name": "BadRing", "major_radius": 5,
+         "minor_radius": 1, "major_segments": 12.5},
+        {"op": "add_mirror_modifier", "object": "Cube", "axes": ["x", "x"]},
+        {"op": "add_solidify_modifier", "object": "Cube", "thickness": 1,
+         "offset": 2},
+    ],
+)
+def test_blender_adapter_rejects_unsafe_mesh_parameters(tmp_path, monkeypatch, operation):
+    monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
+    operations = [{"op": "create_cube", "name": "Cube", "size": 5}, operation]
+    with pytest.raises(ValueError):
+        blender_adapter.build_blender_script(
+            operations, actor_id="owner-1", approved=True
+        )
