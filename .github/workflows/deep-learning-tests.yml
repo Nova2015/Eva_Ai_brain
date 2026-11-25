@@ -1,4 +1,4 @@
-name: EVA Deep Learning and Governance Tests
+name: EVA Foundation Regression Tests
 
 on:
   push:
@@ -8,11 +8,13 @@ on:
       - "src/deep_learning/**"
       - "src/data_governance/**"
       - "src/rag/**"
+      - "src/engineering/**"
       - "tests/test_deep_learning_*.py"
       - "tests/test_data_governance_identity.py"
       - "tests/test_data_governance_import_pipeline.py"
       - "tests/test_rag_upload_job_flow.py"
       - "tests/test_graph_rag_store.py"
+      - "tests/test_engineering_tool_registry.py"
       - ".github/workflows/deep-learning-tests.yml"
   pull_request:
     branches:
@@ -22,11 +24,13 @@ on:
       - "src/deep_learning/**"
       - "src/data_governance/**"
       - "src/rag/**"
+      - "src/engineering/**"
       - "tests/test_deep_learning_*.py"
       - "tests/test_data_governance_identity.py"
       - "tests/test_data_governance_import_pipeline.py"
       - "tests/test_rag_upload_job_flow.py"
       - "tests/test_graph_rag_store.py"
+      - "tests/test_engineering_tool_registry.py"
       - ".github/workflows/deep-learning-tests.yml"
 
 jobs:
@@ -42,4 +46,4 @@ jobs:
       - name: Install focused test dependencies
         run: python -m pip install --upgrade pip pytest numpy openpyxl fastapi python-multipart python-jose[cryptography] xgboost scikit-learn
       - name: Run Deep Learning, Data Governance and RAG tests
-        run: python -m pytest -q tests/test_deep_learning_*.py tests/test_data_governance_identity.py tests/test_data_governance_import_pipeline.py tests/test_rag_upload_job_flow.py tests/test_graph_rag_store.py
+        run: python -m pytest -q tests/test_deep_learning_*.py tests/test_data_governance_identity.py tests/test_data_governance_import_pipeline.py tests/test_rag_upload_job_flow.py tests/test_graph_rag_store.py tests/test_engineering_tool_registry.py
