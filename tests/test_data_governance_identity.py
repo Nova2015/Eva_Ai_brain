@@ -580,6 +580,12 @@ def test_audit_tables_are_append_only_even_for_direct_sql(tmp_path, monkeypatch)
 
     conn = sqlite3.connect(db_path)
     try:
+        with pytest.raises(sqlite3.IntegrityError, match="data_id is immutable"):
+            conn.execute(
+                "UPDATE data_items SET data_id='EVA-DATA-TAMPERED' WHERE data_id=?",
+                (record["data_id"],),
+            )
+        conn.rollback()
         with pytest.raises(sqlite3.IntegrityError, match="append-only"):
             conn.execute(
                 "UPDATE data_item_audit SET action='tampered' WHERE data_id=?",
