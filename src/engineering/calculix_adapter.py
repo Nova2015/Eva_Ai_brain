@@ -54,6 +54,23 @@ def _positive_id(value: Any, field: str) -> int:
     return number
 
 
+def _signed_tetra_volume(
+    a: tuple[float, float, float],
+    b: tuple[float, float, float],
+    c: tuple[float, float, float],
+    d: tuple[float, float, float],
+) -> float:
+    ab = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+    ac = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
+    ad = (d[0] - a[0], d[1] - a[1], d[2] - a[2])
+    determinant = (
+        ab[0] * (ac[1] * ad[2] - ac[2] * ad[1])
+        - ab[1] * (ac[0] * ad[2] - ac[2] * ad[0])
+        + ab[2] * (ac[0] * ad[1] - ac[1] * ad[0])
+    )
+    return determinant / 6.0
+
+
 def _output_dir() -> Path:
     configured = os.getenv("EVA_ENGINEERING_OUTPUT_DIR")
     root = Path(configured).expanduser() if configured else (
@@ -148,19 +165,23 @@ def build_calculix_static_deck(
             raise ValueError(f"Element {element_id} contains duplicate node references")
         if element_type == "C3D4":
             a, b, d, e = (node_map[node_id] for node_id in node_ids)
-            ab = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
-            ad = (d[0] - a[0], d[1] - a[1], d[2] - a[2])
-            ae = (e[0] - a[0], e[1] - a[1], e[2] - a[2])
-            determinant = (
-                ab[0] * (ad[1] * ae[2] - ad[2] * ae[1])
-                - ab[1] * (ad[0] * ae[2] - ad[2] * ae[0])
-                + ab[2] * (ad[0] * ae[1] - ad[1] * ae[0])
-            )
-            volume = determinant / 6.0
+            volume = _signed_tetra_volume(a, b, d, e)
             if not math.isfinite(volume) or volume <= 1e-12:
                 raise ValueError(
                     f"Element {element_id} has zero, negative or invalid tetrahedral volume"
                 )
+        elif element_type == "C3D8":
+            decomposition = (
+                (0, 1, 3, 4), (1, 2, 3, 6), (1, 3, 4, 6),
+                (1, 4, 5, 6), (3, 4, 6, 7),
+            )
+            for tetra_indices in decomposition:
+                points = [node_map[node_ids[index]] for index in tetra_indices]
+                volume = _signed_tetra_volume(*points)
+                if not math.isfinite(volume) or volume <= 1e-12:
+                    raise ValueError(
+                        f"Element {element_id} has a degenerate or inverted C3D8 sub-volume"
+                    )
         normalized_elements.append((element_id, node_ids))
 
     normalized_boundaries = []
