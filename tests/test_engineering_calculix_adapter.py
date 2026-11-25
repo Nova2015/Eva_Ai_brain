@@ -3,11 +3,13 @@ from pathlib import Path
 
 import pytest
 
+from src.data_governance import get_record
 from src.engineering import calculix_adapter, materials
 
 
 def _approved_material(tmp_path, monkeypatch):
     monkeypatch.setenv("EVA_ENGINEERING_DB", str(tmp_path / "engineering.db"))
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
     item = materials.register_material(
         name="Test Steel", family="metal", grade="S355-TEST",
         source_reference="local://test-fixture/s355",
@@ -57,6 +59,11 @@ def test_calculix_deck_uses_approved_material_and_passes_structural_validation(t
     assert manifest["engineering_approval"] == "not_granted"
     assert manifest["element_type"] == "C3D4"
     assert manifest["validation"]["ok"] is True
+    governed_deck = get_record(
+        manifest["deck_data_id"], owner_id="owner-1", workspace_id="cad"
+    )
+    assert governed_deck["sha256"] == manifest["sha256"]
+    assert governed_deck["classification"] == "ip"
     assert "*ELASTIC\n210000, 0.3" in deck
     assert "*BOUNDARY" in deck
     assert "*CLOAD" in deck
