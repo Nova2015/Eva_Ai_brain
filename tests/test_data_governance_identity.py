@@ -345,6 +345,32 @@ def test_data_item_reads_and_mutations_reject_wrong_owner_or_workspace(tmp_path,
         list_audit_events(data_id, **wrong_workspace)
 
 
+def test_only_data_owner_can_change_permissions_even_with_owner_scope(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
+    source = tmp_path / "owner-permissions.txt"
+    source.write_text("owner controlled permissions", encoding="utf-8")
+    record = _register(source)
+
+    with pytest.raises(PermissionError, match="Only the data owner"):
+        set_permissions(
+            record["data_id"],
+            {"read": ["attacker"], "write": [], "execute": [], "delete": []},
+            owner_id="user-1",
+            workspace_id="workspace-1",
+            actor_id="user-2",
+        )
+
+    current = get_record(
+        record["data_id"], owner_id="user-1", workspace_id="workspace-1"
+    )
+    assert current["permissions"] == {
+        "read": ["user-1"],
+        "write": ["user-1"],
+        "execute": [],
+        "delete": [],
+    }
+
+
 def test_permission_matrix_has_independent_read_write_execute_delete_actions(tmp_path, monkeypatch):
     monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
     source = tmp_path / "permissions.txt"
