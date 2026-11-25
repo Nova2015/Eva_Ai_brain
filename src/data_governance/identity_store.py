@@ -160,6 +160,36 @@ def _require_scope(data_id: str, owner_id: str, workspace_id: str) -> None:
             raise ValueError(f"{field} is required")
 
 
+_PERMISSION_ACTIONS = ("read", "write", "execute", "delete")
+
+
+def _normalize_permissions(
+    permissions: Optional[dict[str, Any]],
+    *,
+    default_owner: Optional[str] = None,
+) -> dict[str, list[str]]:
+    """Validate and normalize the four independent permission capabilities."""
+    if permissions is None:
+        permissions = {}
+        if default_owner:
+            permissions = {"read": [default_owner], "write": [default_owner]}
+    if not isinstance(permissions, dict):
+        raise ValueError("permissions must be a dictionary")
+    unknown = set(permissions) - set(_PERMISSION_ACTIONS)
+    if unknown:
+        raise ValueError(f"Unsupported permission actions: {sorted(unknown)}")
+
+    normalized: dict[str, list[str]] = {}
+    for action in _PERMISSION_ACTIONS:
+        principals = permissions.get(action, [])
+        if not isinstance(principals, list):
+            raise ValueError(f"permissions[{action!r}] must be a list of principal IDs")
+        if any(not isinstance(item, str) or not item.strip() for item in principals):
+            raise ValueError(f"permissions[{action!r}] contains an invalid principal ID")
+        normalized[action] = sorted(set(principals))
+    return normalized
+
+
 def register_import(
     file_path: str | os.PathLike[str],
     *,
@@ -187,7 +217,7 @@ def register_import(
     size = path.stat().st_size
     now = _now()
     data_id = _data_id()
-    permission_data = permissions or {"read": [owner_id], "write": [owner_id]}
+    permission_data = _normalize_permissions(permissions, default_owner=owner_id)
 
     with _connect() as conn:
         conn.execute(
@@ -497,8 +527,7 @@ def set_permissions(
     actor_id: str,
 ) -> dict[str, Any]:
     _require_scope(data_id, owner_id, workspace_id)
-    if not isinstance(permissions, dict):
-        raise ValueError("permissions must be a dictionary")
+    normalized_permissions = _normalize_permissions(permissions)
     with _connect() as conn:
         row = conn.execute(
             """SELECT data_id FROM data_items
@@ -510,9 +539,9 @@ def set_permissions(
         conn.execute(
             """UPDATE data_items SET permissions_json=?, updated_at=?
                WHERE data_id=? AND owner_id=? AND workspace_id=?""",
-            (json.dumps(permissions, sort_keys=True), _now(), data_id, owner_id, workspace_id),
+            (json.dumps(normalized_permissions, sort_keys=True), _now(), data_id, owner_id, workspace_id),
         )
-        _audit(conn, data_id, "permissions_changed", actor_id, {"permissions": permissions})
+        _audit(conn, data_id, "permissions_changed", actor_id, {"permissions": normalized_permissions})
         updated = conn.execute(
             """SELECT * FROM data_items
                WHERE data_id=? AND owner_id=? AND workspace_id=?""",
