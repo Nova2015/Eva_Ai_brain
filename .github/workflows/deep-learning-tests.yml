@@ -16,7 +16,7 @@ on:
       - "tests/test_graph_rag_store.py"
       - "tests/test_engineering_job_manager.py"
       - "tests/test_engineering_workflow_engine.py"
-      - "tests/test_engineering_mcp_gateway.py tests/test_engineering_manufacturing.py tests/test_engineering_domain_validation.py"
+      - "tests/test_engineering_mcp_gateway.py"
       - "tests/test_engineering_manufacturing.py"
       - "tests/test_engineering_domain_validation.py"
       - ".github/workflows/deep-learning-tests.yml"
