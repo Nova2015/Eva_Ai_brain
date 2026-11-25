@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from src.data_governance import approve_content_revision, register_import
+from src.data_governance import approve_content_revision, register_import, set_permissions
 from src.rag import graph_store
 
 
@@ -180,3 +180,44 @@ def test_previously_approved_graph_evidence_is_hidden_after_source_revision(tmp_
     assert graph_store.search_entities(
         "steering", owner_id="user-a", workspace_id="cad"
     ) == []
+
+
+def test_graph_mutations_require_write_permission_from_governance_acl(tmp_path):
+    record = _governed_source(tmp_path, owner="owner-1", workspace="cad")
+    set_permissions(
+        record["data_id"],
+        {"read": ["owner-1", "reviewer-1"], "write": [], "execute": [], "delete": []},
+        owner_id="owner-1", workspace_id="cad", actor_id="owner-1",
+    )
+
+    with pytest.raises(PermissionError, match="Write permission"):
+        graph_store.upsert_entity(
+            "Steering Column", "component",
+            data_id=record["data_id"], owner_id="owner-1", workspace_id="cad",
+            actor_id="reviewer-1", chunk_id="chunk-denied",
+            evidence_text="The steering column is mounted to the instrument panel.",
+            confidence=0.9,
+        )
+
+    set_permissions(
+        record["data_id"],
+        {
+            "read": ["owner-1", "reviewer-1"],
+            "write": ["owner-1", "reviewer-1"],
+            "execute": [],
+            "delete": [],
+        },
+        owner_id="owner-1", workspace_id="cad", actor_id="owner-1",
+    )
+    entity = graph_store.upsert_entity(
+        "Steering Column", "component",
+        data_id=record["data_id"], owner_id="owner-1", workspace_id="cad",
+        actor_id="reviewer-1", chunk_id="chunk-approved",
+        evidence_text="The steering column is mounted to the instrument panel.",
+        confidence=0.9,
+    )
+    reviewed = graph_store.review_evidence(
+        entity["evidence_id"], "approved",
+        owner_id="owner-1", workspace_id="cad", actor_id="reviewer-1",
+    )
+    assert reviewed["status"] == "approved"
