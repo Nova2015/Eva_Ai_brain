@@ -413,6 +413,10 @@ async def rag_graph_extract(req: GraphExtractionRequest, user_id: str = Depends(
     """Run opt-in local-only extraction and store source-backed proposals for review."""
     _require_authenticated_user(user_id)
     workspace_id = effective_workspace_id(req.workspace_id, user_id)
+    if not authorize_data_action(
+        req.data_id, actor_id=user_id, workspace_id=workspace_id, action="execute"
+    ):
+        raise HTTPException(status_code=404, detail="Governed data item not found")
     if not 1 <= req.max_chunks <= 24:
         raise HTTPException(status_code=400, detail="max_chunks must be between 1 and 24")
     record, source_text = _load_current_governed_text(req.data_id, user_id, workspace_id)
