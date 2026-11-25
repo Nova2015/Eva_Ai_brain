@@ -11,7 +11,6 @@ from src.data_governance.import_pipeline import (
 
 def test_valid_text_import_is_registered_with_hash_and_scan_status(tmp_path, monkeypatch):
     monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
-    monkeypatch.setenv("EVA_DATA_GOVERNANCE_DB", str(tmp_path / "governance.db"))
     monkeypatch.setenv("EVA_DATA_QUARANTINE_DIR", str(tmp_path / "quarantine"))
     source = tmp_path / "valid.txt"
     source.write_text("Valid local engineering document", encoding="utf-8")
