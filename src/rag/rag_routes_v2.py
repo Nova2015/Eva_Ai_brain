@@ -1166,14 +1166,15 @@ async def rag_governed_document_audit(
     if user_id == "anonymous":
         raise HTTPException(status_code=401, detail="Authentication required to view data audit history")
     namespace = effective_workspace_id(workspace_id, user_id)
-    record = get_record(data_id, owner_id=user_id, workspace_id=namespace)
-    if not record:
+    try:
+        events = list_audit_events(data_id, owner_id=user_id, workspace_id=namespace)
+    except KeyError:
         raise HTTPException(status_code=404, detail="Governed data item not found")
     return {
         "ok": True,
         "data_id": data_id,
         "workspace_id": namespace,
-        "events": list_audit_events(data_id, owner_id=user_id, workspace_id=namespace),
+        "events": events,
     }
 
 
