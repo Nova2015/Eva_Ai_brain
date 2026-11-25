@@ -106,6 +106,7 @@ def test_blender_script_api_requires_authentication_and_approval(tmp_path, monke
     monkeypatch.setenv("EVA_ENGINEERING_OUTPUT_DIR", str(tmp_path / "engineering"))
     request = routes.BlenderScriptRequest(
         operations=[{"op": "create_cube", "name": "Base", "size": 10}],
+        workspace_id="cad",
         approved=False,
     )
     with pytest.raises(HTTPException) as auth_error:
