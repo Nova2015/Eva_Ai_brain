@@ -414,7 +414,6 @@ def build_blender_script(
             details={"script_id": script_id, "sha256": digest},
         )
     except Exception:
-        manifest_path.unlink(missing_ok=True)
-        script_path.unlink(missing_ok=True)
+        # Keep the registered script intact so its Data ID never points to a deleted file.
         raise
     return manifest
