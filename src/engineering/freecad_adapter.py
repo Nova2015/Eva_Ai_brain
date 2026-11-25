@@ -305,7 +305,8 @@ def build_freecad_macro(
     macro_id = "EVA-FCAD-" + uuid.uuid4().hex.upper()
     macro_path = macro_dir / f"{macro_id}.FCMacro"
     manifest_path = macro_dir / f"{macro_id}.json"
-    macro_path.write_text(macro_text, encoding="utf-8")
+    with macro_path.open("x", encoding="utf-8") as handle:
+        handle.write(macro_text)
     digest = hashlib.sha256(macro_text.encode("utf-8")).hexdigest()
     try:
         generated_record = register_import(
@@ -338,7 +339,6 @@ def build_freecad_macro(
             details={"macro_id": macro_id, "sha256": digest},
         )
     except Exception:
-        manifest_path.unlink(missing_ok=True)
-        macro_path.unlink(missing_ok=True)
+        # Keep the registered macro intact so its Data ID never points to a deleted file.
         raise
     return manifest
