@@ -638,6 +638,10 @@ def test_archive_restore_and_deletion_tombstone_require_explicit_approval(tmp_pa
     archived = archive_record(record["data_id"], **scope, actor_id="user-1")
     assert archived["lifecycle_status"] == "archived"
     assert source.exists()
+    assert not authorize_data_action(
+        record["data_id"], actor_id="user-1",
+        workspace_id="workspace-1", action="execute",
+    )
 
     restored = restore_record(record["data_id"], **scope, actor_id="user-1")
     assert restored["lifecycle_status"] == "active"
@@ -651,6 +655,10 @@ def test_archive_restore_and_deletion_tombstone_require_explicit_approval(tmp_pa
         reason="Project retention period completed",
     )
     assert pending["lifecycle_status"] == "pending_deletion"
+    with pytest.raises(KeyError):
+        set_classification(
+            record["data_id"], "sensitive", **scope, actor_id="user-1"
+        )
     with pytest.raises(ValueError, match="Explicit deletion approval"):
         approve_deletion(
             record["data_id"], **scope, actor_id="user-1", approved=False
