@@ -359,6 +359,14 @@ def validate_gcode_file(
     )
 
 
+_CALCULIX_ELEMENT_NODES = {
+    "C3D4": 4, "C3D8": 8, "C3D10": 10, "C3D20": 20,
+    "CPS3": 3, "CPS4": 4, "CPS6": 6, "CPS8": 8,
+    "S3": 3, "S4": 4, "S6": 6, "S8": 8,
+    "B31": 2, "B32": 3, "T3D2": 2, "T3D3": 3,
+}
+
+
 def validate_calculix_input(file_path: str | Path) -> dict[str, Any]:
     path = Path(file_path)
     try:
@@ -367,8 +375,12 @@ def validate_calculix_input(file_path: str | Path) -> dict[str, Any]:
         return _result(False, "calculix_inp", [f"Unable to read CalculiX input: {type(exc).__name__}"])
     nodes: set[int] = set()
     elements: list[tuple[int, list[int]]] = []
+    element_ids: set[int] = set()
     in_nodes = False
     in_elements = False
+    current_element_type: str | None = None
+    expected_node_count: int | None = None
+    step_open = False
     has_step = False
     has_end_step = False
     has_boundary = False
@@ -382,34 +394,70 @@ def validate_calculix_input(file_path: str | Path) -> dict[str, Any]:
             keyword = line.split(",", 1)[0].strip().upper()
             in_nodes = keyword == "*NODE"
             in_elements = keyword == "*ELEMENT"
-            has_step = has_step or keyword == "*STEP"
-            has_end_step = has_end_step or keyword == "*END STEP"
-            has_boundary = has_boundary or keyword == "*BOUNDARY"
-            has_load = has_load or keyword in {"*CLOAD", "*DLOAD", "*DSLOAD"}
+            current_element_type = None
+            expected_node_count = None
+            if in_elements:
+                type_match = re.search(r"\bTYPE\s*=\s*([A-Z0-9]+)", line.upper())
+                if type_match:
+                    current_element_type = type_match.group(1)
+                    expected_node_count = _CALCULIX_ELEMENT_NODES.get(current_element_type)
+                if expected_node_count is None:
+                    issues.append(f"Line {line_number}: unsupported or missing CalculiX element TYPE")
+            if keyword == "*STEP":
+                if step_open:
+                    issues.append(f"Line {line_number}: nested *STEP blocks are not supported")
+                step_open = True
+                has_step = True
+            elif keyword == "*END STEP":
+                if not step_open:
+                    issues.append(f"Line {line_number}: *END STEP has no matching *STEP")
+                step_open = False
+                has_end_step = True
+            elif keyword == "*BOUNDARY":
+                has_boundary = True
+            elif keyword in {"*CLOAD", "*DLOAD", "*DSLOAD"}:
+                has_load = True
             continue
         parts = [part.strip() for part in line.split(",") if part.strip()]
         try:
             if in_nodes:
                 if len(parts) < 4:
-                    raise ValueError
+                    raise ValueError("node row requires ID and three coordinates")
                 node_id = int(parts[0])
                 coords = [float(value) for value in parts[1:4]]
+                if node_id <= 0:
+                    raise ValueError("node ID must be positive")
+                if node_id in nodes:
+                    raise ValueError(f"duplicate node ID {node_id}")
                 if any(not math.isfinite(value) for value in coords):
-                    raise ValueError
+                    raise ValueError("node coordinates must be finite")
                 nodes.add(node_id)
             elif in_elements:
-                if len(parts) < 3:
-                    raise ValueError
+                if len(parts) < 3 or expected_node_count is None:
+                    raise ValueError("element row has no supported element type or connectivity")
                 element_id = int(parts[0])
                 node_ids = [int(value) for value in parts[1:]]
+                if element_id <= 0:
+                    raise ValueError("element ID must be positive")
+                if element_id in element_ids:
+                    raise ValueError(f"duplicate element ID {element_id}")
+                if len(node_ids) != expected_node_count:
+                    raise ValueError(
+                        f"{current_element_type} requires {expected_node_count} node IDs"
+                    )
+                if any(node_id <= 0 for node_id in node_ids):
+                    raise ValueError("element node IDs must be positive")
+                if len(set(node_ids)) != len(node_ids):
+                    raise ValueError("element connectivity contains duplicate node IDs")
+                element_ids.add(element_id)
                 elements.append((element_id, node_ids))
-        except ValueError:
-            issues.append(f"Line {line_number}: invalid node or element data")
+        except ValueError as exc:
+            issues.append(f"Line {line_number}: invalid node or element data ({exc})")
     if not nodes:
         issues.append("No valid *NODE data found")
     if not elements:
         issues.append("No valid *ELEMENT data found")
-    if not has_step or not has_end_step:
+    if not has_step or not has_end_step or step_open:
         issues.append("A complete *STEP / *END STEP block is required")
     if not has_boundary:
         issues.append("No *BOUNDARY condition found")
