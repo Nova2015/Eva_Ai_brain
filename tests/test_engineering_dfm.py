@@ -47,6 +47,7 @@ def test_injection_molding_dfm_reports_configurable_screening_findings(tmp_path,
         "SNAP_FIT_STRAIN_EXCEEDED",
     }.issubset(codes)
     assert result["status"] == "review_required"
+    assert result["ruleset_version"] == "eva-injection-molding-dfm-0.1"
     assert result["advisory_only"] is True
     assert result["engineering_approval"] == "not_granted"
     events = materials.list_material_audit(
@@ -54,6 +55,7 @@ def test_injection_molding_dfm_reports_configurable_screening_findings(tmp_path,
     )
     assert events[-1]["action"] == "dfm_analysis_completed"
     assert events[-1]["details"]["status"] == "review_required"
+    assert events[-1]["details"]["ruleset_version"] == "eva-injection-molding-dfm-0.1"
 
 
 def test_injection_molding_dfm_preliminary_pass_is_not_engineering_approval(tmp_path, monkeypatch):
